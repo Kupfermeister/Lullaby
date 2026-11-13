@@ -7,3 +7,7 @@ main: io.github.kupfermeister.lullaby.Lullaby
 api-version: '${minecraftVersion}'
 description: Lua scripting for Paper servers.
 authors: [Kupfermeister]
+permissions:
+  lullaby.command:
+    description: Use /lullaby (reload, version).
+    default: op

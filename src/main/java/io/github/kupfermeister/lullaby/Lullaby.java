@@ -1,15 +1,28 @@
 package io.github.kupfermeister.lullaby;
 
 import io.github.kupfermeister.lullaby.nms.Nms;
+import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
+import java.io.IOException;
+import java.util.List;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.plugin.java.JavaPlugin;
 
 /**
- * Plugin entry point. Paper creates this class (named in paper-plugin.yml) and calls onEnable on the main thread.
- * Without scripts Lullaby must change nothing in the game, so this stays empty until scripts exist.
+ * Plugin entry point. Paper creates this class (named in paper-plugin.yml) and calls onEnable/onDisable on the main
+ * thread. Without scripts Lullaby changes nothing in the game: it only listens to events scripts use.
  */
 public final class Lullaby extends JavaPlugin {
+
+    // The per-tick job is added to vanilla's list once per server run and can't be removed, so it reads this field.
+    private static volatile Engine tickTarget;
+    private static boolean tickRegistered;
+
+    private Engine engine;
+
+    Engine engine() {
+        return engine;
+    }
 
     @Override
     public void onEnable() {
@@ -21,13 +34,40 @@ public final class Lullaby extends JavaPlugin {
         String running = stripZeros(Nms.minecraftVersion());
         if (!builtFor.equals(running)) {
             // FORMAT: version lock error.
-            // Error style (Kupfermeister): vanilla red or gold, starting with ⚠. The console has no vanilla way to show
-            // colors, so this uses Paper's component logger: colored in the console, plain in logs/latest.log.
-            getComponentLogger().error(Component.text("⚠ Lullaby " + getPluginMeta().getVersion()
+            // Console only, so no ⚠ (consoles often can't show it, see ErrorReporter). Paper's component logger
+            // colors it in the console; logs/latest.log stays plain.
+            getComponentLogger().error(Component.text("Lullaby " + getPluginMeta().getVersion()
                     + " needs Minecraft " + builtFor + ", but this server runs " + running
                     + ". Lullaby stays off. Use the Lullaby build for " + running + ".", NamedTextColor.RED));
             getServer().getPluginManager().disablePlugin(this);
+            return;
         }
+
+        engine = new Engine(this);
+        try {
+            engine.createDefaults();
+        } catch (IOException e) {
+            getSLF4JLogger().error("Lullaby could not create its files in {}", getDataPath(), e); // FORMAT
+        }
+        engine.load(false);
+
+        tickTarget = engine;
+        if (!tickRegistered) {
+            tickRegistered = true;
+            Nms.addTickable(() -> {
+                Engine target = tickTarget;
+                if (target != null) target.tick();
+            });
+        }
+
+        getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event -> event.registrar()
+                .register(LullabyCommand.build(this), "Lullaby: reload the scripts, show the version", List.of()));
+    }
+
+    @Override
+    public void onDisable() {
+        tickTarget = null;
+        if (engine != null) engine.unload(); // finals of running tasks run here
     }
 
     private static String stripZeros(String version) {

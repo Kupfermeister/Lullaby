@@ -1,15 +1,131 @@
 package io.github.kupfermeister.lullaby.nms;
 
+import io.papermc.paper.adventure.PaperAdventure;
+import java.nio.file.Files;
+import java.util.Locale;
+import java.util.UUID;
+import java.util.regex.Pattern;
 import net.minecraft.SharedConstants;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.players.NameAndId;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.storage.LevelResource;
+import net.kyori.adventure.text.Component;
 
-/** Small NMS reads that do not belong to a bigger NMS class yet. */
+/**
+ * Small vanilla reads and actions that do not belong to a bigger NMS class yet. Main thread only (vanilla's world and
+ * player objects are not thread-safe).
+ */
 public final class Nms {
 
+    private static final Pattern UUID_TEXT =
+            Pattern.compile("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
+
     private Nms() {
+    }
+
+    private static MinecraftServer server() {
+        return MinecraftServer.getServer();
     }
 
     /** The Minecraft version the server runs, vanilla's own name for it, e.g. "26.3". */
     public static String minecraftVersion() {
         return SharedConstants.getCurrentVersion().name();
+    }
+
+    /** Runs {@code tick} at the end of every server tick (vanilla's own list of per-tick jobs; it has no removal). */
+    public static void addTickable(Runnable tick) {
+        server().addTickable(tick);
+    }
+
+    // ---- players ----
+
+    public static boolean isOnline(UUID uuid) {
+        return server().getPlayerList().getPlayer(uuid) != null;
+    }
+
+    /** The player's name: online, or from the server's name cache; null if unknown. */
+    public static String playerName(UUID uuid) {
+        ServerPlayer player = server().getPlayerList().getPlayer(uuid);
+        if (player != null) return player.getScoreboardName();
+        return server().services().nameToIdCache().get(uuid).map(NameAndId::name).orElse(null);
+    }
+
+    /**
+     * A player from a name or UUID text: online, or one who has played here (has a save file). Never asks Mojang's
+     * servers (that would block the main thread), so an offline name is found only if the server has seen it.
+     */
+    public static UUID findPlayer(String text) {
+        if (UUID_TEXT.matcher(text).matches()) {
+            UUID uuid = UUID.fromString(text);
+            return isOnline(uuid) || hasSaveFile(uuid) ? uuid : null;
+        }
+        ServerPlayer player = server().getPlayerList().getPlayerByName(text);
+        if (player != null) return player.getUUID();
+        NameAndId cached = server().services().nameToIdCache().getIfCached(text);
+        return cached != null && hasSaveFile(cached.id()) ? cached.id() : null;
+    }
+
+    private static boolean hasSaveFile(UUID uuid) {
+        return Files.exists(server().getWorldPath(LevelResource.PLAYER_DATA_DIR).resolve(uuid + ".dat"));
+    }
+
+    /** Sends a chat message as vanilla's system message (System Chat Message packet); false if offline. */
+    public static boolean sendMessage(UUID uuid, Component text) {
+        ServerPlayer player = server().getPlayerList().getPlayer(uuid);
+        if (player == null) return false;
+        player.sendSystemMessage(PaperAdventure.asVanilla(text));
+        return true;
+    }
+
+    /** Sends a system message to every online op. */
+    public static void sendToOps(Component text) {
+        MinecraftServer server = server();
+        if (server == null) return;
+        net.minecraft.network.chat.Component vanilla = null;
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            if (!server.getPlayerList().isOp(player.nameAndId())) continue;
+            if (vanilla == null) vanilla = PaperAdventure.asVanilla(text);
+            player.sendSystemMessage(vanilla);
+        }
+    }
+
+    // ---- materials, worlds, blocks (vanilla ids; "stone" means "minecraft:stone") ----
+
+    private static Identifier identifier(String text) {
+        String id = text.toLowerCase(Locale.ROOT);
+        return Identifier.tryParse(id.contains(":") ? id : "minecraft:" + id);
+    }
+
+    /** The full id of a block type ("stone" -> "minecraft:stone"); null if there is none. */
+    public static String materialId(String text) {
+        Identifier id = identifier(text);
+        return id != null && BuiltInRegistries.BLOCK.containsKey(id) ? id.toString() : null;
+    }
+
+    private static ServerLevel level(String text) {
+        Identifier id = identifier(text);
+        return id == null ? null : server().getLevel(ResourceKey.create(Registries.DIMENSION, id));
+    }
+
+    /** The full id of a loaded world ("overworld" -> "minecraft:overworld"); null if there is none. */
+    public static String worldId(String text) {
+        ServerLevel level = level(text);
+        return level == null ? null : level.dimension().identifier().toString();
+    }
+
+    /** The block type id at a position; null if the world or chunk is not loaded (never loads a chunk). */
+    public static String blockType(String world, int x, int y, int z) {
+        ServerLevel level = level(world);
+        if (level == null) return null;
+        BlockState state = level.getBlockStateIfLoaded(new BlockPos(x, y, z));
+        return state == null ? null : BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
     }
 }

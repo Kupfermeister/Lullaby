@@ -1,0 +1,9 @@
+# Paper's newer plugin kind (Kupfermeister 2026-11-13): keeps the early bootstrap step open for registry content later.
+# `name` is the plugin id and the data folder name (plugins/lullaby/).
+# The dollar placeholders are filled in by Gradle (processResources in build.gradle.kts).
+name: lullaby
+version: '${version}'
+main: io.github.kupfermeister.lullaby.Lullaby
+api-version: '${minecraftVersion}'
+description: Lua scripting for Paper servers.
+authors: [Kupfermeister]

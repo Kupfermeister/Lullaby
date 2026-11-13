@@ -1,0 +1,10 @@
+# Build output and Gradle's own caches
+build/
+.gradle/
+# Test server (Paper jar, worlds, configs); recreated by `gradlew runServer`
+run/
+# IDE files
+.idea/
+*.iml
+out/
+.vscode/

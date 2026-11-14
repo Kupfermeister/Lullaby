@@ -15,3 +15,8 @@
 --   end
 -- end
 -- on{ "PlayerJoinEvent", function(e) run{ countdown, args = { e.player } } end }
+
+-- A command: /pay <target> <amount>
+-- command{ "pay", function(c)
+--   message{ player = c.args.target, text = "<green>You got " .. c.args.amount .. " coins" }
+-- end, args = { { name = "target", type = "player" }, { name = "amount", type = "integer", min = 1 } } }

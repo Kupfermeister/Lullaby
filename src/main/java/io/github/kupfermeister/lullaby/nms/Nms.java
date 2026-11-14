@@ -2,6 +2,7 @@ package io.github.kupfermeister.lullaby.nms;
 
 import io.papermc.paper.adventure.PaperAdventure;
 import java.nio.file.Files;
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -46,6 +47,16 @@ public final class Nms {
     }
 
     // ---- players ----
+
+    /** UUID texts of every online player. */
+    public static List<String> onlinePlayers() {
+        return server().getPlayerList().getPlayers().stream().map(player -> player.getUUID().toString()).toList();
+    }
+
+    /** Resends every online player's command tree (vanilla's Commands packet). */
+    public static void resendCommands() {
+        for (ServerPlayer player : server().getPlayerList().getPlayers()) server().getCommands().sendCommands(player);
+    }
 
     public static boolean isOnline(UUID uuid) {
         return server().getPlayerList().getPlayer(uuid) != null;

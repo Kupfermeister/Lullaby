@@ -4,6 +4,8 @@ import io.github.kupfermeister.lullaby.Engine;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.util.List;
+import java.util.UUID;
 import party.iroiro.luajava.Lua;
 import party.iroiro.luajava.luajit.LuaJit;
 
@@ -17,7 +19,7 @@ import party.iroiro.luajava.luajit.LuaJit;
  */
 public final class LuaRuntime {
 
-    private static final String[] LIBRARY = {"core", "tasks", "events", "objects", "loader"};
+    private static final String[] LIBRARY = {"core", "tasks", "events", "objects", "commands", "loader"};
 
     private final Lua lua;
     private final int internals; // registry reference to the I table
@@ -61,8 +63,57 @@ public final class LuaRuntime {
         call("tick");
     }
 
-    public void fireReload() {
-        call("fire_reload");
+    /** The reload event; {@code player} is who reloaded (null: the console). */
+    public void fireReload(int scripts, int errors, long millis, UUID player) {
+        int top = lua.getTop();
+        try {
+            pushInternal("fire_reload");
+            lua.push(scripts);
+            lua.push(errors);
+            lua.push(millis);
+            pushUuid(player);
+            lua.pCall(4, 0);
+        } finally {
+            lua.setTop(top);
+        }
+    }
+
+    /** Works out which script commands one online player sees and resends their command tree. */
+    public void refreshCommands(String uuid) {
+        int top = lua.getTop();
+        try {
+            pushInternal("refresh_player");
+            lua.push(uuid);
+            lua.pCall(1, 0);
+        } finally {
+            lua.setTop(top);
+        }
+    }
+
+    /** A script command was typed: its node id, who typed it (null: console), then name, kind, value triples. */
+    public void runCommand(int node, UUID player, List<Object> args) {
+        int top = lua.getTop();
+        try {
+            pushInternal("run_command");
+            lua.push(node);
+            pushUuid(player);
+            for (Object value : args) {
+                switch (value) {
+                    case String text -> LuaText.push(lua, text);
+                    case Boolean bool -> lua.push(bool);
+                    case Number number -> lua.push(number);
+                    default -> throw new IllegalArgumentException("unexpected command value " + value);
+                }
+            }
+            lua.pCall(2 + args.size(), 0);
+        } finally {
+            lua.setTop(top);
+        }
+    }
+
+    private void pushUuid(UUID uuid) {
+        if (uuid == null) lua.pushNil();
+        else lua.push(uuid.toString());
     }
 
     /** Runs every running task's final; called before the state is closed. */

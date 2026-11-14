@@ -1,8 +1,12 @@
 package io.github.kupfermeister.lullaby;
 
+import com.destroystokyo.paper.event.brigadier.AsyncPlayerSendCommandsEvent;
 import io.github.kupfermeister.lullaby.error.ErrorReporter;
 import io.github.kupfermeister.lullaby.event.EventBridge;
 import io.github.kupfermeister.lullaby.lua.LuaRuntime;
+import io.github.kupfermeister.lullaby.nms.Nms;
+import io.github.kupfermeister.lullaby.nms.ScriptCommands;
+import io.papermc.paper.event.server.ServerResourcesReloadedEvent;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -12,7 +16,14 @@ import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 import java.util.stream.Stream;
+import org.bukkit.Bukkit;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.HandlerList;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 
 /**
  * Holds everything one load of the scripts needs: the Lua state, the event listeners and the error reporter, and the
@@ -31,6 +42,10 @@ public final class Engine {
     private final ErrorReporter errors;
     private final EventBridge events;
     private LuaRuntime runtime;
+    private volatile ScriptCommands commands; // volatile: also read on Paper's tree-building threads
+    // Owns the join/quit listeners for script commands; registered only while scripts declare commands.
+    private final Listener commandPlayers = new Listener() {
+    };
 
     Engine(Lullaby plugin) {
         this.plugin = plugin;
@@ -52,6 +67,11 @@ public final class Engine {
         return events;
     }
 
+    /** This load's script commands; null between loads. */
+    public ScriptCommands commands() {
+        return commands;
+    }
+
     /** First start: copies config.lua and scripts/lullaby.lua if they are missing. */
     void createDefaults() throws IOException {
         Files.createDirectories(dataFolder);
@@ -69,33 +89,112 @@ public final class Engine {
         }
     }
 
-    /** Loads (or reloads) every script. On a reload, the old state's tasks are stopped first. */
-    public LoadResult load(boolean reload) {
+    /** Loads (or reloads) every script; on a reload, the old state's tasks are stopped first. See {@link #afterReload}. */
+    public LoadResult load() {
         long start = System.nanoTime();
         unload();
         errors.resetCount();
         int scripts = 0;
         try {
+            commands = new ScriptCommands(this::runCommand);
+            listenForCommandPlayers(); // before the scripts, so it runs before their own lowest-stage join handlers
             runtime = new LuaRuntime(this);
             scripts = runtime.loadAll();
-            if (reload) runtime.fireReload();
         } catch (IOException | RuntimeException e) {
             internalError("loading the scripts", e);
         }
         return new LoadResult(scripts, errors.count(), (System.nanoTime() - start) / 1_000_000);
     }
 
-    /** Stops every task (finals run), removes the listeners and closes the Lua state. */
-    void unload() {
-        events.unregisterAll();
+    /**
+     * After /lullaby reload has sent its summary: every online player gets the new script commands (also when the
+     * load failed, so old commands vanish from their screens), then the reload event runs. {@code player}: who
+     * reloaded (null: the console).
+     */
+    public void afterReload(LoadResult result, UUID player) {
+        try {
+            if (runtime == null) {
+                Nms.resendCommands();
+                return;
+            }
+            for (String uuid : Nms.onlinePlayers()) runtime.refreshCommands(uuid);
+            runtime.fireReload(result.scripts(), result.errors(), result.millis(), player);
+        } catch (RuntimeException e) {
+            internalError("finishing the reload", e);
+        }
+    }
+
+    /**
+     * Join: vanilla sends a joining player's command tree while they log in, before any script can say what they see,
+     * so the tree is worked out and sent again at the lowest join stage. Quit: the player's snapshot is dropped.
+     * Data pack reload (/minecraft:reload): vanilla builds a new dispatcher and only Bukkit commands move over, so the
+     * script commands are put back and every tree is resent. All three do nothing while no script declares commands.
+     */
+    private void listenForCommandPlayers() {
+        Bukkit.getPluginManager().registerEvent(PlayerJoinEvent.class, commandPlayers, EventPriority.LOWEST,
+                (listener, e) -> {
+                    if (e instanceof PlayerJoinEvent join && runtime != null && !commands.isEmpty()) {
+                        try {
+                            runtime.refreshCommands(join.getPlayer().getUniqueId().toString());
+                        } catch (RuntimeException ex) {
+                            internalError("working out a player's commands", ex);
+                        }
+                    }
+                }, plugin);
+        Bukkit.getPluginManager().registerEvent(PlayerQuitEvent.class, commandPlayers, EventPriority.MONITOR,
+                (listener, e) -> {
+                    if (e instanceof PlayerQuitEvent quit && commands != null) {
+                        commands.forget(quit.getPlayer().getUniqueId());
+                    }
+                }, plugin);
+        // Fires on a tree-building thread and again on the main thread right before sending (ScriptCommands.treeEvent
+        // acts only on the main-thread one). No Lua here.
+        Bukkit.getPluginManager().registerEvent(AsyncPlayerSendCommandsEvent.class, commandPlayers,
+                EventPriority.MONITOR, (listener, e) -> {
+                    ScriptCommands current = commands;
+                    if (e instanceof AsyncPlayerSendCommandsEvent<?> sent && current != null) {
+                        current.treeEvent(sent.getPlayer().getUniqueId(), sent.getCommandNode(), sent.hasFiredAsync());
+                    }
+                }, plugin);
+        Bukkit.getPluginManager().registerEvent(ServerResourcesReloadedEvent.class, commandPlayers,
+                EventPriority.MONITOR, (listener, e) -> {
+                    if (commands != null && !commands.isEmpty()) {
+                        commands.reattach();
+                        commands.resendAll();
+                    }
+                }, plugin);
+    }
+
+    /** A script command was typed (Brigadier calls this on the main thread). */
+    private void runCommand(int node, UUID player, List<Object> args) {
         if (runtime == null) return;
         try {
-            runtime.stopAllTasks();
+            runtime.runCommand(node, player, args);
         } catch (RuntimeException e) {
-            internalError("stopping the tasks", e);
+            internalError("a command", e);
         }
-        runtime.close();
-        runtime = null;
+    }
+
+    /**
+     * Stops every task (finals run, and may still use commands), removes the listeners and commands and closes the
+     * Lua state.
+     */
+    void unload() {
+        events.unregisterAll();
+        HandlerList.unregisterAll(commandPlayers);
+        if (runtime != null) {
+            try {
+                runtime.stopAllTasks();
+            } catch (RuntimeException e) {
+                internalError("stopping the tasks", e);
+            }
+            runtime.close();
+            runtime = null;
+        }
+        if (commands != null) {
+            commands.clear();
+            commands = null;
+        }
     }
 
     void tick() {

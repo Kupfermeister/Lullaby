@@ -1,4 +1,4 @@
--- Lullaby library, file 4 of 5: game objects and values, and the first action.
+-- Lullaby library, file 4 of 6: game objects and values, and the first action.
 --
 -- Objects (player, material, world, block) are hand-made: each one exists once (cached), so == works and they can be
 -- table keys. Their identity (a UUID, an id like "minecraft:stone", a position) is kept in private tables, never on

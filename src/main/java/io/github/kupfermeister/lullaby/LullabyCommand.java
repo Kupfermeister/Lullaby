@@ -6,6 +6,7 @@ import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.command.brigadier.Commands;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.entity.Player;
 
 /**
  * The one built-in command, {@code /lullaby} (Kupfermeister: everything necessary inside, nothing else built in):
@@ -22,7 +23,7 @@ final class LullabyCommand {
         return Commands.literal("lullaby")
                 .requires(source -> source.getSender().hasPermission("lullaby.command"))
                 .then(Commands.literal("reload").executes(context -> {
-                    Engine.LoadResult result = plugin.engine().load(true);
+                    Engine.LoadResult result = plugin.engine().load();
                     // FORMAT: reload summary
                     String text = "Reloaded " + result.scripts() + (result.scripts() == 1 ? " script" : " scripts")
                             + " in " + result.millis() + " ms";
@@ -31,6 +32,9 @@ final class LullabyCommand {
                     }
                     context.getSource().getSender().sendMessage(Component.text(text,
                             result.errors() > 0 ? NamedTextColor.RED : NamedTextColor.GREEN));
+                    // summary first, then every player's new commands, then scripts' reload handlers
+                    plugin.engine().afterReload(result,
+                            context.getSource().getExecutor() instanceof Player player ? player.getUniqueId() : null);
                     return Command.SINGLE_SUCCESS;
                 }))
                 .then(Commands.literal("version").executes(context -> {

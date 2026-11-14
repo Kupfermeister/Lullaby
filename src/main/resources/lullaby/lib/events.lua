@@ -1,4 +1,4 @@
--- Lullaby library, file 3 of 5: events.
+-- Lullaby library, file 3 of 6: events.
 --
 --   on{ "BlockBreakEvent", function(e) ... end, order = 0, stage = "normal" }   before it happens: may change e
 --   after{ "PlayerJoinEvent", function(e) ... end, order = 0 }                  once it happened (not cancelled): read only
@@ -7,7 +7,9 @@
 -- event is over and changes only give a warning.
 -- Java (EventBridge.java) registers one Bukkit listener per event, kind and stage that scripts use, and calls
 -- I.dispatch, which runs the handlers here in order. Event fields are read and written through Java on each access.
--- "reload" is Lullaby's own event: it runs after a /lullaby reload has loaded every script.
+-- "reload" is Lullaby's own event: it runs after a /lullaby reload has loaded every script (and refreshed every
+-- online player's commands). Its e is read only: e.scripts (files loaded), e.errors, e.ms (how long it took),
+-- e.cause ("command": /lullaby reload) and e.player (who reloaded; nil from the console).
 local J, lib, I = ...
 
 local type, error, setmetatable, tostring = type, error, setmetatable, tostring
@@ -103,11 +105,19 @@ function I.dispatch(name, kind, stage, java_event)
 end
 
 -- Called by Java after a /lullaby reload has loaded every script.
-function I.fire_reload()
+function I.fire_reload(scripts, errors, ms, uuid)
+	local fields = { scripts = scripts, errors = errors, ms = ms, cause = "command",
+		player = uuid and I.player_by_uuid(uuid) or nil }
+	local e = setmetatable({}, {
+		__index = fields,
+		__newindex = function(_, field) error("the reload event can't be changed (e." .. tostring(field) .. ")", 2) end,
+		__tostring = function() return "reload" end,
+		__metatable = false,
+	})
 	for _, kind in ipairs({ "on", "after" }) do
 		local list = handlers["reload|" .. kind .. "|" .. (kind == "on" and "normal" or "monitor")]
 		if list then
-			for i = 1, #list do I.start_task(list[i].fn, { n = 0 }, "reload (" .. kind .. ")") end
+			for i = 1, #list do I.start_task(list[i].fn, { n = 1, e }, "reload (" .. kind .. ")") end
 		end
 	end
 end

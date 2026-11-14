@@ -1,4 +1,4 @@
--- Lullaby library, file 1 of 5: shared setup, error reports, config and the script sandbox.
+-- Lullaby library, file 1 of 6: shared setup, error reports, config and the script sandbox.
 --
 -- Every library file is run once per Lua state (each start and each reload) by LuaRuntime.java and gets three tables:
 --   J   raw Java functions (JavaFunctions.java). Private: scripts never see J.

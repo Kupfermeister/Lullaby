@@ -49,7 +49,7 @@ public final class Lullaby extends JavaPlugin {
         } catch (IOException e) {
             getSLF4JLogger().error("Lullaby could not create its files in {}", getDataPath(), e); // FORMAT
         }
-        engine.load(false);
+        engine.load();
 
         tickTarget = engine;
         if (!tickRegistered) {

@@ -1,4 +1,4 @@
--- Lullaby library, file 5 of 5: loading script files and import.
+-- Lullaby library, file 6 of 6: loading script files and import.
 --
 -- Every .lua file under plugins/lullaby/scripts loads once, in alphabetical path order, except files and folders
 -- whose name starts with "--" (standby). Each file has its own globals: a name it sets without `local` is visible in
@@ -76,6 +76,8 @@ function I.load_all()
 		exists[path] = true
 		order[#order + 1] = path
 	end
+	I.loading = true -- command{} works only now (see commands.lua)
 	for i = 1, #order do load_file(order[i]) end
+	I.loading = false
 	return count
 end

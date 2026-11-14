@@ -1,4 +1,4 @@
--- Lullaby library, file 2 of 5: tasks (run, wait, stop) and the scheduler that resumes waiting tasks each tick.
+-- Lullaby library, file 2 of 6: tasks (run, wait, stop) and the scheduler that resumes waiting tasks each tick.
 --
 -- A task is one running function inside its own coroutine. Event handlers run as tasks automatically.
 --   run{ f, args = { ... }, final = g, id = x }   starts f(...) now; returns the task, or nil if a task of the same

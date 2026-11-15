@@ -171,7 +171,7 @@ syntax: type_of( value ) → text
 lead: The Lullaby type name of any value: "player", "vec3", "event", "number", "string", ...
 arg: value | any | Anything.
 returns: text
-status: unconfirmed
+status: confirmed
 ]]
 function lib.type_of(value)
 	local kind = kind_of[value]
@@ -210,10 +210,10 @@ kind: reading
 group: Values
 words: text number string
 syntax: tostring( value ) → text
-lead: Like Lua's tostring, but numbers are exact (the shortest text that reads back as the same number).
+lead: Like Lua's tostring, but numbers are exact (the shortest text that reads back as the same number): 1297632424.123456 stays that, Lua would make 1297632424.1235.
 arg: value | any | Anything.
 returns: text
-status: unconfirmed
+status: confirmed
 ]]
 function lib.tostring(value)
 	local t = type(value)

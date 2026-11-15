@@ -58,6 +58,7 @@ never goes through it, so this rule stays true for Lullaby itself. Names are Moj
 | [Codecs.java](src/main/java/io/github/kupfermeister/lullaby/nms/Codecs.java) | Item stacks, component patches and text through vanilla's codecs; owns the wire's kind list. |
 | [LuaOps.java](src/main/java/io/github/kupfermeister/lullaby/nms/LuaOps.java) | Vanilla's `DynamicOps` over Lua data, so every vanilla codec reads Lua tables; refuses 2.5 where a whole number is needed. |
 | [ScriptCommands.java](src/main/java/io/github/kupfermeister/lullaby/nms/ScriptCommands.java) | Script commands on vanilla's Brigadier dispatcher, with per-player snapshots (see Threads). |
+| [SoundSeeds.java](src/main/java/io/github/kupfermeister/lullaby/nms/SoundSeeds.java) | `sound_seed()`: runs the game's own file pick over vanilla's `sounds.json` (downloaded at build) to find the seed for one exact file. |
 | [Nms.java](src/main/java/io/github/kupfermeister/lullaby/nms/Nms.java) | Small vanilla reads and actions without a bigger class yet. |
 
 The library, in `src/main/resources/lullaby/lib/` (loaded in this order; each file starts with a comment saying
@@ -168,7 +169,9 @@ docs site, VS Code autocomplete and the Markdown copy; uses and used-by are foun
 ## Build and test
 
 - `gradlew build` builds `build/libs/lullaby-<version>.jar` and copies it to `run/plugins` (older Lullaby jars there
-  are removed). The first build takes a few minutes: paperweight sets up the Minecraft sources once.
+  are removed). The first build takes a few minutes: paperweight sets up the Minecraft sources once. The build also
+  downloads vanilla's `sounds.json` (about 600 KB, SHA-1 checked) from Mojang once per Minecraft version and packs
+  it into the jar (task `downloadSounds`): the server jar has none, and `sound_seed()` needs it.
 - `gradlew runServer` builds, downloads the Paper jar named in `gradle.properties` once (SHA-256 checked) and starts a
   test server in `run/` (not in the repo): port 25566, 4 GB. Minecraft's EULA must be accepted in `run/eula.txt`
   first. Type `stop` to end it.
@@ -197,7 +200,8 @@ the docs build, not from discipline.
    comment.
 
 Follows by itself: scripts see `lib.NAME` as a global; the docs site page, autocomplete and the Markdown copy come
-from the doc block; "uses" and the grayed page for `J.name` are found from the code.
+from the doc block; "uses" and the grayed page for `J.name` are found from the code. A `function lib.NAME(` without a
+doc block stops the docs build with its file and line.
 
 ### Add an event
 
@@ -237,8 +241,10 @@ when there is more than one packet, building each packet once for all receivers,
 3. Fix what no longer compiles. It should all be in `nms`; anything outside is a change in Paper's own API.
 4. `gradlew runServer`. The startup checks stop loading with `Lullaby bug: ...` if vanilla renamed something Lullaby
    reads (event getters and setters, wire kinds). Fix those in `nms` or `EventBridge`.
-5. Sounds: a fixed `seed` in `sound{}` picks the variant from the sound's pool in vanilla's `sounds.json`. If Mojang
-   changed a pool, the same seed now gives another variant; check the sounds whose exact variant matters.
+5. Sounds: `sound_seed()` follows by itself (the build downloads the new `sounds.json`). A seed a script wrote as a
+   plain number now may give another file if Mojang changed that sound's list. If the game's file pick itself
+   changed (the classes named in [SoundSeeds.java](src/main/java/io/github/kupfermeister/lullaby/nms/SoundSeeds.java)),
+   change it there too.
 6. `gradlew docs`: the site shows the new version (read from `gradle.properties`).
 
 Follows by itself: the plugin's `api-version` and the version lock use the new version; old jars refuse the new

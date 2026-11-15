@@ -6,6 +6,7 @@ import io.github.kupfermeister.lullaby.nms.Codecs;
 import io.github.kupfermeister.lullaby.nms.Nms;
 import io.github.kupfermeister.lullaby.nms.Packets;
 import io.github.kupfermeister.lullaby.nms.ScriptCommands;
+import io.github.kupfermeister.lullaby.nms.SoundSeeds;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -279,6 +280,10 @@ final class JavaFunctions {
         add(lua, "sound", L -> {
             Packets.sound(Wire.read(L.toBuffer(1)), slotLookup);
             return 0;
+        });
+        add(lua, "sound_seed", L -> {
+            L.push((double) SoundSeeds.seed(string(L, 1), string(L, 2))); // below 2^48: exact as a Lua number
+            return 1;
         });
         add(lua, "stop_sound", L -> {
             Packets.stopSound(Wire.read(L.toBuffer(1)), slotLookup);

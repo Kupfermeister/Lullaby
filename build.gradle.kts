@@ -36,10 +36,50 @@ tasks.withType<JavaCompile>().configureEach {
     options.release = 25
 }
 
+// Downloads vanilla's sounds.json for minecraftVersion from Mojang (each step's SHA-1 checked). The server jar doesn't
+// have it (only the game does); SoundSeeds.java reads it for sound_seed(). Downloaded again only on a version change.
+abstract class DownloadSounds : DefaultTask() {
+    @get:Input abstract val minecraftVersion: Property<String>
+    @get:OutputFile abstract val target: RegularFileProperty
+
+    private fun fetch(url: String, sha1: String?): ByteArray {
+        val bytes = URI(url).toURL().openStream().use { it.readBytes() }
+        if (sha1 != null) {
+            val actual = MessageDigest.getInstance("SHA-1").digest(bytes).joinToString("") { "%02x".format(it) }
+            if (actual != sha1) throw GradleException("$url has the wrong SHA-1 ($actual, wanted $sha1)")
+        }
+        return bytes
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun json(bytes: ByteArray) = groovy.json.JsonSlurper().parse(bytes) as Map<String, Any?>
+
+    @TaskAction
+    fun download() {
+        val version = minecraftVersion.get()
+        val manifest = json(fetch("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json", null))
+        val entry = (manifest["versions"] as List<Map<String, Any?>>).firstOrNull { it["id"] == version }
+            ?: throw GradleException("Mojang's version list has no Minecraft $version")
+        val versionJson = json(fetch(entry["url"] as String, entry["sha1"] as String))
+        val assetIndex = versionJson["assetIndex"] as Map<String, Any?>
+        val objects = json(fetch(assetIndex["url"] as String, assetIndex["sha1"] as String))["objects"] as Map<String, Any?>
+        val hash = (objects["minecraft/sounds.json"] as Map<String, Any?>)["hash"] as String
+        val bytes = fetch("https://resources.download.minecraft.net/${hash.substring(0, 2)}/$hash", hash)
+        target.get().asFile.apply { parentFile.mkdirs() }.writeBytes(bytes)
+    }
+}
+
+val soundsVersion = minecraftVersion // the task's own property has the same name
+val downloadSounds = tasks.register<DownloadSounds>("downloadSounds") {
+    minecraftVersion = soundsVersion
+    target = layout.buildDirectory.file("generated/sounds/lullaby/sounds.json")
+}
+
 tasks.processResources {
     val props = mapOf("version" to project.version, "minecraftVersion" to minecraftVersion)
     inputs.properties(props)
     filesMatching("paper-plugin.yml") { expand(props) }
+    from(downloadSounds) { into("lullaby") }
 }
 
 // One jar with LuaJava inside (no shadow plugin, to keep build dependencies few). Nothing is relocated: each Paper

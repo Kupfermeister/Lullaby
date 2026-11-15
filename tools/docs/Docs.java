@@ -14,7 +14,8 @@ import java.util.stream.Stream;
  * Bricks, each replaceable on its own; they only meet in docs.json (the ONE fixed contract, see FORMAT below):
  *   reader   - reads the `--[[doc ... ]]` blocks in lib/*.lua and finds the connections ("uses" / "used by")
  *   builders - docs.json -> index.html (site.html with the data put in), lullaby.md, lullaby.d.lua (VS Code)
- * First it checks that every file named in ARCHITECTURE.md and README.md exists (see checkPaths).
+ * First it checks that every file named in ARCHITECTURE.md and README.md exists (see checkPaths), and after reading
+ * that every `function lib.NAME(` has a doc block (see checkDocumented).
  *
  * A doc block sits right above `function lib.NAME(` and has one `key: value` per line:
  *   name, kind (doing | reading | event | type | lua), group, syntax, lead, note, returns, example (code; indented
@@ -57,6 +58,7 @@ public final class Docs {
         try (Stream<Path> s = Files.list(lib)) { files = s.filter(p -> p.toString().endsWith(".lua")).sorted().toList(); }
         read(here.resolve("lua.txt"), "tools/docs/lua.txt", entries, bodies); // first: the Lua group leads the sidebar
         for (Path file : files) read(file, "src/main/resources/lullaby/lib/" + file.getFileName(), entries, bodies);
+        checkDocumented(files, entries);
 
         // Connections: documented library functions and raw Java functions called inside each body.
         for (Entry e : List.copyOf(entries.values())) {
@@ -121,6 +123,32 @@ public final class Docs {
         if (missing.isEmpty()) return;
         // FORMAT: docs build, files named on the architecture page or README that don't exist
         System.err.println("docs: these files are named but don't exist (update the page in the same change):");
+        for (String m : missing) System.err.println("  " + m);
+        System.exit(1);
+    }
+
+    // A library function scripts see: `function lib.NAME(` at the start of a line. Lua's own functions handed through
+    // (`lib.pairs = ...` in core.lua) are not matched; the Lua pages in lua.txt cover them.
+    private static final Pattern LIB_FUNCTION = Pattern.compile("(?m)^function lib\\.(\\w+)\\(");
+
+    /**
+     * Every library function scripts can use needs a doc block right above it, so a new one can't reach scripts
+     * undocumented. Stops the docs build (exit code 1) with each missing function's file and line.
+     */
+    private static void checkDocumented(List<Path> files, Map<String, Entry> entries) throws IOException {
+        List<String> missing = new ArrayList<>();
+        for (Path file : files) {
+            String text = Files.readString(file, StandardCharsets.UTF_8).replace("\r\n", "\n");
+            Matcher m = LIB_FUNCTION.matcher(text);
+            while (m.find()) {
+                if (entries.containsKey(m.group(1))) continue;
+                int line = 1 + (int) text.substring(0, m.start()).chars().filter(c -> c == '\n').count();
+                missing.add("src/main/resources/lullaby/lib/" + file.getFileName() + ":" + line + "  lib." + m.group(1));
+            }
+        }
+        if (missing.isEmpty()) return;
+        // FORMAT: docs build, library functions without a doc block
+        System.err.println("docs: these library functions have no --[[doc block right above them (add one in the same change):");
         for (String m : missing) System.err.println("  " + m);
         System.exit(1);
     }

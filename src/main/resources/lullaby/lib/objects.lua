@@ -429,7 +429,7 @@ arg: source | text | Needed. Which volume slider plays it: one of vanilla's soun
 arg: pos / entity | vec3 · player | Needed, one of the two: where it plays; entity follows that player.
 arg: volume? | number | Default 1.
 arg: pitch? | number | Default 1.
-arg: seed? | number | Picks the variant from the sound's pool. Random by default, as in vanilla.
+arg: seed? | number | Picks which file of the sound plays. Random by default, as in vanilla. For one exact file use sound_seed( ).
 returns: nothing
 expert: Packet | Sound / Sound Entity (play, clientbound)
 expert: Lua → Java | one call
@@ -447,6 +447,30 @@ function lib.sound(a)
 		players = receivers(a, "sound"), sound = a.sound, source = a.source, pos = a.pos, entity = entity,
 		volume = a.volume, pitch = a.pitch, seed = a.seed,
 	}))
+end
+
+--[[doc
+name: sound_seed( )
+kind: reading
+group: Effects
+words: variant exact precise file pick ogg
+syntax: sound_seed( sound, file )
+lead: The seed that makes sound{ } play one exact file of a sound, instead of a random one.
+arg: sound | text | A vanilla sound id like "ambient.basalt_deltas.additions".
+arg: file | text | One of its files, as in vanilla's sounds.json, like "ambient/nether/basalt_deltas/basaltground1". A wrong name gets an error that lists the sound's files.
+returns: number
+note: The player's game picks the file from its own sounds.json. A resource pack that changes the sound's file list can make the player hear another file; the server can't see that. Lullaby reads Minecraft's own sounds.json for the version it is built for and works the seed out the way the game does, so a Minecraft update can't make a seed silently wrong. The seed is found once per sound and then kept.
+example:
+  local seed = sound_seed("ambient.basalt_deltas.additions", "ambient/nether/basalt_deltas/basaltground1")
+  sound{ player = p, sound = "ambient.basalt_deltas.additions", source = "ambient", entity = p, seed = seed }
+expert: Lua → Java | one call
+status: unconfirmed
+]]
+function lib.sound_seed(sound, file)
+	-- FORMAT: wrong arguments for sound_seed()
+	if type(sound) ~= "string" then error("sound_seed: sound must be a sound id, got " .. I.type_name(sound), 2) end
+	if type(file) ~= "string" then error("sound_seed: file must be a file name, got " .. I.type_name(file), 2) end
+	return J.sound_seed(sound, file)
 end
 
 --[[doc

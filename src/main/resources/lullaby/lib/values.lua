@@ -197,6 +197,12 @@ syntax: block_pos( x, y, z ) → block_pos
 lead: A block position: whole numbers (vanilla BlockPos). + - == :offset(dx, dy, dz) :vec3() :chunk_pos() :section_pos(). Also takes a value of its own type (returned as is), a table { 1, 2, 3 } or { x = , y = , z = }, or command text like "1 64 -3".
 arg: x, y, z | number | Whole numbers.
 returns: block_pos
+expert: Thread | main thread, like every script
+expert: Cost | 0.1–1 µs to make one from numbers, 1–5 µs from command text (guess, not measured); the math on it is plain Lua
+expert: Under the hood | a plain Lua table with a hidden shared metatable; no Java
+expert: Can fail | an error naming the field when a value is not a number, is NaN or infinity, or (whole-number types) not whole or outside Java's int range
+expert: Reload | values are plain Lua: they go with the Lua state on /lullaby reload
+expert: Time limit | not checked: plain Lua, no call into the game
 status: unconfirmed
 ]]
 function lib.block_pos(...)
@@ -213,6 +219,12 @@ syntax: section_pos( x, y, z ) → section_pos
 lead: A 16×16×16 cube of blocks: whole numbers (vanilla SectionPos). == :offset(dx, dy, dz) :chunk_pos() :contains(block_pos). Also takes a value of its own type (returned as is), a table { 1, 2, 3 } or { x = , y = , z = }, or command text like "1 4 -3".
 arg: x, y, z | number | Whole numbers.
 returns: section_pos
+expert: Thread | main thread, like every script
+expert: Cost | 0.1–1 µs to make one from numbers, 1–5 µs from command text (guess, not measured); the math on it is plain Lua
+expert: Under the hood | a plain Lua table with a hidden shared metatable; no Java
+expert: Can fail | an error naming the field when a value is not a number, is NaN or infinity, or (whole-number types) not whole or outside Java's int range
+expert: Reload | values are plain Lua: they go with the Lua state on /lullaby reload
+expert: Time limit | not checked: plain Lua, no call into the game
 status: unconfirmed
 ]]
 function lib.section_pos(...)
@@ -229,6 +241,12 @@ syntax: chunk_pos( x, z ) → chunk_pos
 lead: A 16×16 column of blocks: whole numbers (vanilla ChunkPos). == :offset(dx, dz). Also takes a value of its own type (returned as is), a table { 1, 2 } or { x = , z = }, or command text like "1 -3".
 arg: x, z | number | Whole numbers.
 returns: chunk_pos
+expert: Thread | main thread, like every script
+expert: Cost | 0.1–1 µs to make one from numbers, 1–5 µs from command text (guess, not measured); the math on it is plain Lua
+expert: Under the hood | a plain Lua table with a hidden shared metatable; no Java
+expert: Can fail | an error naming the field when a value is not a number, is NaN or infinity, or (whole-number types) not whole or outside Java's int range
+expert: Reload | values are plain Lua: they go with the Lua state on /lullaby reload
+expert: Time limit | not checked: plain Lua, no call into the game
 status: unconfirmed
 ]]
 function lib.chunk_pos(...)
@@ -325,6 +343,12 @@ syntax: vec3( x, y, z ) → vec3
 lead: An exact position or direction: decimals (vanilla Vec3). + - * / unary - == :length() :normalize() :dot(v) :cross(v) :distance_to(v) :lerp(v, t) :x_rot(deg) :y_rot(deg) :z_rot(deg) :rotate(q) :block_pos(). Also takes a value of its own type (returned as is), a table { 1, 2, 3 } or { x = , y = , z = }, or command text like "1.5 64 -3".
 arg: x, y, z | number | Decimals.
 returns: vec3
+expert: Thread | main thread, like every script
+expert: Cost | 0.1–1 µs to make one from numbers, 1–5 µs from command text (guess, not measured); the math on it is plain Lua
+expert: Under the hood | a plain Lua table with a hidden shared metatable; no Java
+expert: Can fail | an error naming the field when a value is not a number, is NaN or infinity, or (whole-number types) not whole or outside Java's int range
+expert: Reload | values are plain Lua: they go with the Lua state on /lullaby reload
+expert: Time limit | not checked: plain Lua, no call into the game
 status: unconfirmed
 ]]
 function lib.vec3(...)
@@ -449,6 +473,12 @@ lead: A direction as yaw and pitch, in degrees. == :direction() gives the vec3 i
 arg: yaw | number | Degrees around the vertical axis.
 arg: pitch | number | Degrees up or down.
 returns: yaw_pitch
+expert: Thread | main thread, like every script
+expert: Cost | 0.1–1 µs to make one from numbers, 1–5 µs from command text (guess, not measured); the math on it is plain Lua
+expert: Under the hood | a plain Lua table with a hidden shared metatable; no Java
+expert: Can fail | an error naming the field when a value is not a number, is NaN or infinity, or (whole-number types) not whole or outside Java's int range
+expert: Reload | values are plain Lua: they go with the Lua state on /lullaby reload
+expert: Time limit | not checked: plain Lua, no call into the game
 status: unconfirmed
 ]]
 lib.yaw_pitch = setmetatable({}, {
@@ -492,6 +522,12 @@ syntax: quaternion( x, y, z, w ) → quaternion   quaternion.from_yaw_pitch( yp 
 lead: A rotation in 3D. a * b rotates by b first, then by a. q:rotate(v) turns a vec3; vec3:rotate(q) does the same.
 arg: x, y, z, w | number | The four parts.
 returns: quaternion
+expert: Thread | main thread, like every script
+expert: Cost | 0.1–1 µs to make one from numbers, 1–5 µs from command text (guess, not measured); the math on it is plain Lua
+expert: Under the hood | a plain Lua table with a hidden shared metatable; no Java
+expert: Can fail | an error naming the field when a value is not a number, is NaN or infinity, or (whole-number types) not whole or outside Java's int range
+expert: Reload | values are plain Lua: they go with the Lua state on /lullaby reload
+expert: Time limit | not checked: plain Lua, no call into the game
 status: unconfirmed
 ]]
 lib.quaternion = setmetatable({}, {
@@ -599,6 +635,12 @@ syntax: aabb( min, max ) → aabb
 lead: A box between two vec3 corners; a point exactly on the max side is outside (vanilla AABB). == :contains(vec3) :intersects(aabb) :grow(n) :move(vec3) :center() :size().
 arg: min, max | vec3 | The corners.
 returns: aabb
+expert: Thread | main thread, like every script
+expert: Cost | 0.1–1 µs to make one from numbers, 1–5 µs from command text (guess, not measured); the math on it is plain Lua
+expert: Under the hood | a plain Lua table with a hidden shared metatable; no Java
+expert: Can fail | an error naming the field when a value is not a number, is NaN or infinity, or (whole-number types) not whole or outside Java's int range
+expert: Reload | values are plain Lua: they go with the Lua state on /lullaby reload
+expert: Time limit | not checked: plain Lua, no call into the game
 status: unconfirmed
 ]]
 function lib.aabb(...)
@@ -615,6 +657,12 @@ syntax: bounding_box( min, max ) → bounding_box
 lead: A box between two block_pos corners, both sides included (vanilla BoundingBox). == :contains(block_pos) :intersects(bounding_box) :center().
 arg: min, max | block_pos | The corners.
 returns: bounding_box
+expert: Thread | main thread, like every script
+expert: Cost | 0.1–1 µs to make one from numbers, 1–5 µs from command text (guess, not measured); the math on it is plain Lua
+expert: Under the hood | a plain Lua table with a hidden shared metatable; no Java
+expert: Can fail | an error naming the field when a value is not a number, is NaN or infinity, or (whole-number types) not whole or outside Java's int range
+expert: Reload | values are plain Lua: they go with the Lua state on /lullaby reload
+expert: Time limit | not checked: plain Lua, no call into the game
 status: unconfirmed
 ]]
 function lib.bounding_box(...)
@@ -698,6 +746,12 @@ lead: A block position in a dimension (vanilla GlobalPos). Also takes { dimensio
 arg: dimension | text | An id like "overworld".
 arg: pos | block_pos | The position.
 returns: global_pos
+expert: Thread | main thread, like every script
+expert: Cost | 0.1–1 µs to make one from numbers, 1–5 µs from command text (guess, not measured); the math on it is plain Lua
+expert: Under the hood | a plain Lua table with a hidden shared metatable; the dimension id is checked by one Java call
+expert: Can fail | an error naming the field when a value is not a number, is NaN or infinity, or (whole-number types) not whole or outside Java's int range
+expert: Reload | values are plain Lua: they go with the Lua state on /lullaby reload
+expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 function lib.global_pos(...)
@@ -733,6 +787,12 @@ arg: world | world | The world.
 arg: pos | vec3 | The exact position.
 arg: rot? | yaw_pitch | The direction. Optional: 0, 0.
 returns: location
+expert: Thread | main thread, like every script
+expert: Cost | 0.1–1 µs to make one from numbers, 1–5 µs from command text (guess, not measured); the math on it is plain Lua
+expert: Under the hood | a plain Lua table with a hidden shared metatable; no Java
+expert: Can fail | an error naming the field when a value is not a number, is NaN or infinity, or (whole-number types) not whole or outside Java's int range
+expert: Reload | values are plain Lua: they go with the Lua state on /lullaby reload
+expert: Time limit | not checked: plain Lua, no call into the game
 status: unconfirmed
 ]]
 function lib.location(...)

@@ -185,6 +185,12 @@ returns: java_class
 example:
   local Bukkit = java.class("org.bukkit.Bukkit")
   print(Bukkit:getTPS()[1]) -- the server's TPS over the last minute
+expert: Thread | main thread, like every script
+expert: Cost | first load of a class 10 µs–5 ms, then 1–10 µs; a method call 1–20 µs (guess, not measured)
+expert: Under the hood | LuaJava reflection through JavaDoor.java
+expert: Can fail | unknown class; Java exceptions become red errors
+expert: Reload | class objects go with the Lua state; game changes stay
+expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 	function java.class(name)
@@ -209,6 +215,12 @@ example:
   after{ "PlayerJoinEvent", function(e)
     java.raw(e.player):setPlayerListName("[new] " .. e.player.name)
   end }
+expert: Thread | main thread, like every script
+expert: Cost | 1–10 µs (guess, not measured)
+expert: Under the hood | the object's slot in Java, handed out raw
+expert: Can fail | a value with no Java object behind it
+expert: Reload | raw objects go with the Lua state
+expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 	function java.raw(x)
@@ -248,6 +260,12 @@ returns: player · world · block · location · item_stack · nil
 example:
   local Bukkit = java.class("org.bukkit.Bukkit")
   local p = java.wrap(Bukkit:getPlayer("Notch")) -- nil if Notch is offline
+expert: Thread | main thread, like every script
+expert: Cost | 1–10 µs; an item stack is copied: 10–50 µs (guess, not measured)
+expert: Under the hood | JavaDoor.java turns a known Bukkit or Minecraft object into its Lullaby object
+expert: Can fail | never; unknown objects give nil
+expert: Reload | results go with the Lua state
+expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 	function java.wrap(o)

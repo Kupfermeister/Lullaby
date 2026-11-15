@@ -244,6 +244,12 @@ syntax: item_stack( "diamond_sword[damage=5]" | table | item_stack )
 lead: An item stack from vanilla's item text, a table, or a copy of another item stack.
 arg: x | text · table · item_stack | The item.
 returns: item_stack
+expert: Thread | main thread, like every script
+expert: Cost | 10–100 µs to make one; it.id 1–5 µs; it.components first touch 10–100 µs (guess, not measured)
+expert: Under the hood | vanilla's item parser and ItemStack codec; a Java copy in a slot, parts load on first touch
+expert: Can fail | unknown item or component, values vanilla's codec refuses (vanilla's message)
+expert: Reload | item stacks are copies: they go with the Lua state
+expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 function lib.item_stack(x)
@@ -305,6 +311,12 @@ syntax: component( "<red>Hi" | table | component )
 lead: Text as a component. Text is read as MiniMessage (the only place that does); a table or component is a checked fresh copy.
 arg: x | text · table · component | The text.
 returns: component
+expert: Thread | main thread, like every script
+expert: Cost | MiniMessage text 10–200 µs, a table 10–100 µs (guess, not measured)
+expert: Under the hood | MiniMessage (text only) or vanilla's component codec; the result is a plain Lua table
+expert: Can fail | fields vanilla's codec refuses
+expert: Reload | plain tables: they go with the Lua state
+expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 function lib.component(x)
@@ -325,6 +337,12 @@ lead: Reads vanilla's JSON as an item stack or a component.
 arg: text | text | The JSON.
 arg: type_name | text | "item_stack" or "component".
 returns: item_stack · component
+expert: Thread | main thread, like every script
+expert: Cost | 20–300 µs, more for big JSON (guess, not measured)
+expert: Under the hood | vanilla's JSON reader and codec, as datapacks use them
+expert: Can fail | bad JSON, a type other than item_stack or component, values vanilla refuses
+expert: Reload | results go with the Lua state
+expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 function lib.from_json(text, type_name)

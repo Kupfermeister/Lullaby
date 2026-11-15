@@ -165,6 +165,10 @@ group: Tasks
 words: task handle alive running
 syntax: t.alive   t.id
 lead: A running function, from run{ }. t.alive is true until it ended; t.id is the id given to run{ } (or nil). Fields can't be changed. Stop it with stop{ task = t }.
+expert: Java object | none: a Lua coroutine
+expert: Stays valid | the handle always; t.alive turns false when the task ended (also on reload)
+expert: Compare | == is the same task; every run{ } makes a new one
+expert: Cost | t.alive and t.id 20–100 ns (guess, not measured)
 status: unconfirmed
 ]]
 local TASK_META = {
@@ -199,6 +203,12 @@ arg: final? | function | Runs when the task ends, also on stop, error, reload an
 arg: id? | any | One running task per function and id. Same function means the same place in the code, so a function written inside a handler counts as one.
 returns: task · nil
 note: A task (and every event handler) that runs longer than the config's script_time_limit (5 s) without waiting is stopped with an error at its next call into the game; its final still runs. A loop that never calls into the game (pure math) can't be stopped; after twice the limit the console names the event or task that is stuck. Keep long work in steps with wait( ).
+expert: Thread | main thread, like every script; a task is a coroutine, never a thread
+expert: Cost | 1–5 µs to start (coroutines are reused) (guess, not measured)
+expert: Under the hood | plain Lua coroutines and a tick list (tasks.lua); no Java
+expert: Can fail | f not a function, args not a table, final not a function; an id already running gives nil
+expert: Reload | every task ends and its final runs
+expert: Time limit | each task has its own clock and a wait starts it again; checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 function lib.run(a)
@@ -258,6 +268,12 @@ lead: Pauses the task. A number is seconds; text is a number with one unit: t (t
 arg: duration | number · text | 2, "3t", "2s", "1m", "1h", "1d".
 returns: nothing
 note: Only inside a task (an event handler, a command function or run{ }). Inside final it is ignored with a warning.
+expert: Thread | main thread, like every script
+expert: Cost | 0.5–3 µs, plus 0.5–3 µs to wake up (guess, not measured)
+expert: Under the hood | the coroutine yields and the tick list wakes it; rounded up to whole ticks (1 at least)
+expert: Can fail | outside a task, a bad duration; inside final it warns and does nothing
+expert: Reload | a waiting task ends on reload (its final runs)
+expert: Time limit | a wait ends the clock: a task that waits never hits the limit
 status: unconfirmed
 ]]
 function lib.wait(duration)
@@ -289,6 +305,12 @@ lead: Ends a task and runs its final. Returns false if the task had already ende
 arg: task | task | The task from run{ }.
 arg: force? | boolean | true skips final.
 returns: boolean
+expert: Thread | main thread, like every script
+expert: Cost | 0.5–5 µs plus its final (guess, not measured)
+expert: Under the hood | plain Lua; a task stopping itself unwinds with an error pcall can't catch
+expert: Can fail | task not a task; an ended task gives false
+expert: Reload | nothing to undo
+expert: Time limit | not checked: plain Lua, no call into the game
 status: unconfirmed
 ]]
 function lib.stop(a)

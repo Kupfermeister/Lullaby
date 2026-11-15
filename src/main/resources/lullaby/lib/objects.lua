@@ -73,6 +73,12 @@ syntax: player( text ) → player | nil
 lead: A player by name or UUID: online, or one who has played on this server before. nil if none. Each player exists once, so == works.
 arg: x | text · player | Name or UUID (a player is returned as is).
 returns: player · nil
+expert: Thread | main thread, like every script
+expert: Cost | online: 1–5 µs; an offline name may read the server's player cache: 5 µs–5 ms (guess, not measured)
+expert: Under the hood | Nms.findPlayer: online players first, then players who played here before
+expert: Can fail | x not text or a player; an unknown name gives nil, no error
+expert: Reload | player objects are made new after reload
+expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 function lib.player(x)
@@ -128,6 +134,12 @@ syntax: world( "overworld" ) → world | nil
 lead: A loaded world by its id: "overworld" means "minecraft:overworld". nil if there is none. Each world exists once, so == works.
 arg: id | text · world | The world's id (a world is returned as is).
 returns: world · nil
+expert: Thread | main thread, like every script
+expert: Cost | first time per world 2–10 µs, then 50–200 ns (guess, not measured)
+expert: Under the hood | vanilla's dimension id; one object per world, kept
+expert: Can fail | x not text or a world; an unknown or unloaded world gives nil
+expert: Reload | world objects are made new after reload
+expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 --[[doc
@@ -138,6 +150,10 @@ group: Blocks
 words: place position block object
 syntax: b.state   b.pos   b.world
 lead: A place in a world: a world plus a block position. Each block exists once, so == works. Fields: b.state (the block_state there, nil if the chunk is not loaded), b.pos (block_pos), b.world (world). location:block() gives one.
+expert: Java object | none kept: the world id and x, y, z live in Lua; b.state asks Java each time
+expert: Stays valid | always (it is a place); b.state is nil while the chunk isn't loaded
+expert: Compare | == works: one object per place
+expert: Cost | b.state 1–5 µs (a Java call, never cached), b.pos and b.world 0.1–1 µs (guess, not measured)
 status: unconfirmed
 ]]
 I.world_by_id, lib.world, world_id_of = id_objects("world", J.world_id, J.world_slot)
@@ -219,6 +235,12 @@ syntax: block_state( "oak_stairs[facing=north]" | { id = text, ... } | { id = te
 lead: A block state from vanilla's text, from id plus properties, or from vanilla's codec shape. Missing properties take their default.
 arg: x | text · table · block_state | The state.
 returns: block_state
+expert: Thread | main thread, like every script
+expert: Cost | from text 5–50 µs, the same state again reuses its object; a property: first time 3–20 µs, then 50–200 ns (guess, not measured)
+expert: Under the hood | vanilla's state number (Block.getId) with vanilla's own parser and codec
+expert: Can fail | unknown block or property, a value the property can't take (vanilla's message)
+expert: Reload | states are made new after reload; the numbers can change on a Minecraft update
+expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 function lib.block_state(x)
@@ -316,7 +338,12 @@ lead: Sends a chat message. Plain text is literal, like /tellraw.
 arg: player | player | Who gets it.
 arg: text | text · component | The message.
 returns: boolean (false if the player is offline)
-expert: Packet | System Chat (play, clientbound)
+expert: Thread | main thread, like every script
+expert: Cost | text 3–15 µs, a component 10–60 µs (guess, not measured)
+expert: Under the hood | one Lua → Java call; packet System Chat (play, clientbound)
+expert: Can fail | player or text of the wrong kind; an offline player gives false, no error
+expert: Reload | sent messages stay in chat
+expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 function lib.message(a)
@@ -389,8 +416,12 @@ arg: always_show? | boolean | Shows it from far away (vanilla's long distance). 
 arg: randomization_type? | text | default, alternative, alternative_with_speed.
 returns: nothing
 note: Positions × count (count 0 counts as 1) over the config's particle_limit is refused with an error.
-expert: Packet | Level Particles (play, clientbound), one per position, bundled by 4096
-expert: Lua → Java | one call
+expert: Thread | main thread, like every script
+expert: Cost | 5–50 µs per call plus 0.2–2 µs per position and player (guess, not measured)
+expert: Under the hood | one Lua → Java call; packet Level Particles (play, clientbound), one per position, bundled by 4096, built once and shared by every receiver
+expert: Can fail | positions × count over particle_limit; any field vanilla's codec refuses (named in the error)
+expert: Reload | particles already shown play out
+expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 function lib.particle(a)
@@ -431,8 +462,12 @@ arg: volume? | number | Default 1.
 arg: pitch? | number | Default 1.
 arg: seed? | number | Picks which file of the sound plays. Random by default, as in vanilla. For one exact file use sound_seed( ).
 returns: nothing
-expert: Packet | Sound / Sound Entity (play, clientbound)
-expert: Lua → Java | one call
+expert: Thread | main thread, like every script
+expert: Cost | 3–20 µs plus 0.5–2 µs per player (guess, not measured)
+expert: Under the hood | one Lua → Java call; packet Sound or Sound Entity (play, clientbound)
+expert: Can fail | no source or no pos/entity, an unknown source (the error lists them), fields vanilla refuses
+expert: Reload | sounds already playing keep playing
+expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 function lib.sound(a)
@@ -463,7 +498,12 @@ note: The player's game picks the file from its own sounds.json. A resource pack
 example:
   local seed = sound_seed("ambient.basalt_deltas.additions", "ambient/nether/basalt_deltas/basaltground1")
   sound{ player = p, sound = "ambient.basalt_deltas.additions", source = "ambient", entity = p, seed = seed }
-expert: Lua → Java | one call
+expert: Thread | main thread, like every script
+expert: Cost | first time per sound 10–500 µs (it searches the seed), then 1–5 µs (guess, not measured)
+expert: Under the hood | one Lua → Java call; SoundSeeds.java runs the game's own file pick over vanilla's sounds.json
+expert: Can fail | unknown sound, or a file the sound doesn't have (the error lists its files)
+expert: Reload | found seeds are kept while the server runs
+expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 function lib.sound_seed(sound, file)
@@ -484,7 +524,12 @@ arg: player / players | player · list of player | Who.
 arg: sound? | text | Only this sound.
 arg: source? | text | Only this source.
 returns: nothing
-expert: Packet | Stop Sound (play, clientbound)
+expert: Thread | main thread, like every script
+expert: Cost | 3–15 µs plus 0.5–2 µs per player (guess, not measured)
+expert: Under the hood | one Lua → Java call; packet Stop Sound (play, clientbound)
+expert: Can fail | receivers of the wrong kind, an unknown source
+expert: Reload | nothing to undo
+expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 function lib.stop_sound(a)

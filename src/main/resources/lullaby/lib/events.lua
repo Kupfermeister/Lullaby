@@ -100,6 +100,12 @@ arg: order? | number | Lower runs first; ties by load order. Default 0.
 arg: stage? | text | Place among other plugins: lowest, low, normal, high, highest. Default normal.
 returns: nothing
 note: Each handler runs as its own task and may wait; after its first wait the event is over and changes only give a warning. Keep values, not e: once every handler has ended without waiting, e can't be read any more.
+expert: Thread | main thread, like every script
+expert: Cost | unused events cost zero; one event with a handler reading two fields: goal ~10 µs, guess 5–30 µs (not measured); registering: 5–50 µs once (guess, not measured)
+expert: Under the hood | EventBridge.java: one Bukkit listener per event, kind and stage, made only when a script uses it; fields go by number, never by name; the event is freed at once when no handler waited
+expert: Can fail | at load: unknown event (the error lists them), bad order or stage; while running: an unknown field written, a wrong value type, e used after its handlers ended
+expert: Reload | every listener is removed; scripts register again while loading
+expert: Time limit | each handler is its own task with its own clock; checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 function lib.on(a) register("on", a) end
@@ -114,6 +120,12 @@ arg: 1 | text | The event name, or "reload".
 arg: 2 | function | Gets the event e.
 arg: order? | number | Lower runs first; ties by load order. Default 0.
 returns: nothing
+expert: Thread | main thread, like every script
+expert: Cost | as on{ }: goal ~10 µs per event with a handler reading two fields, guess 5–30 µs (not measured)
+expert: Under the hood | a Bukkit listener at MONITOR priority that skips cancelled events; e is read only
+expert: Can fail | at load: unknown event, a stage given; while running: any write to e
+expert: Reload | every listener is removed; scripts register again while loading
+expert: Time limit | each handler is its own task; checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 function lib.after(a) register("after", a) end
@@ -228,6 +240,12 @@ example:
   on{ "BlockBreakEvent", function(e)
     if e.player.name == "Notch" then e.cancelled = true end
   end }
+expert: Thread | main thread, like every script
+expert: Cost | one field read or write: 0.5–3 µs, one Java call (guess, not measured); a player or block field reuses its object
+expert: Under the hood | fields by number (the list comes from EventBridge.java at startup), read from the live Paper event on each access, never copied
+expert: Can fail | an unknown field reads nil but errors when written; a value the field can't take; any use after the handlers ended
+expert: Reload | events are never kept across a reload
+expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 --[[doc
@@ -238,5 +256,11 @@ group: Events
 words: reload restart loaded scripts
 syntax: after{ "reload", function(e) ... end }
 lead: Lullaby's own event: runs after /lullaby reload has loaded every script. e is read only: e.scripts (files loaded), e.errors, e.ms (how long it took), e.cause ("command") and e.player (who reloaded; nil from the console).
+expert: Thread | main thread, like every script
+expert: Cost | runs once per reload: as its handlers (guess, not measured)
+expert: Under the hood | Lullaby's own: fired after every script loaded and online players' commands were refreshed; e is a plain read-only table
+expert: Can fail | any write to e
+expert: Reload | it is the reload
+expert: Time limit | each handler is its own task; checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]

@@ -20,7 +20,11 @@ import java.util.stream.Stream;
  * A doc block sits right above `function lib.NAME(` and has one `key: value` per line:
  *   name, kind (doing | reading | event | type | lua), group, syntax, lead, note, returns, example (code; indented
  *   lines below continue it), status (confirmed | unconfirmed), words (extra search words), arg: name | types | text
- *   (repeatable), expert: key | value (repeatable). Topic pages without a function (tools/docs/lua.txt) give id:.
+ *   (repeatable), expert: key | value (repeatable), also (more ids that lead to this page, space-separated: Lua
+ *   keywords, old page names). Topic pages without a function (tools/docs/lua.txt) give id:.
+ * Every kind has fixed expert rows (EXPERT_ROWS), in that order, so readers always find the same things in the same
+ * place; a missing row is a warning in the build. A speed nobody measured is written as a guess with a range
+ * ("guess 1–5 µs (not measured)"), never as a bare number.
  * "confirmed" means a human reviewed the text. Everything is published; unconfirmed texts carry a warning.
  *
  * Connections are found, not written: inside a function's body, a call of another documented library function
@@ -47,6 +51,13 @@ public final class Docs {
         String id() { return f.get("id"); }
     }
 
+    // The fixed expert rows per kind. Lua pages and raw Java pages have none fixed.
+    private static final List<String> FUNCTION_ROWS = List.of("Thread", "Cost", "Under the hood", "Can fail", "Reload",
+            "Time limit");
+    private static final Map<String, List<String>> EXPERT_ROWS = Map.of(
+            "doing", FUNCTION_ROWS, "reading", FUNCTION_ROWS, "event", FUNCTION_ROWS,
+            "type", List.of("Java object", "Stays valid", "Compare", "Cost"));
+
     public static void main(String[] argv) throws IOException {
         Path lib = Path.of(argv[0]), out = Path.of(argv[1]);
         Path here = Path.of("tools/docs"); // run from the project folder
@@ -59,6 +70,7 @@ public final class Docs {
         read(here.resolve("lua.txt"), "tools/docs/lua.txt", entries, bodies); // first: the Lua group leads the sidebar
         for (Path file : files) read(file, "src/main/resources/lullaby/lib/" + file.getFileName(), entries, bodies);
         checkDocumented(files, entries);
+        checkExpertRows(entries);
 
         // Connections: documented library functions and raw Java functions called inside each body.
         for (Entry e : List.copyOf(entries.values())) {
@@ -151,6 +163,22 @@ public final class Docs {
         System.err.println("docs: these library functions have no --[[doc block right above them (add one in the same change):");
         for (String m : missing) System.err.println("  " + m);
         System.exit(1);
+    }
+
+    /** Warns (doesn't stop) about pages missing one of their kind's fixed expert rows, or having them out of order. */
+    private static void checkExpertRows(Map<String, Entry> entries) {
+        List<String> wrong = new ArrayList<>();
+        for (Entry e : entries.values()) {
+            List<String> rows = EXPERT_ROWS.get(e.f().get("kind"));
+            if (rows == null) continue;
+            List<String> have = new ArrayList<>();
+            for (String[] row : e.expert()) if (rows.contains(row[0])) have.add(row[0]);
+            if (!have.equals(rows)) wrong.add(e.f().get("src") + "  " + e.id() + ": has " + have + ", needs " + rows);
+        }
+        if (wrong.isEmpty()) return;
+        // FORMAT: docs build, pages missing fixed expert rows (a warning, the build goes on)
+        System.err.println("docs: warning, these pages miss expert rows or have them out of order (other rows may follow):");
+        for (String w : wrong) System.err.println("  " + w);
     }
 
     // ---- reader ----------------------------------------------------------------------------------------------

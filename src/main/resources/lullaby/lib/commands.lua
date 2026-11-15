@@ -282,6 +282,12 @@ example:
   command{ "heal", function(c)
     message{ player = c.player, text = "Healed " .. c.args.amount }
   end, args = { { name = "amount", type = "integer", min = 1, max = 20 } } }
+expert: Thread | main thread, like every script
+expert: Cost | registering: 20–500 µs per command at load; running one: 5–30 µs plus the function (guess, not measured)
+expert: Under the hood | vanilla Brigadier nodes (ScriptCommands.java); each player is sent what they may see
+expert: Can fail | at load: every field is checked and named in the error; a /name that already exists; used after loading
+expert: Reload | every script command is removed and players get the new list
+expert: Time limit | the function runs as a task; checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 function lib.command(a)
@@ -339,6 +345,12 @@ syntax: refresh_commands{ player = player }
 lead: Checks again which script commands the player can see (permission, show, suggest) and sends them.
 arg: player | player | The player.
 returns: nothing
+expert: Thread | main thread, like every script
+expert: Cost | 50 µs–2 ms per player, more with many show and suggest functions (guess, not measured)
+expert: Under the hood | runs every permission, show and suggest for the player, then sends vanilla's Commands packet
+expert: Can fail | player not a player; an offline player is skipped quietly; errors in show or suggest are reported and that part is hidden
+expert: Reload | reload refreshes every online player anyway
+expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 function lib.refresh_commands(a)
@@ -357,6 +369,12 @@ words: list everyone all
 syntax: online_players( ) → { player, ... }
 lead: Every player online now, as a list.
 returns: list of player
+expert: Thread | main thread, like every script
+expert: Cost | 2–10 µs plus 0.3–2 µs per player (guess, not measured)
+expert: Under the hood | one Java call; known players reuse their object
+expert: Can fail | never
+expert: Reload | player objects are made new after reload
+expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 function lib.online_players()

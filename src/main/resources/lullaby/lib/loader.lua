@@ -94,5 +94,11 @@ lead: Uses another script file and gives back what that file returns. "/" betwee
 arg: path | text | Like "shared/util".
 returns: what the file returns
 note: Files and folders whose name starts with "--" are on standby: they don't load and can't be imported.
+expert: Thread | main thread, like every script
+expert: Cost | a file loaded already: 1–5 µs (it gives back the kept result); a new file: as loading it, guess 0.1–2 ms (not measured)
+expert: Under the hood | plain Lua: the file's text comes from Java once, runs with its own globals, and its result is kept
+expert: Can fail | a file that doesn't exist or is on standby, files importing each other in a circle; an error inside the imported file is reported for that file, and import gives nil
+expert: Reload | everything loads again from the files; kept results go with the Lua state
+expert: Time limit | each file's loading has its own clock; checked at calls into the game
 status: unconfirmed
 ]]

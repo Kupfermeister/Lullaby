@@ -178,6 +178,12 @@ syntax: type_of( value ) → text
 lead: The Lullaby type name of any value: "player", "vec3", "event", "number", ... Text gives "string", as Lua calls it: type_of("hi") == "string".
 arg: value | any | Anything.
 returns: text
+expert: Thread | main thread, like every script
+expert: Cost | 20–100 ns (guess, not measured)
+expert: Under the hood | plain Lua: a weak table of Lullaby objects, then the metatable
+expert: Can fail | never
+expert: Reload | nothing to undo
+expert: Time limit | not checked: plain Lua, no call into the game
 status: unconfirmed
 ]]
 function lib.type_of(value)
@@ -220,6 +226,12 @@ syntax: tostring( value ) → text
 lead: Like Lua's tostring, but numbers are exact (the shortest text that reads back as the same number): 1297632424.123456 stays 1297632424.123456, where Lua would make 1297632424.1235.
 arg: value | any | Anything.
 returns: text
+expert: Thread | main thread, like every script
+expert: Cost | numbers 0.3–2 µs (tries 15, 16, then 17 digits), other values 50–300 ns (guess, not measured)
+expert: Under the hood | plain Lua: string.format, then Lua's own tostring
+expert: Can fail | never
+expert: Reload | nothing to undo
+expert: Time limit | not checked: plain Lua, no call into the game
 status: unconfirmed
 ]]
 function lib.tostring(value)
@@ -354,6 +366,12 @@ words: loop iterate table fields
 syntax: for k, v in pairs(t) do ... end
 lead: Lua's pairs and next, made to also work on item stacks: those load every part first. On other tables they work exactly like Lua's.
 arg: t | table | The table.
+expert: Thread | main thread, like every script
+expert: Cost | plain tables: as Lua's own; an item stack: 5–50 µs once to load its parts (guess, not measured)
+expert: Under the hood | Lua's next; an item stack's parts are loaded from Java first
+expert: Can fail | only as Lua's pairs does (not a table)
+expert: Reload | nothing to undo
+expert: Time limit | not checked: plain Lua, no call into the game (an item stack's first load calls Java and is checked)
 status: unconfirmed
 ]]
 --[[doc
@@ -366,6 +384,12 @@ syntax: print( ... )
 lead: Writes the values to the server console, separated by tabs. Numbers are written exactly (see tostring( )).
 arg: ... | any | Anything.
 returns: nothing
+expert: Thread | main thread, like every script
+expert: Cost | 5–50 µs, mostly the console writing (guess, not measured)
+expert: Under the hood | one Java call to the server's logger
+expert: Can fail | never
+expert: Reload | lines stay in the console and log
+expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 --[[doc
@@ -379,6 +403,12 @@ lead: Lua's pcall and xpcall: run f and catch its errors. A stop is never caught
 arg: f | function | What to run.
 arg: ... | any | Its arguments (xpcall: the error handler first).
 returns: true and f's results · false and the error
+expert: Thread | main thread, like every script
+expert: Cost | 50–300 ns on top of the call (guess, not measured)
+expert: Under the hood | Lua's pcall, plus a check that passes stops on
+expert: Can fail | never itself; a stop (stop{ }, script_time_limit) is passed on, not caught
+expert: Reload | nothing to undo
+expert: Time limit | passed on: pcall can't catch it
 status: unconfirmed
 ]]
 	lib.pairs, lib.next = I.pairs, I.next -- Lullaby's own (lazy.lua): they load lazy values first

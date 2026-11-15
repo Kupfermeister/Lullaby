@@ -312,7 +312,7 @@ kind: doing
 group: Text
 words: chat send tell tellraw
 syntax: message{ player = player, text = text | component }
-lead: Sends a chat message. Plain text is literal, like /tellraw; component( ) reads MiniMessage.
+lead: Sends a chat message. Plain text is literal, like /tellraw.
 arg: player | player | Who gets it.
 arg: text | text · component | The message.
 returns: boolean (false if the player is offline)

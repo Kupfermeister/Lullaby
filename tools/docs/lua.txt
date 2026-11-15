@@ -84,7 +84,7 @@ kind: lua
 group: Lua
 words: text concat join length quote
 syntax: "text"   'text'   [[many lines]]   a .. b   #s
-lead: Text is written in double or single quotes. .. joins two texts, # gives the length. \n is a line break, \" a quote inside the text. In Lullaby a plain string is always literal text; component("<red>Hi") reads MiniMessage.
+lead: Text is written in double or single quotes. .. joins two texts, # gives the length. \n is a line break, \" a quote inside the text. In Lullaby a string is always literal text.
 example:
   local name = "Steve"
   local hello = "Hello, " .. name .. "!"

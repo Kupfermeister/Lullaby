@@ -109,7 +109,7 @@ kind: event
 group: Events
 words: listen hook monitor
 syntax: after{ "EventName", function(e) ... end, order = number }
-lead: Runs the function once the event happened and was not cancelled; e is read only. Events so far: PlayerJoinEvent, PlayerQuitEvent, BlockBreakEvent, reload.
+lead: Runs the function once the event happened and was not cancelled; e is read only. All events: event fields.
 arg: 1 | text | The event name, or "reload".
 arg: 2 | function | Gets the event e.
 arg: order? | number | Lower runs first; ties by load order. Default 0.

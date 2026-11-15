@@ -93,9 +93,10 @@ public final class EventBridge implements Listener {
         int number = 0;
         for (Map.Entry<String, EventType> event : EVENTS.entrySet()) {
             out.append('\n').append(event.getKey()).append('\t');
+            String gap = ""; // an event may have no fields at all
             for (String field : event.getValue().fields()) {
-                if (!field.equals(event.getValue().fields().getFirst())) out.append(' ');
-                out.append(field).append('=').append(number++);
+                out.append(gap).append(field).append('=').append(number++);
+                gap = " ";
             }
         }
         return out.toString();

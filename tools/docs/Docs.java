@@ -14,6 +14,7 @@ import java.util.stream.Stream;
  * Bricks, each replaceable on its own; they only meet in docs.json (the ONE fixed contract, see FORMAT below):
  *   reader   - reads the `--[[doc ... ]]` blocks in lib/*.lua and finds the connections ("uses" / "used by")
  *   builders - docs.json -> index.html (site.html with the data put in), lullaby.md, lullaby.d.lua (VS Code)
+ * First it checks that every file named in ARCHITECTURE.md and README.md exists (see checkPaths).
  *
  * A doc block sits right above `function lib.NAME(` and has one `key: value` per line:
  *   name, kind (doing | reading | event | type | lua), group, syntax, lead, note, returns, example (code; indented
@@ -48,6 +49,7 @@ public final class Docs {
     public static void main(String[] argv) throws IOException {
         Path lib = Path.of(argv[0]), out = Path.of(argv[1]);
         Path here = Path.of("tools/docs"); // run from the project folder
+        checkPaths("ARCHITECTURE.md", "README.md");
 
         Map<String, Entry> entries = new LinkedHashMap<>();
         Map<String, String> bodies = new HashMap<>();
@@ -88,6 +90,39 @@ public final class Docs {
         Files.writeString(out.resolve("lullaby.md"), markdown(shown, minecraft));
         Files.writeString(out.resolve("lullaby.d.lua"), luals(shown));
         System.out.println("docs: " + shown.size() + " entries -> " + out);
+    }
+
+    // ---- path check ------------------------------------------------------------------------------------------
+
+    // Links to files ("[x](src/...)", not http or #) and paths in backticks that start at a project folder.
+    // Paths with * or < are patterns ("lib/*.lua", "lullaby-<version>.jar"), not files.
+    private static final Pattern LINK = Pattern.compile("\\]\\(([^)\\s]+)\\)");
+    private static final Pattern CODE_PATH = Pattern.compile("`((?:src|tools|gradle|\\.github)/[^`\\s*<]*)`");
+
+    /**
+     * The architecture page and the README name files; every named file must exist, so a moved or deleted file
+     * can't leave the pages wrong quietly. Stops the docs build (exit code 1) with a list of what's missing.
+     */
+    private static void checkPaths(String... pages) throws IOException {
+        Set<String> missing = new LinkedHashSet<>(); // a path named twice is listed once
+        for (String page : pages) {
+            String text = Files.readString(Path.of(page), StandardCharsets.UTF_8);
+            List<String> paths = new ArrayList<>();
+            Matcher link = LINK.matcher(text);
+            while (link.find()) {
+                String target = link.group(1);
+                if (target.contains("://") || target.startsWith("#") || target.startsWith("mailto:")) continue;
+                paths.add(target.replaceAll("#.*$", "").replaceAll(":\\d+$", ""));
+            }
+            Matcher code = CODE_PATH.matcher(text);
+            while (code.find()) paths.add(code.group(1));
+            for (String path : paths) if (!Files.exists(Path.of(path))) missing.add(page + ": " + path);
+        }
+        if (missing.isEmpty()) return;
+        // FORMAT: docs build, files named on the architecture page or README that don't exist
+        System.err.println("docs: these files are named but don't exist (update the page in the same change):");
+        for (String m : missing) System.err.println("  " + m);
+        System.exit(1);
     }
 
     // ---- reader ----------------------------------------------------------------------------------------------

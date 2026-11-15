@@ -173,7 +173,7 @@ public final class ScriptCommands {
 
     /**
      * A command's check rejected a value: tells whoever typed it the way Minecraft shows its own command errors
-     * (plain red, no ⚠: Kupfermeister 2026-11-14, a rejection is not a script error). Only works while the command is being
+     * (plain red, no ⚠: a rejection is not a script error). Only works while the command is being
      * run; checks run before the function's first wait, so they always are.
      */
     public void reject(net.kyori.adventure.text.Component text) {
@@ -193,7 +193,7 @@ public final class ScriptCommands {
     }
 
     /**
-     * Fixes a tree-order race (Kupfermeister 2026-11-14, "resend when stale"). Several trees for one player can be built at the
+     * Fixes a tree-order race ("resend when stale"). Several trees for one player can be built at the
      * same time on Paper's 2-thread pool (vanilla's own at join before Lullaby knows what the player sees, Lullaby's
      * at join, refresh_commands twice, a data pack reload), so an outdated one could reach the player last. Paper
      * fires AsyncPlayerSendCommandsEvent on the main thread right before each tree is sent ({@code sync} true); there

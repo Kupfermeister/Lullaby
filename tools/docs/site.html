@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lullaby Docs</title>
 <style>
-@font-face { font-family: "Grenze Gotisch"; font-weight: 500; font-display: swap; src: url(fonts/GrenzeGotisch-500.ttf); }
-@font-face { font-family: Inter; font-weight: 400; font-display: swap; src: url(fonts/Inter-400.ttf); }
-@font-face { font-family: Inter; font-weight: 600; font-display: swap; src: url(fonts/Inter-600.ttf); }
-@font-face { font-family: "JetBrains Mono"; font-weight: 400; font-display: swap; src: url(fonts/JetBrainsMono-400.ttf); }
+@font-face { font-family: "Grenze Gotisch"; font-weight: 500; font-display: swap; src: url(fonts/GrenzeGotisch-500.woff2); }
+@font-face { font-family: Inter; font-weight: 400; font-display: swap; src: url(fonts/Inter-400.woff2); }
+@font-face { font-family: Inter; font-weight: 600; font-display: swap; src: url(fonts/Inter-600.woff2); }
+@font-face { font-family: "JetBrains Mono"; font-weight: 400; font-display: swap; src: url(fonts/JetBrainsMono-400.woff2); }
 /* Fonts: SIL Open Font License, see fonts/OFL-*.txt. Stored here, so the site loads nothing from outside. */
-/* Lullaby docs site template (tools/docs/site.html). Docs.java puts docs.json in at DOCS below. Dark mode only (Kupfermeister).
+/* Lullaby docs site template (tools/docs/site.html). Docs.java puts docs.json in at DOCS below. Dark mode only.
    Every color means one thing: */
 :root {
   --bg: #0d0e10; --side: #111315; --box: #121417; --panel: #181a1e; --line: #23262a;
@@ -29,7 +29,7 @@ body { font: 15px/1.6 Inter, system-ui, sans-serif; }
 code, .mono { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 13.5px; }
 a { color: inherit; text-decoration: none; }
 
-.layout { display: grid; grid-template-columns: 270px 1fr; min-height: 100vh; }
+.layout { display: grid; grid-template-columns: 270px minmax(0, 1fr); min-height: 100vh; }
 aside { background: var(--side); border-right: 1px solid var(--line); padding: 28px 20px; }
 .brand { font-family: "Grenze Gotisch", serif; font-weight: 500; font-size: 28px; line-height: 1;
   color: var(--text); margin: 0 0 6px; text-transform: lowercase; }
@@ -48,7 +48,8 @@ main { padding: 40px 48px 80px; max-width: 980px; width: 100%; }
 .head { padding: 24px 28px 22px; }
 .top { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
 .kind { color: var(--dim); font-size: 13px; }
-/* Fraktur only in small letters: its capitals have a double stroke (Kupfermeister). */
+/* Fraktur only in small letters: its capitals have a double stroke. Raw Java pages keep their case (code font). */
+h1.java { text-transform: none; font-family: "JetBrains Mono", monospace; font-size: 34px; }
 h1 { text-transform: lowercase; font-family: "Grenze Gotisch", serif; font-weight: 500; font-size: 52px; line-height: 1.05; margin: 4px 0 18px; }
 .syntax { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--c, var(--doing));
   border-radius: 6px; padding: 16px 18px; font-size: 15px; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -60,7 +61,7 @@ table { border-collapse: collapse; width: 100%; }
 td { padding: 7px 12px 7px 0; vertical-align: top; border-bottom: 1px solid var(--line); }
 td:first-child { white-space: nowrap; width: 22%; }
 td:nth-child(2) { width: 24%; }
-.opt { color: var(--dim); }
+.opt { color: var(--dim); font-family: Inter, sans-serif; font-size: 12px; }
 .links { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 .links ul { list-style: none; padding: 0; margin: 0; }
 .links li { padding: 2px 0; }
@@ -75,6 +76,8 @@ summary { cursor: pointer; color: var(--dim); font-size: 13px; font-weight: 600;
 .src a:hover { color: var(--text); }
 .draft { display: inline-block; margin-left: 10px; font-size: 11px; color: var(--dim); border: 1px solid var(--line);
   border-radius: 10px; padding: 1px 8px; vertical-align: middle; }
+.c-lua { color: var(--text); font-weight: 600; }
+.syntax .go:hover, td .go:hover { text-decoration: underline; text-underline-offset: 3px; }
 .c-doing { color: var(--doing); } .c-reading { color: var(--reading); } .c-type { color: var(--type); }
 .c-event { color: var(--event); } .c-field { color: var(--field); } .c-dim { color: var(--dim); }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--dim); }
@@ -97,7 +100,7 @@ summary { cursor: pointer; color: var(--dim); font-size: 13px; font-weight: 600;
     <div class="hint">Typos are fine: <span class="mono">sond</span> finds sound.</div>
     <nav id="nav"></nav>
     <div class="legend">
-      <span class="c-doing">doing { }</span><span class="c-reading">reading ( ) . :</span>
+      <b class="c-lua">lua</b><span class="c-doing">doing { }</span><span class="c-reading">reading ( ) . :</span>
       <span class="c-type">type</span><span class="c-event">event</span><span class="c-field">field</span>
     </div>
   </aside>
@@ -109,27 +112,37 @@ const DATA = /*DOCS*/null;
 const E = DATA.entries;
 const BY = Object.fromEntries(E.map(e => [e.id, e]));
 const REPO = "https://github.com/Kupfermeister/Lullaby/blob/main/";
-const COLOR = { doing:"--doing", reading:"--reading", event:"--event", type:"--type", java:"--dim" };
+const COLOR = { doing:"--doing", reading:"--reading", event:"--event", type:"--type", java:"--dim", lua:"--text" };
 const TYPES = new Set(["text","number","boolean","function","table","nil","nothing","uuid","list",
   ...E.filter(e => e.kind === "type").map(e => e.id)]);
-const esc = s => String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-document.getElementById("sub").textContent = "Library · Minecraft " + DATA.minecraft;
+const esc = s => String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+  .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+document.getElementById("sub").textContent = "Docs · Minecraft " + DATA.minecraft;
 
-// Syntax colors come from the text itself: name{ doing, name( reading, name = field, known types gold.
+// Lua's keywords: bold, in the normal text color (kind "lua"); a keyword with its own page links to it.
+const KEYWORDS = new Set(["and","break","do","else","elseif","end","false","for","function","goto","if","in","local",
+  "nil","not","or","repeat","return","then","true","until","while"]);
+const link = (id, html) => BY[id] ? `<a class="go" href="#${esc(id)}" data-id="${esc(id)}">${html}</a>` : html;
+
+// Syntax colors come from the text itself: name{ doing, name( reading, name = field, known types gold, keywords bold,
+// strings and comments dim. Every name that has a page is a link.
 function paint(s) {
-  return esc(s).replace(/[A-Za-z_][\w.]*/g, (w, i, all) => {
+  return esc(s).replace(/--[^\n]*|"(?:\.|[^"\\n])*"|'(?:\.|[^'\\n])*'|[A-Za-z_][\w.]*/g, (w, i, all) => {
+    if (w[0] === "-" || w[0] === '"' || w[0] === "'") return `<span class="c-dim">${w}</span>`;
+    if (KEYWORDS.has(w)) return link(w, `<b class="c-lua">${w}</b>`);
     const after = all.slice(i + w.length).match(/^\s*(\S)/)?.[1];
-    if (after === "{" ) return `<span class="c-doing">${w}</span>`;
-    if (after === "(") return `<span class="c-reading">${w}</span>`;
+    if (after === "{") return link(w, `<span class="c-doing">${w}</span>`);
+    if (after === "(") return link(w, `<span class="c-reading">${w}</span>`);
     if (after === "=" && all[i + w.length + 1] !== "=") return `<span class="c-field">${w}</span>`;
-    if (TYPES.has(w)) return `<span class="c-type">${w}</span>`;
+    if (TYPES.has(w) || BY[w]?.kind === "type") return link(w, `<span class="c-type">${w}</span>`);
     return w;
   });
 }
-const typed = s => esc(s).split(" · ").map(x => `<span class="c-type mono">${x}</span>`).join(" · ");
+// Type lists like "player · list of player": every type with a page links to it.
+const typed = s => esc(s).split(" · ").map(x => `<span class="c-type mono">${x.replace(/[A-Za-z_]\w*/g, w => link(w, w))}</span>`).join(" · ");
 function linkList(ids) {
   if (!ids.length) return '<li class="c-dim">—</li>';
-  return ids.map(id => `<li><a class="mono go" data-id="${esc(id)}" style="color:var(${COLOR[BY[id].kind]})">${esc(BY[id].name)}</a></li>`).join("");
+  return ids.map(id => `<li><a class="mono go" href="#${esc(id)}" data-id="${esc(id)}" style="color:var(${COLOR[BY[id].kind]})">${esc(BY[id].name)}</a></li>`).join("");
 }
 let current = null;
 function show(id) {
@@ -139,21 +152,26 @@ function show(id) {
   document.querySelectorAll(".item").forEach(a => a.classList.toggle("on", a.dataset.id === e.id));
   const [file, line] = e.src.split(":");
   document.getElementById("page").innerHTML = `
-    <div class="card"><div class="head"><div class="top"><div class="kind">${esc(e.group)}${e.status === "unconfirmed" ? ' <span class="draft">draft · unconfirmed</span>' : ""}</div><div class="src">↗ <a href="${REPO}${esc(file)}${line ? "#L" + line : ""}" target="_blank" rel="noopener">${esc(file.split("/").pop())}${line ? ":" + line : ""}</a></div></div>
-    <h1 style="color:var(${COLOR[e.kind]})">${esc(e.name)}</h1>
+    <div class="card"><div class="head"><div class="top"><div class="kind">${esc(e.group)}</div><div class="src">↗ <a href="${REPO}${esc(file)}${line ? "#L" + line : ""}" target="_blank" rel="noopener">${esc(file.split("/").pop())}${line ? ":" + line : ""}</a></div></div>
+    <h1 class="${e.kind}" style="color:var(${COLOR[e.kind]})">${esc(e.name)}</h1>
     ${e.syntax ? `<div class="syntax mono" style="--c:var(${COLOR[e.kind]})">${paint(e.syntax)}</div>` : ""}
+    ${e.status === "unconfirmed" ? `<div class="note"><b>⚠</b> Not reviewed by a human yet: this text was written by an AI and may be wrong.</div>` : ""}
     ${e.lead ? `<p class="lead">${esc(e.lead)}</p>` : ""}
     ${e.note ? `<div class="note"><b>⚠</b> ${esc(e.note)}</div>` : ""}</div>
     ${e.args.length ? `<section><h2>Arguments</h2><table>${e.args.map(([n, t, d]) =>
-      `<tr><td class="mono c-field">${esc(n)}</td><td>${typed(t)}</td><td>${esc(d)}</td></tr>`).join("")}</table></section>` : ""}
-    ${e.returns ? `<section><h2>Returns</h2><div class="mono c-type">${esc(e.returns)}</div></section>` : ""}
-    <section><h2>Connections</h2>
+      `<tr><td class="mono c-field">${esc(n.replace(/\?$/, ""))}${n.endsWith("?") ? ' <span class="opt">optional</span>' : ""}</td><td>${typed(t)}</td><td>${esc(d)}</td></tr>`).join("")}</table></section>` : ""}
+    ${e.returns ? `<section><h2>Returns</h2><div>${typed(e.returns)}</div></section>` : ""}
+    ${e.example ? `<section><h2>Example</h2><div class="syntax mono" style="--c:var(--line)">${paint(e.example)}</div></section>` : ""}
+    ${e.uses.length || e.usedBy.length ? `<section><h2>Connections</h2>
     <div class="links"><div><div class="c-dim"><span class="arrow">→</span>uses</div><ul>${linkList(e.uses)}</ul></div>
-      <div><div class="c-dim"><span class="arrow">←</span>used by</div><ul>${linkList(e.usedBy)}</ul></div></div></section>
+      <div><div class="c-dim"><span class="arrow">←</span>used by</div><ul>${linkList(e.usedBy)}</ul></div></div></section>` : ""}
     ${e.expert.length ? `<details><summary>For experts</summary><table class="nerd">${e.expert.map(([k, v]) =>
       `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join("")}</table></details>` : ""}
     </div>`;
-  window.scrollTo(0, 0);
+  document.title = e.name + " · Lullaby Docs";
+  // One column (phones): the list sits above the page, so jump to the page itself.
+  if (matchMedia("(max-width: 760px)").matches) document.getElementById("page").scrollIntoView();
+  else window.scrollTo(0, 0);
 }
 
 // Search: /regex/, or typo-tolerant (edit distance against the name's parts and the search words).
@@ -179,23 +197,25 @@ function score(e, q) {
 }
 function nav() {
   const q = document.getElementById("q").value.trim().toLowerCase();
-  let list = E;
+  // Raw Java functions (J.*) can't be called from scripts: they keep their pages (reached through "uses") but stay
+  // out of the list and the search.
+  let list = E.filter(e => e.kind !== "java");
   const rx = q.match(/^\/(.+)\/$/);
-  if (rx) { try { const r = new RegExp(rx[1], "i"); list = E.filter(e => r.test(e.id + " " + (e.words || ""))); } catch { list = []; } }
-  else if (q) list = E.map(e => [e, score(e, q)]).filter(x => x[1] < 99).sort((a, b) => a[1] - b[1]).map(x => x[0]);
+  if (rx) { try { const r = new RegExp(rx[1], "i"); list = list.filter(e => r.test(e.id + " " + (e.words || ""))); } catch { list = []; } }
+  else if (q) list = list.map(e => [e, score(e, q) + dist(q, e.id.toLowerCase()) / 1000]).filter(x => x[1] < 99)
+    .sort((a, b) => a[1] - b[1]).map(x => x[0]); // ties: the closer name first
   const groups = [...new Set(list.map(e => e.group))];
   document.getElementById("nav").innerHTML = list.length ? groups.map(g =>
     `<div class="group">${esc(g)}</div>` + list.filter(e => e.group === g).map(e =>
-      `<a class="item mono go" data-id="${esc(e.id)}" style="color:var(${COLOR[e.kind]})">${esc(e.name)}</a>`).join("")).join("")
+      `<a class="item mono go" href="#${esc(e.id)}" data-id="${esc(e.id)}" style="color:var(${COLOR[e.kind]})">${esc(e.name)}</a>`).join("")).join("")
     : '<div class="empty">nothing found</div>';
   document.querySelectorAll(".item").forEach(a => a.classList.toggle("on", a.dataset.id === current));
 }
 document.getElementById("q").addEventListener("input", nav);
-document.addEventListener("click", ev => {
-  const a = ev.target.closest(".go"); if (!a) return;
-  ev.preventDefault(); show(a.dataset.id);
-});
-nav(); show(E[0]?.id);
+// Every page has its own address (#id): links, back/forward, bookmarks and new tabs work.
+const fromHash = () => show(decodeURIComponent(location.hash.slice(1)) || E[0]?.id);
+window.addEventListener("hashchange", fromHash);
+nav(); fromHash();
 </script>
 </body>
 </html>

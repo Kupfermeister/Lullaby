@@ -13,7 +13,7 @@ import java.util.Map;
  * The wire: Lua values as bytes in LuaJIT's own serialization format (string.buffer's encode/decode, specified in
  * LuaJIT's doc/ext_buffer.html "Serialization Format Specification"). Lua turns a whole table into bytes and back at
  * C speed; Java reads and writes the same bytes here, so a table crosses in ONE call instead of one Lua-Java trip per
- * field (Kupfermeister 2026-11-15).
+ * field.
  *
  * <p>Java's picture of Lua values: null (nil), Boolean, Double (every Lua number), Long (LuaJIT's 64-bit whole
  * numbers, only for values above 2^53), String (UTF-8), {@link Table}. A table tagged with a metatable from the

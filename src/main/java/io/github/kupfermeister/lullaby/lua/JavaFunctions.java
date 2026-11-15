@@ -193,7 +193,7 @@ final class JavaFunctions {
             return 1;
         });
 
-        // Codec values (build step 3a, see lazy.lua and nms/Codecs.java). Tables cross as wire bytes (Wire.java);
+        // Codec values (see lazy.lua and nms/Codecs.java). Tables cross as wire bytes (Wire.java);
         // each value lives in a slot as an unchangeable Java copy (ItemStack, vanilla Component).
         IntFunction<Object> slotLookup = slots::get;
         add(lua, "slot_copy", L -> {
@@ -239,7 +239,7 @@ final class JavaFunctions {
             L.push(Codecs.itemMatches(slots.get(slot(L, 1)), slots.get(slot(L, 2))));
             return 1;
         });
-        // Components are plain Lua tables (Kupfermeister 2026-11-15): they cross as wire bytes both ways. Results: the bytes
+        // Components are plain Lua tables: they cross as wire bytes both ways. Results: the bytes
         // and how many show_item hovers hold a new item stack slot (lazy.lua turns those into item_stacks).
         java.util.function.ToIntFunction<Object> addSlot = slots::add;
         add(lua, "component_mini", L -> pushComponent(L, Codecs.componentOut(Codecs.componentMini(string(L, 1)), addSlot)));

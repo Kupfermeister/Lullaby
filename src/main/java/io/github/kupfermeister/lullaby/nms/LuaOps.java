@@ -12,13 +12,13 @@ import java.util.stream.Stream;
 
 /**
  * Vanilla's DynamicOps for Lua data: lets EVERY vanilla codec read and write Lua tables (item stacks, components,
- * text, later particles, effects, ...) without hand-written code per type (Kupfermeister 2026-11-15).
+ * text, later particles, effects, ...) without hand-written code per type.
  *
  * <p>The values it works on are the wire's plain Java picture after {@link Codecs#plain}: null is never used inside;
  * {@link #NONE} is vanilla's "nothing"; Double/Long numbers; Boolean; String; List; Map (LinkedHashMap); and
  * {@link #EMPTY_TABLE}, a Lua {} that is both an empty list and an empty map (Lua can't tell them apart).
  *
- * <p>STRICT NUMBERS (Kupfermeister 2026-11-15): vanilla's codecs read whole numbers with Number.intValue(), which silently cuts
+ * <p>STRICT NUMBERS: vanilla's codecs read whole numbers with Number.intValue(), which silently cuts
  * 2.5 to 2 and wraps 3000000000. Numbers handed to codecs are {@link Strict}, whose intValue/longValue/... refuse such
  * values with an error instead. Floats going to Lua become the shortest number that reads back as the same float
  * (0.1f shows as 0.1, not 0.10000000149011612).

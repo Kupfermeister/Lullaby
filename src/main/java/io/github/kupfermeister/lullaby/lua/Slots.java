@@ -3,7 +3,7 @@ package io.github.kupfermeister.lullaby.lua;
 /**
  * Java's side of Lullaby objects: each Lua object (player, world, event, ...) carries a slot number, and this array
  * holds what the number stands for (a UUID, a world key, a Paper event). Lua sends numbers instead of LuaJava's own
- * Java objects, which cost a JNI reference and reflection per use (Kupfermeister 2026-11-15, see lib/types.lua).
+ * Java objects, which cost a JNI reference and reflection per use (see lib/types.lua).
  *
  * <p>A slot lives as long as its Lua object: when Lua's garbage collector frees the object, the library collects the
  * slot number and hands all freed numbers back in one call per tick ({@link #free}). One Slots per Lua state; a

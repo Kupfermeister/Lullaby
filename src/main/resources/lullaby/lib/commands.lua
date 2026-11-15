@@ -1,4 +1,4 @@
--- Lullaby library, file 8 of 9: script commands (Kupfermeister 2026-11-14).
+-- Lullaby library, file 8 of 9: script commands.
 --
 --   command{ "name", function(c) ... end, args = { ... }, branches = { ... }, permission = "x", show = function(p),
 --            aliases = { "n" } }
@@ -266,18 +266,27 @@ end
 name: command{ }
 kind: doing
 group: Commands
-words: slash brigadier cmd
-syntax: command{ "name", function(c) ... end, ... }
-lead: Adds a script command on vanilla's command system.
+words: slash brigadier cmd argument
+syntax: command{ "name", function(c) ... end, args = { ... }, branches = { ... }, permission = text, show = function(p), aliases = { ... } }
+lead: Adds a script command. Its args are values typed one after the other; at the end it may split into branches: a key like buy = { ... } is a word to type, an unnamed { args = { ... } } starts with a value. Every branch takes the same fields again. The function gets c: c.player (nil from the console) and c.args.<name>.
 arg: 1 | text | The command name, without /.
-arg: 2 | function | Runs when the command is typed.
+arg: 2? | function | Runs when the line is typed to its end. Without it, the command only leads to its branches.
+arg: args? | list of table | Each: { name = text, type = "word" | "text" | "integer" | "number" | "bool" | "player", min, max, suggest = list or function(p), check = function(value, p), optional = true }. text takes the rest of the line (last only); optional values only at the very end.
+arg: branches? | table | Words and value steps that follow.
+arg: permission? | text | Needed permission.
+arg: show? | function | function(p) returns true if p may see it.
+arg: aliases? | list of text | Other names (word steps only).
 returns: nothing
-note: Works only while scripts load (at the top of a file).
-status: confirmed
+note: Works only while scripts load (at the top of a file). permission, show and suggest are worked out on join, after /lullaby reload and with refresh_commands{ }; check runs when the command runs and its text is shown in red.
+example:
+  command{ "heal", function(c)
+    message{ player = c.player, text = "Healed " .. c.args.amount }
+  end, args = { { name = "amount", type = "integer", min = 1, max = 20 } } }
+status: unconfirmed
 ]]
 function lib.command(a)
 	if type(a) ~= "table" then error("command needs { }: command{ \"name\", function(c) ... end }", 2) end
-	-- Kupfermeister 2026-11-14: players' trees are worked out after loading, so a later command would be half there
+	-- players' trees are worked out after loading, so a later command would be half there
 	if not I.loading then error("command{} works only while scripts load (at the top of a file)", 2) end
 	local ok, err = pcall(check_command, a)
 	if not ok then error(err, 2) end
@@ -327,10 +336,10 @@ kind: doing
 group: Commands
 words: update resend tree
 syntax: refresh_commands{ player = player }
-lead: Works out again which script commands the player sees, and sends them.
+lead: Checks again which script commands the player can see (permission, show, suggest) and sends them.
 arg: player | player | The player.
 returns: nothing
-status: confirmed
+status: unconfirmed
 ]]
 function lib.refresh_commands(a)
 	if type(a) ~= "table" then error("refresh_commands needs { }: refresh_commands{ player = p }", 2) end
@@ -348,7 +357,7 @@ words: list everyone all
 syntax: online_players( ) → { player, ... }
 lead: Every player online now, as a list.
 returns: list of player
-status: confirmed
+status: unconfirmed
 ]]
 function lib.online_players()
 	local list = {}

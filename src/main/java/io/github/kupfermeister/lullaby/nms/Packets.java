@@ -25,7 +25,7 @@ import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 
 /**
- * Packet actions (particle{}, sound{}, stop_sound{}; Kupfermeister 2026-11-15), hand glue straight on vanilla's packets, and
+ * Packet actions (particle{}, sound{}, stop_sound{}; ), hand glue straight on vanilla's packets, and
  * the ONE send core they share ({@link #send}): build each packet once, bundle, hand the same packet objects to every
  * receiver. The generated packet system (on_packet/send_packet) is planned to reuse {@link #send}.
  *

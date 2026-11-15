@@ -99,7 +99,7 @@ function I.protected(origin, f, ...)
 end
 
 -- ---------------------------------------------------------------------------------------------------------------
--- Kinds, slots and type_of (Kupfermeister 2026-11-15, see types.lua)
+-- Kinds, slots and type_of (see types.lua)
 -- ---------------------------------------------------------------------------------------------------------------
 
 -- Lullaby's own things -> their type name ("player", "event", "task", "location", ...). Weak keys: an entry goes when
@@ -168,10 +168,10 @@ kind: reading
 group: Values
 words: kind check
 syntax: type_of( value ) → text
-lead: The Lullaby type name of any value: "player", "vec3", "event", "number", "string", ...
+lead: The Lullaby type name of any value: "player", "vec3", "event", "number", ... Text gives "string", as Lua calls it: type_of("hi") == "string".
 arg: value | any | Anything.
 returns: text
-status: confirmed
+status: unconfirmed
 ]]
 function lib.type_of(value)
 	local kind = kind_of[value]
@@ -210,10 +210,10 @@ kind: reading
 group: Values
 words: text number string
 syntax: tostring( value ) → text
-lead: Like Lua's tostring, but numbers are exact (the shortest text that reads back as the same number): 1297632424.123456 stays that, Lua would make 1297632424.1235.
+lead: Like Lua's tostring, but numbers are exact (the shortest text that reads back as the same number): 1297632424.123456 stays 1297632424.123456, where Lua would make 1297632424.1235.
 arg: value | any | Anything.
 returns: text
-status: confirmed
+status: unconfirmed
 ]]
 function lib.tostring(value)
 	local t = type(value)
@@ -297,6 +297,29 @@ local function build_sandbox(unlock)
 		"setfenv", "collectgarbage", "gcinfo", "newproxy", "_VERSION" }) do
 		lib[name] = _G[name]
 	end
+--[[doc
+id: pairs
+name: pairs( ) and next( )
+kind: reading
+group: Values
+words: loop iterate table fields
+syntax: for k, v in pairs(t) do ... end
+lead: Lua's pairs and next, made to also work on item stacks: those load every part first. On other tables they work exactly like Lua's.
+arg: t | table | The table.
+status: unconfirmed
+]]
+--[[doc
+id: print
+name: print( )
+kind: reading
+group: Values
+words: log console debug output
+syntax: print( ... )
+lead: Writes the values to the server console, separated by tabs. Numbers are written exactly (see tostring( )).
+arg: ... | any | Anything.
+returns: nothing
+status: unconfirmed
+]]
 	lib.pairs, lib.next = I.pairs, I.next -- Lullaby's own (lazy.lua): they load lazy values first
 	lib.string, lib.table, lib.math, lib.coroutine, lib.bit, lib.jit = string, table, math, coroutine, bit, jit
 	lib.load, lib.loadstring = loader_for(load), loader_for(loadstring)

@@ -91,7 +91,7 @@ public final class EventBridge implements Listener {
             return 5;
         }
         if (value instanceof Component text) {
-            // a component table (Kupfermeister 2026-11-15): wire bytes plus the count of item slots in show_item hovers
+            // a component table: wire bytes plus the count of item slots in show_item hovers
             Object[] out = Codecs.componentOut(Codecs.vanilla(text), addSlot);
             L.push("c");
             L.push((java.nio.ByteBuffer) out[0]);

@@ -1,4 +1,4 @@
--- Lullaby library, file 7 of 9: codec values (build step 3a, Kupfermeister 2026-11-15) and the wire.
+-- Lullaby library, file 7 of 9: codec values and the wire.
 --
 -- THE WIRE: tables cross to Java as bytes in LuaJIT's own serialization format (string.buffer encode/decode, done in
 -- C), read and written by Wire.java. Small values (block_pos, vec3, ...), objects and text components inside a table
@@ -10,7 +10,7 @@
 --   item_stack(x)    x: an item_stack (gives a copy), vanilla item text "diamond_sword[damage=5]", or a codec table
 --                    { id = , count = , components = } (vanilla's ItemStack codec). The empty stack is nil.
 --                    it.id, it.count, it.components (read and write; your copy). As vanilla as possible: no checks
---                    of Lullaby's own (Kupfermeister 2026-11-15).
+--                    of Lullaby's own.
 --   it.components    EXACTLY vanilla's patch: only the changes against the item type's defaults, keys as vanilla
 --                    writes them ("minecraft:custom_name"); a removed default is "!minecraft:food" = {}. Short keys
 --                    work too (it.components.custom_name, it.components["!food"] = {}): a lookup only, nothing is
@@ -26,7 +26,7 @@ local J, lib, I = ...
 
 local buffer = require("string.buffer")
 -- LuaJIT's 64-bit whole numbers (vanilla longs above 2^53) can only be DECODED from the wire once ffi's type state
--- exists. The library loads it for itself; scripts still get no ffi (Kupfermeister 2026-11-15).
+-- exists. The library loads it for itself; scripts still get no ffi.
 require("ffi")
 local type, error, setmetatable, rawget, rawset, raw_next, pcall, tostring =
 	type, error, setmetatable, rawget, rawset, next, pcall, tostring
@@ -231,7 +231,7 @@ syntax: item_stack( "diamond_sword[damage=5]" | table | item_stack )
 lead: An item stack from vanilla's item text, a table, or a copy of another item stack.
 arg: x | text · table · item_stack | The item.
 returns: item_stack
-status: confirmed
+status: unconfirmed
 ]]
 function lib.item_stack(x)
 	local t = type(x)
@@ -292,7 +292,7 @@ syntax: component( "<red>Hi" | table | component )
 lead: Text as a component. Text is read as MiniMessage (the only place that does); a table or component is a checked fresh copy.
 arg: x | text · table · component | The text.
 returns: component
-status: confirmed
+status: unconfirmed
 ]]
 function lib.component(x)
 	local t = type(x)
@@ -312,7 +312,7 @@ lead: Reads vanilla's JSON as an item stack or a component.
 arg: text | text | The JSON.
 arg: type_name | text | "item_stack" or "component".
 returns: item_stack · component
-status: confirmed
+status: unconfirmed
 ]]
 function lib.from_json(text, type_name)
 	-- FORMAT: wrong arguments for from_json()

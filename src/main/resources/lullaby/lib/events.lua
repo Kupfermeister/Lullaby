@@ -61,13 +61,13 @@ group: Events
 words: listen hook before cancel
 syntax: on{ "EventName", function(e) ... end, order = number, stage = text }
 lead: Runs the function before the event happens; it may change e (e.cancelled = true, ...).
-arg: 1 | text | The event name, e.g. "BlockBreakEvent".
+arg: 1 | text | The event name: PlayerJoinEvent, PlayerQuitEvent, BlockBreakEvent or reload.
 arg: 2 | function | Gets the event e.
-arg: order | number | Lower runs first; ties by load order. Default 0.
-arg: stage | text | Place among other plugins: lowest, low, normal, high, highest. Default normal.
+arg: order? | number | Lower runs first; ties by load order. Default 0.
+arg: stage? | text | Place among other plugins: lowest, low, normal, high, highest. Default normal.
 returns: nothing
 note: Each handler runs as its own task and may wait; after its first wait the event is over and changes only give a warning.
-status: confirmed
+status: unconfirmed
 ]]
 function lib.on(a) register("on", a) end
 --[[doc
@@ -79,9 +79,9 @@ syntax: after{ "EventName", function(e) ... end, order = number }
 lead: Runs the function once the event happened and was not cancelled; e is read only. Events so far: PlayerJoinEvent, PlayerQuitEvent, BlockBreakEvent, reload.
 arg: 1 | text | The event name, or "reload".
 arg: 2 | function | Gets the event e.
-arg: order | number | Lower runs first. Default 0.
+arg: order? | number | Lower runs first; ties by load order. Default 0.
 returns: nothing
-status: confirmed
+status: unconfirmed
 ]]
 function lib.after(a) register("after", a) end
 
@@ -161,3 +161,27 @@ function I.fire_reload(scripts, errors, ms, uuid)
 		end
 	end
 end
+
+--[[doc
+id: events
+name: event fields
+kind: event
+group: Events
+words: fields e player cancelled join quit break message
+lead: The e an event handler gets. Fields are writable in on{ }, read only in after{ }. PlayerJoinEvent: e.player, e.join_message. PlayerQuitEvent: e.player, e.quit_message, e.reason. BlockBreakEvent: e.player, e.block, e.exp_to_drop, e.drop_items, e.cancelled.
+example:
+  on{ "BlockBreakEvent", function(e)
+    if e.player.name == "Notch" then e.cancelled = true end
+  end }
+status: unconfirmed
+]]
+--[[doc
+id: reload
+name: reload
+kind: event
+group: Events
+words: reload restart loaded scripts
+syntax: after{ "reload", function(e) ... end }
+lead: Lullaby's own event: runs after /lullaby reload has loaded every script. e is read only: e.scripts (files loaded), e.errors, e.ms (how long it took), e.cause ("command") and e.player (who reloaded; nil from the console).
+status: unconfirmed
+]]

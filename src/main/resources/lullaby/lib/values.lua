@@ -1,4 +1,4 @@
--- Lullaby library, file 3 of 9: small values (Kupfermeister 2026-11-15, see types.lua).
+-- Lullaby library, file 3 of 9: small values (see types.lua).
 --
 -- Positions and rotations are plain Lua tables with a shared metatable. All math is plain Lua: nothing here calls
 -- Java, so thousands of points per tick stay cheap. Values are COPIES and can't be changed: v.x = 5 is an error,
@@ -197,7 +197,7 @@ syntax: block_pos( x, y, z ) → block_pos
 lead: A block position: whole numbers (vanilla BlockPos). + - == :offset(dx, dy, dz) :vec3() :chunk_pos() :section_pos(). Also takes a value of its own type (returned as is), a table { 1, 2, 3 } or { x = , y = , z = }, or command text like "1 64 -3".
 arg: x, y, z | number | Whole numbers.
 returns: block_pos
-status: confirmed
+status: unconfirmed
 ]]
 function lib.block_pos(...)
 	local first = ...
@@ -210,10 +210,10 @@ kind: reading
 group: Values
 words: section cube
 syntax: section_pos( x, y, z ) → section_pos
-lead: A 16×16×16 cube of blocks: whole numbers (vanilla SectionPos). == :offset :chunk_pos() :contains(block_pos). Also takes a value of its own type (returned as is), a table { 1, 2, 3 } or { x = , y = , z = }.
+lead: A 16×16×16 cube of blocks: whole numbers (vanilla SectionPos). == :offset(dx, dy, dz) :chunk_pos() :contains(block_pos). Also takes a value of its own type (returned as is), a table { 1, 2, 3 } or { x = , y = , z = }, or command text like "1 4 -3".
 arg: x, y, z | number | Whole numbers.
 returns: section_pos
-status: confirmed
+status: unconfirmed
 ]]
 function lib.section_pos(...)
 	local first = ...
@@ -226,10 +226,10 @@ kind: reading
 group: Values
 words: chunk column
 syntax: chunk_pos( x, z ) → chunk_pos
-lead: A 16×16 column of blocks: whole numbers (vanilla ChunkPos). == :offset(dx, dz). Also takes a value of its own type (returned as is), a table { 1, 2, 3 } or { x = , y = , z = }.
+lead: A 16×16 column of blocks: whole numbers (vanilla ChunkPos). == :offset(dx, dz). Also takes a value of its own type (returned as is), a table { 1, 2 } or { x = , z = }, or command text like "1 -3".
 arg: x, z | number | Whole numbers.
 returns: chunk_pos
-status: confirmed
+status: unconfirmed
 ]]
 function lib.chunk_pos(...)
 	local first = ...
@@ -322,10 +322,10 @@ kind: reading
 group: Values
 words: vector position direction
 syntax: vec3( x, y, z ) → vec3
-lead: An exact position or direction: decimals (vanilla Vec3). + - * / unary - == :length() :normalize() :dot(v) :cross(v) :distance_to(v) :lerp(v, t) :x_rot(deg) :y_rot(deg) :z_rot(deg) :rotate(q) :block_pos(). Also takes a value of its own type (returned as is), a table { 1, 2, 3 } or { x = , y = , z = }.
+lead: An exact position or direction: decimals (vanilla Vec3). + - * / unary - == :length() :normalize() :dot(v) :cross(v) :distance_to(v) :lerp(v, t) :x_rot(deg) :y_rot(deg) :z_rot(deg) :rotate(q) :block_pos(). Also takes a value of its own type (returned as is), a table { 1, 2, 3 } or { x = , y = , z = }, or command text like "1.5 64 -3".
 arg: x, y, z | number | Decimals.
 returns: vec3
-status: confirmed
+status: unconfirmed
 ]]
 function lib.vec3(...)
 	local first = ...
@@ -438,6 +438,19 @@ I.YAW_PITCH_META = YP
 local function new_yp(yaw, pitch) return setmetatable({ yaw + 0, pitch + 0 }, YP) end
 I.new_yaw_pitch = new_yp
 
+--[[doc
+id: yaw_pitch
+name: yaw_pitch( )
+kind: reading
+group: Values
+words: rotation direction look angle yaw pitch
+syntax: yaw_pitch( yaw, pitch ) → yaw_pitch   yaw_pitch.from_direction( vec3 )
+lead: A direction as yaw and pitch, in degrees. == :direction() gives the vec3 it looks along (length 1); yaw_pitch.from_direction(v) goes the other way.
+arg: yaw | number | Degrees around the vertical axis.
+arg: pitch | number | Degrees up or down.
+returns: yaw_pitch
+status: unconfirmed
+]]
 lib.yaw_pitch = setmetatable({}, {
 	__call = function(_, ...)
 		local first = ...
@@ -469,6 +482,18 @@ end
 
 local function new_q(x, y, z, w) return setmetatable({ x + 0, y + 0, z + 0, w + 0 }, QUAT) end
 
+--[[doc
+id: quaternion
+name: quaternion( )
+kind: reading
+group: Values
+words: rotation rotate 3d axis angle
+syntax: quaternion( x, y, z, w ) → quaternion   quaternion.from_yaw_pitch( yp )   quaternion.from_axis_angle( axis, degrees )
+lead: A rotation in 3D. a * b rotates by b first, then by a. q:rotate(v) turns a vec3; vec3:rotate(q) does the same.
+arg: x, y, z, w | number | The four parts.
+returns: quaternion
+status: unconfirmed
+]]
 lib.quaternion = setmetatable({}, {
 	__call = function(_, ...)
 		local first = ...
@@ -571,10 +596,10 @@ kind: reading
 group: Values
 words: box area region hitbox
 syntax: aabb( min, max ) → aabb
-lead: A box between two vec3 corners, max side open (vanilla AABB). == :contains(vec3) :intersects(aabb) :grow(n) :move(vec3) :center() :size().
+lead: A box between two vec3 corners; a point exactly on the max side is outside (vanilla AABB). == :contains(vec3) :intersects(aabb) :grow(n) :move(vec3) :center() :size().
 arg: min, max | vec3 | The corners.
 returns: aabb
-status: confirmed
+status: unconfirmed
 ]]
 function lib.aabb(...)
 	local first, second = ...
@@ -590,7 +615,7 @@ syntax: bounding_box( min, max ) → bounding_box
 lead: A box between two block_pos corners, both sides included (vanilla BoundingBox). == :contains(block_pos) :intersects(bounding_box) :center().
 arg: min, max | block_pos | The corners.
 returns: bounding_box
-status: confirmed
+status: unconfirmed
 ]]
 function lib.bounding_box(...)
 	local first, second = ...
@@ -668,12 +693,12 @@ name: global_pos( )
 kind: reading
 group: Values
 words: dimension position
-syntax: global_pos( dimension, block_pos ) → global_pos
+syntax: global_pos( dimension, pos ) → global_pos
 lead: A block position in a dimension (vanilla GlobalPos). Also takes { dimension = , pos = }.
 arg: dimension | text | An id like "overworld".
-arg: block_pos | block_pos | The position.
+arg: pos | block_pos | The position.
 returns: global_pos
-status: confirmed
+status: unconfirmed
 ]]
 function lib.global_pos(...)
 	local first, second = ...
@@ -702,13 +727,13 @@ name: location( )
 kind: reading
 group: Values
 words: where place spot
-syntax: location( world, vec3, yaw_pitch ) → location
+syntax: location( world, pos, rot ) → location
 lead: A world, an exact position and a direction (yaw_pitch optional: 0, 0). == :block() :offset(vec3). Also takes { world = , pos = , rot = }.
 arg: world | world | The world.
 arg: pos | vec3 | The exact position.
-arg: rot | yaw_pitch | The direction.
+arg: rot? | yaw_pitch | The direction. Optional: 0, 0.
 returns: location
-status: confirmed
+status: unconfirmed
 ]]
 function lib.location(...)
 	local world, pos, rot = ...

@@ -1,4 +1,4 @@
--- Lullaby library, file 2 of 9: the type list (Kupfermeister 2026-11-15).
+-- Lullaby library, file 2 of 9: the type list.
 -- The agreed description of every type and every conversion. It is data: the library reads it (type_of, and later
 -- argument checks, error texts, event fields, packet fields, command arguments, saving, docs), so it stays the one
 -- place a type is described. Most types here are not built yet (see `later` and the build order in Kupfermeister's notes).
@@ -37,7 +37,7 @@
 --   (c) vanilla command text ("diamond_sword[enchantments={sharpness:5}]", "oak_stairs[facing=north]")
 --   tostring(v) gives form (c), so printed text can be pasted back. Exception: component (component("<red>Hi")
 --   reads MiniMessage, tostring gives MiniMessage). Strings inside tables are ALWAYS literal, exactly as vanilla's
---   codecs read them (Kupfermeister 2026-11-15: MiniMessage only where necessary); from_json(text, type) is vanilla's meaning.
+--   codecs read them (MiniMessage only where necessary); from_json(text, type) is vanilla's meaning.
 --   Everything is strict: "5" is not a number, 2.5 where a whole number is needed is an error, not 2.
 --
 -- SAVING (field `save`): NBT { type = <name>, data_version = <Minecraft's>, value = ... }. On load an older
@@ -55,7 +55,7 @@
 --   save           how it is saved
 --   later          true: listed for completeness, built when its area is built
 -- Function and method names in `methods` and in this header (type_of, from_json, :with) are proposals: each one
--- needs Kupfermeister's yes when it is built. Everything else here was agreed with Kupfermeister (2026-11-15). `later = true` types are built
+-- needs Kupfermeister's yes when it is built. Everything else here was agreed with Kupfermeister. `later = true` types are built
 -- when their area is built; the entries are descriptions; code that uses them is added step by step.
 --
 -- Like every library file this gets three tables from LuaRuntime.java when it is loaded: J (raw Java functions),
@@ -137,7 +137,7 @@ T.block_pos = {
 	codec = "BlockPos.CODEC (3 ints)", stream = "BlockPos.STREAM_CODEC", text = "BlockPosArgument",
 	arg = "BlockPosArgument (~ ~1 ~)", save = "codec",
 	methods = "+ - with block_pos, offset(dx, dy, dz), vec3() (the corner), chunk_pos(), section_pos() (only offset: "
-		.. "no above/below/north/..., Kupfermeister 2026-11-15)",
+		.. "no above/below/north/..., )",
 }
 T.vec3 = {
 	kind = "value", impl = "small", vanilla = "net.minecraft.world.phys.Vec3",
@@ -148,7 +148,7 @@ T.vec3 = {
 	methods = "+ - * / (by a number), unary -, length, normalize, dot, cross, distance_to, lerp, x_rot y_rot z_rot "
 		.. "(degrees), rotate(quaternion), block_pos() (rounds down)",
 	note = "also used for vanilla's Vector3f fields (display entity scale and translation: rounded to float at the "
-		.. "border, as vanilla does) and Rotations (armor stand angles): same handling, so one type (Kupfermeister 2026-11-15). "
+		.. "border, as vanilla does) and Rotations (armor stand angles): same handling, so one type. "
 		.. "block_pos, section_pos and chunk_pos stay separate: whole numbers with their own handling.",
 }
 T.chunk_pos = {
@@ -232,7 +232,7 @@ T.item_stack = {
 	codec = "ItemStack.CODEC (OPTIONAL_CODEC where empty is allowed)", stream = "ItemStack.OPTIONAL_STREAM_CODEC",
 	text = "ItemParser.parse", arg = "ItemArgument", fix = "ITEM_STACK", save = "codec",
 	note = "the empty stack (air, count 0) is nil. Replaces material for items. As vanilla as possible: no "
-		.. "checks of Lullaby's own (Kupfermeister 2026-11-15); a new id keeps the patch (vanilla's transmuteCopy); tostring "
+		.. "checks of Lullaby's own; a new id keeps the patch (vanilla's transmuteCopy); tostring "
 		.. "has no count, like vanilla's item text; == is vanilla's ItemStack.matches. Live item stacks are "
 		.. "rejected: vanilla swaps stack objects, so a live one would silently stop tracking.",
 }
@@ -242,7 +242,7 @@ T.components = {
 	accepts = "components, table of component id = value",
 	codec = "DataComponentPatch.CODEC", stream = "DataComponentPatch.STREAM_CODEC",
 	text = "inside ItemParser's [ ]", fix = "DATA_COMPONENTS", save = "codec",
-	note = "EXACTLY vanilla's patch, nothing added (Kupfermeister 2026-11-15): only the changes against the item type's "
+	note = "EXACTLY vanilla's patch, nothing added: only the changes against the item type's "
 		.. "defaults, keys as vanilla writes them (\"minecraft:custom_name\"); short keys are looked up too. A "
 		.. "removed default is vanilla's \"!minecraft:food\" = {}; setting an entry to nil takes it out of the patch "
 		.. "(back to the default). Reading defaults would be its own function (later). Loads whole on first touch.",
@@ -433,7 +433,7 @@ T.event = { kind = "object", vanilla = "Lullaby's own view of a Paper event", id
 -- =================================================================================================================
 
 -- =================================================================================================================
--- EVENT FIELDS: Java types from Paper's event getters/setters -> types of this file. Collected 2026-11-15 from
+-- EVENT FIELDS: Java types from Paper's event getters/setters -> types of this file. Collected from
 -- paper-api 26.3 build 249 (all getters/setters of every event class). Every conversion COPIES (Bukkit's Vector,
 -- Location and ItemStack are changeable Java objects; Lullaby never hands them out).
 -- A getter whose Java type is not listed gives an error when the event is first used (never a silent nil); the

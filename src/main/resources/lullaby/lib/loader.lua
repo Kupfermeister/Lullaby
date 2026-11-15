@@ -81,3 +81,17 @@ function I.load_all()
 	I.loading = false
 	return count
 end
+
+--[[doc
+id: import
+name: import( )
+kind: reading
+group: Scripts
+words: require include module file load other
+syntax: local x = import( "path" )
+lead: Uses another script file and gives back what that file returns. "/" between folders, "../" goes one up, a leading "/" starts at the scripts folder; no ".lua". A file not loaded yet loads right then, and no file ever loads twice.
+arg: path | text | Like "shared/util".
+returns: what the file returns
+note: Files and folders whose name starts with "--" are on standby: they don't load and can't be imported.
+status: unconfirmed
+]]

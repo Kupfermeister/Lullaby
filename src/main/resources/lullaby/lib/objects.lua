@@ -70,10 +70,10 @@ kind: reading
 group: Players
 words: get find user name uuid
 syntax: player( text ) → player | nil
-lead: Finds an online player by name or UUID. Each player exists once, so == works.
-arg: x | text | Name or UUID.
+lead: A player by name or UUID: online, or one who has played on this server before. nil if none. Each player exists once, so == works.
+arg: x | text · player | Name or UUID (a player is returned as is).
 returns: player · nil
-status: confirmed
+status: unconfirmed
 ]]
 function lib.player(x)
 	if player_uuid[x] then return x end
@@ -118,6 +118,28 @@ local function id_objects(kind, find, make_slot)
 end
 
 local world_id_of
+--[[doc
+id: world
+name: world( )
+kind: reading
+group: Worlds
+words: dimension level overworld nether end
+syntax: world( "overworld" ) → world | nil
+lead: A loaded world by its id: "overworld" means "minecraft:overworld". nil if there is none. Each world exists once, so == works.
+arg: id | text · world | The world's id (a world is returned as is).
+returns: world · nil
+status: unconfirmed
+]]
+--[[doc
+id: block
+name: block
+kind: type
+group: Blocks
+words: place position block object
+syntax: b.state   b.pos   b.world
+lead: A place in a world: a world plus a block position. Each block exists once, so == works. Fields: b.state (the block_state there, nil if the chunk is not loaded), b.pos (block_pos), b.world (world). location:block() gives one.
+status: unconfirmed
+]]
 I.world_by_id, lib.world, world_id_of = id_objects("world", J.world_id, J.world_slot)
 
 -- ---------------------------------------------------------------------------------------------------------------
@@ -197,7 +219,7 @@ syntax: block_state( "oak_stairs[facing=north]" | { id = text, ... } | { id = te
 lead: A block state from vanilla's text, from id plus properties, or from vanilla's codec shape. Missing properties take their default.
 arg: x | text · table · block_state | The state.
 returns: block_state
-status: confirmed
+status: unconfirmed
 ]]
 function lib.block_state(x)
 	if state_id[x] then return x end
@@ -293,9 +315,9 @@ syntax: message{ player = player, text = text | component }
 lead: Sends a chat message. Plain text is literal, like /tellraw; component( ) reads MiniMessage.
 arg: player | player | Who gets it.
 arg: text | text · component | The message.
-returns: nothing
+returns: boolean (false if the player is offline)
 expert: Packet | System Chat (play, clientbound)
-status: confirmed
+status: unconfirmed
 ]]
 function lib.message(a)
 	if type(a) ~= "table" then error("message needs { }: message{ player = p, text = \"...\" }", 2) end
@@ -309,7 +331,7 @@ function lib.message(a)
 end
 
 -- ---------------------------------------------------------------------------------------------------------------
--- Packet actions (Kupfermeister 2026-11-15): straight on vanilla's packets, sent by nms/Packets.java (the one send core).
+-- Packet actions: straight on vanilla's packets, sent by nms/Packets.java (the one send core).
 -- Every field crosses in ONE wire call; Java checks the fields and names the wrong one. Nothing is returned.
 --   particle{ player = p | players = { ... }, particle = "flame" | "dust{color:[1,0,0],scale:1}" |
 --             { type = "dust", color = { 1, 0, 0 }, scale = 1 }, pos = vec3 or a list of vec3,
@@ -367,15 +389,17 @@ lead: Shows particles at one or many positions.
 arg: player / players | player · list of player | Who sees them. Exactly one of the two.
 arg: particle | text · table | "flame", "dust{color:[1,0,0],scale:1}" or { type = "dust", ... }.
 arg: pos | vec3 · list of vec3 | One or many positions.
-arg: dist | vec3 | Spread.
-arg: max_speed | vec3 | Speed.
-arg: count | number | Default 0.
-arg: randomization_type | text | default, alternative, alternative_with_speed.
+arg: dist? | vec3 | How far particles spread around the position on each axis.
+arg: max_speed? | vec3 | Their speed.
+arg: count? | number | How many per position. Default 0: one particle, and max_speed is its exact motion instead of a random spread.
+arg: override_limiter? | boolean | Shows it even if the player set particles to minimal. Default false.
+arg: always_show? | boolean | Shows it from far away (vanilla's long distance). Default false.
+arg: randomization_type? | text | default, alternative, alternative_with_speed.
 returns: nothing
-note: Positions × count over the config's particle_limit is refused with an error.
+note: Positions × count (count 0 counts as 1) over the config's particle_limit is refused with an error.
 expert: Packet | Level Particles (play, clientbound), one per position, bundled by 4096
 expert: Lua → Java | one call
-status: confirmed
+status: unconfirmed
 ]]
 function lib.particle(a)
 	action_table(a, "particle")
@@ -407,15 +431,15 @@ syntax: sound{ player = player | players = { player, ... }, sound = text | { sou
 lead: Plays a sound to one player or a list of players.
 arg: player / players | player · list of player | Who hears it. Exactly one of the two.
 arg: sound | text · table | A sound id like "entity.player.levelup", or { sound_id, range }.
-arg: source | text | master, music, record, weather, block, hostile, neutral, player, ambient, voice, ui.
-arg: pos / entity | vec3 · player | Where it plays; entity follows that player.
-arg: volume | number | Default 1.
-arg: pitch | number | Default 1.
-arg: seed | number | Picks the variant from the sound's pool. Random by default, as in vanilla.
+arg: source | text | Needed. master, music, record, weather, block, hostile, neutral, player, ambient, voice, ui.
+arg: pos / entity | vec3 · player | Needed, one of the two: where it plays; entity follows that player.
+arg: volume? | number | Default 1.
+arg: pitch? | number | Default 1.
+arg: seed? | number | Picks the variant from the sound's pool. Random by default, as in vanilla.
 returns: nothing
 expert: Packet | Sound / Sound Entity (play, clientbound)
 expert: Lua → Java | one call
-status: confirmed
+status: unconfirmed
 ]]
 function lib.sound(a)
 	action_table(a, "sound")
@@ -439,11 +463,11 @@ words: silence mute
 syntax: stop_sound{ player = player | players = { player, ... }, sound = text, source = text }
 lead: Stops sounds. Without sound and source it stops every sound.
 arg: player / players | player · list of player | Who.
-arg: sound | text | Only this sound.
-arg: source | text | Only this source.
+arg: sound? | text | Only this sound.
+arg: source? | text | Only this source.
 returns: nothing
 expert: Packet | Stop Sound (play, clientbound)
-status: confirmed
+status: unconfirmed
 ]]
 function lib.stop_sound(a)
 	action_table(a, "stop_sound")

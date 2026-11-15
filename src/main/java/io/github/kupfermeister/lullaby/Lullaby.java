@@ -26,7 +26,7 @@ public final class Lullaby extends JavaPlugin {
 
     @Override
     public void onEnable() {
-        // Version lock (Kupfermeister 2026-11-13): Lullaby uses Minecraft's own code (NMS), which changes between versions,
+        // Version lock: Lullaby uses Minecraft's own code (NMS), which changes between versions,
         // so it only runs on the exact Minecraft version it was built for. `api-version` in paper-plugin.yml is
         // filled from `minecraftVersion` in gradle.properties at build time.
         // Paper writes "26.3" as "26.3.0", Minecraft as "26.3": trailing ".0" parts are dropped before comparing.

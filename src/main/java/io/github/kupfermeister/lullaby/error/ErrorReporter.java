@@ -9,7 +9,7 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.logger.slf4j.ComponentLogger;
 
 /**
- * Shows script errors and warnings to every online op in chat and in the console, in the same format (Kupfermeister):
+ * Shows script errors and warnings to every online op in chat and in the console, in the same format:
  * <pre>
  * ⚠ Error in scripts/lobby/join.lua on line 12                      red (a warning: yellow, "Warning")
  *   via PlayerJoinEvent (on) → greet                                gray
@@ -18,8 +18,8 @@ import net.kyori.adventure.text.logger.slf4j.ComponentLogger;
  * </pre>
  * The console version has no symbols ("->" instead of "→", no "⚠"), because many consoles (Windows' default code
  * page) show them as garbage like "ÔÜá"; there the details are the normal text color and a warning's first line too
- * (Kupfermeister 2026-11-13). Chat keeps the symbols and colors above. The head names no function: the via line already ends
- * with it (Kupfermeister 2026-11-15).
+ * Chat keeps the symbols and colors above. The head names no function: the via line already ends
+ * with it.
  * The same error (kind, file, line, message) repeating within the window is only counted; when the window ends, one
  * summary with the count is shown. The Lua library finds file, line, function and "via" (see core.lua); this class
  * only formats and sends. Main thread only.
@@ -91,7 +91,7 @@ public final class ErrorReporter {
 
     private void show(Key key, String via, int repeats) {
         boolean warning = key.kind().equals("warning");
-        // FORMAT: script error and warning format (Kupfermeister 2026-11-13); console without symbols, see the class comment.
+        // FORMAT: script error and warning format; console without symbols, see the class comment.
         StringBuilder head = new StringBuilder(warning ? "Warning" : "Error");
         if (!key.file().isEmpty()) {
             head.append(" in ").append(key.file());

@@ -1,0 +1,413 @@
+Lua pages of the docs site (read by Docs.java, same block format as in lib/*.lua; each block names itself with id:).
+Lullaby runs LuaJIT, which speaks Lua 5.1 (plus goto). A page whose id is a Lua keyword is linked from that keyword.
+
+--[[doc
+id: start
+name: start here
+kind: lua
+group: Lua
+words: begin first tutorial hello new
+lead: A script is a .lua file in plugins/lullaby/scripts. Lullaby runs every file there on start and on /lullaby reload. Code at the top of a file runs once while loading; functions given to on{ }, after{ }, command{ } and run{ } run later, when something happens.
+example:
+  -- plugins/lullaby/scripts/hello.lua
+  after{ "PlayerJoinEvent", function(e)
+    message{ player = e.player, text = "Welcome!" }
+    wait("2s")
+    sound{ player = e.player, sound = "entity.player.levelup" }
+  end }
+status: unconfirmed
+]]
+
+--[[doc
+id: comments
+name: comments
+kind: lua
+group: Lua
+words: note remark
+syntax: -- one line    --[[ many lines ]]
+lead: Everything after -- up to the end of the line is ignored. --[[ starts a comment over many lines, ]] ends it.
+example:
+  -- this line does nothing
+  local x = 5 -- a comment after code
+status: unconfirmed
+]]
+
+--[[doc
+id: local
+name: variables and local
+kind: lua
+group: Lua
+words: variable var name assign global
+syntax: local name = value
+lead: A variable holds a value. local makes it belong to the block it is written in (a file, a function, an if, a loop); always use local. Without local it is a global of this script file.
+example:
+  local count = 0
+  count = count + 1
+  local a, b = 1, 2   -- several at once
+status: unconfirmed
+]]
+
+--[[doc
+id: nil
+name: nil, true, false
+kind: lua
+group: Lua
+words: boolean null none empty bool
+syntax: nil   true   false
+lead: nil means "no value": unset variables and missing table fields are nil. true and false are the two booleans. In if and while, only nil and false count as false; 0 and "" count as true.
+example:
+  local p = player("Notch")
+  if p == nil then print("not online") end
+status: unconfirmed
+]]
+
+--[[doc
+id: numbers
+name: numbers and math
+kind: lua
+group: Lua
+words: math plus minus divide modulo power arithmetic
+syntax: + - * / % ^   == ~= < > <= >=
+lead: Lua has one number type for whole numbers and decimals. % is the remainder, ^ the power. ~= means "not equal". Comparisons give true or false.
+example:
+  local half = 7 / 2      -- 3.5
+  local rest = 7 % 2      -- 1
+  local big = 2 ^ 10      -- 1024
+  print(half ~= rest)     -- true
+status: unconfirmed
+]]
+
+--[[doc
+id: strings
+name: strings (text)
+kind: lua
+group: Lua
+words: text concat join length quote
+syntax: "text"   'text'   [[many lines]]   a .. b   #s
+lead: Text is written in double or single quotes. .. joins two texts, # gives the length. \n is a line break, \" a quote inside the text. In Lullaby a plain string is always literal text; component("<red>Hi") reads MiniMessage.
+example:
+  local name = "Steve"
+  local hello = "Hello, " .. name .. "!"
+  print(#hello)   -- 13
+status: unconfirmed
+]]
+
+--[[doc
+id: tables
+name: tables and lists
+kind: lua
+group: Lua
+words: table list array map dictionary
+syntax: { 1, 2, 3 }   { key = value }   t[k]   t.key   #t
+lead: A table is Lua's only container. Written with numbers it is a list, counted from 1; with names it holds named fields. t.key is short for t["key"]. #t is the length of a list.
+example:
+  local list = { "a", "b", "c" }
+  print(list[1], #list)        -- a  3
+  local spawn = { x = 0, y = 64 }
+  spawn.z = 0
+  list[#list + 1] = "d"        -- add to the end
+status: unconfirmed
+]]
+
+--[[doc
+id: methods
+name: . and :
+kind: lua
+group: Lua
+words: method colon dot self
+syntax: t.field   v:method(...)
+lead: . reads a field. : calls a method on a value: v:offset(1, 0, 0) is short for v.offset(v, 1, 0, 0). In Lullaby, reading uses ( ), . and :, and doing uses { }.
+example:
+  local pos = vec3(1, 64, 1)
+  print(pos.x)                  -- 1
+  local up = pos:offset(0, 1, 0)
+status: unconfirmed
+]]
+
+--[[doc
+id: and
+name: and, or, not
+kind: lua
+group: Lua
+words: logic boolean default
+syntax: a and b   a or b   not a
+lead: and is true when both sides are; or when one side is; not turns true and false around. or also gives a default: x or 5 is x, or 5 when x is nil or false.
+example:
+  local amount = arg or 1
+  if not p.online and amount > 0 then return end
+status: unconfirmed
+]]
+
+--[[doc
+id: if
+name: if
+kind: lua
+group: Lua
+words: condition then else elseif when check
+syntax: if cond then ... elseif cond then ... else ... end
+lead: Runs a block only when the condition is true (not nil or false). elseif and else are optional.
+example:
+  if count > 10 then
+    print("many")
+  elseif count > 0 then
+    print("some")
+  else
+    print("none")
+  end
+status: unconfirmed
+]]
+
+--[[doc
+id: while
+name: while
+kind: lua
+group: Lua
+words: loop repeat condition
+syntax: while cond do ... end
+lead: Repeats the block as long as the condition is true. It checks before each round.
+example:
+  local n = 1
+  while n < 100 do
+    n = n * 2
+  end
+status: unconfirmed
+]]
+
+--[[doc
+id: repeat
+name: repeat
+kind: lua
+group: Lua
+words: loop until
+syntax: repeat ... until cond
+lead: Repeats the block until the condition is true. It checks after each round, so the block runs at least once.
+example:
+  local n = 0
+  repeat
+    n = n + 1
+  until n >= 3
+status: unconfirmed
+]]
+
+--[[doc
+id: for
+name: for (counting)
+kind: lua
+group: Lua
+words: loop count number step
+syntax: for i = first, last, step do ... end
+lead: Counts i from first to last (both included). step is optional (default 1) and may be negative.
+example:
+  for i = 1, 3 do print(i) end        -- 1 2 3
+  for i = 10, 1, -3 do print(i) end   -- 10 7 4 1
+status: unconfirmed
+]]
+
+--[[doc
+id: in
+name: for ... in (lists and tables)
+kind: lua
+group: Lua
+words: loop pairs ipairs each list table iterate
+syntax: for i, v in ipairs(list) do ... end   for k, v in pairs(t) do ... end
+lead: ipairs goes through a list in order (1, 2, 3, ...) and stops at the first nil. pairs goes through every field of a table, in no fixed order.
+example:
+  for i, p in ipairs(online_players()) do
+    message{ player = p, text = "Hi #" .. i }
+  end
+  for key, value in pairs({ a = 1, b = 2 }) do print(key, value) end
+status: unconfirmed
+]]
+
+--[[doc
+id: break
+name: break
+kind: lua
+group: Lua
+words: stop loop exit
+syntax: break
+lead: Leaves the innermost loop at once.
+example:
+  for i, p in ipairs(online_players()) do
+    if p.name == "Notch" then break end
+  end
+status: unconfirmed
+]]
+
+--[[doc
+id: goto
+name: goto
+kind: lua
+group: Lua
+words: label jump continue skip
+syntax: goto name   ::name::
+lead: Jumps to a label in the same function. Mostly used to skip to the next round of a loop, since Lua has no continue.
+example:
+  for i = 1, 5 do
+    if i == 3 then goto continue end
+    print(i)
+    ::continue::
+  end
+status: unconfirmed
+]]
+
+--[[doc
+id: function
+name: functions
+kind: lua
+group: Lua
+words: function def define call parameter argument
+syntax: local function name(a, b) ... end   function(a) ... end
+lead: A function is a block of code you can call by name, with values passed in. Functions are values too: they can be stored in variables and tables and passed to on{ }, run{ } and others.
+example:
+  local function greet(p)
+    message{ player = p, text = "Hello " .. p.name }
+  end
+  greet(player("Notch"))
+status: unconfirmed
+]]
+
+--[[doc
+id: return
+name: return
+kind: lua
+group: Lua
+words: result give back multiple values
+syntax: return a, b, ...
+lead: Ends the function and gives values back. A function can give back several values at once.
+example:
+  local function min_max(a, b)
+    if a < b then return a, b end
+    return b, a
+  end
+  local low, high = min_max(7, 3)   -- 3, 7
+status: unconfirmed
+]]
+
+--[[doc
+id: varargs
+name: ... (any number of values)
+kind: lua
+group: Lua
+words: varargs variable arguments dots select
+syntax: function f(...) local list = { ... } end
+lead: ... in a function's parameters takes any number of values. { ... } puts them in a list; select("#", ...) counts them, nils included.
+example:
+  local function sum(...)
+    local total = 0
+    for _, n in ipairs({ ... }) do total = total + n end
+    return total
+  end
+  print(sum(1, 2, 3))   -- 6
+status: unconfirmed
+]]
+
+--[[doc
+id: closures
+name: closures
+kind: lua
+group: Lua
+words: upvalue capture inner function
+lead: A function written inside another can still use that one's local variables later, even after the outer function ended. Handy for handlers that need values from where they were made.
+example:
+  local function counter()
+    local n = 0
+    return function() n = n + 1; return n end
+  end
+  local next_number = counter()
+  print(next_number(), next_number())   -- 1  2
+status: unconfirmed
+]]
+
+--[[doc
+id: pcall
+name: pcall and error
+kind: lua
+group: Lua
+words: error catch try exception throw
+syntax: error("text")   local ok, result = pcall(f, ...)
+lead: error stops the code with a message (Lullaby shows it in chat to ops and in the console). pcall calls a function and catches its error: ok is false and result is the message, instead of the script stopping.
+example:
+  local ok, err = pcall(function()
+    error("something broke")
+  end)
+  if not ok then print("caught: " .. err) end
+status: unconfirmed
+]]
+
+--[[doc
+id: string_lib
+name: string functions
+kind: lua
+group: Lua
+words: string upper lower sub find format rep gsub match split
+syntax: s:upper()  s:lower()  s:sub(i, j)  s:find(x)  s:rep(n)  s:gsub(a, b)  s:match(p)  string.format(f, ...)
+lead: Lua's own text functions; each can be called with : on a string. Positions count from 1; negative ones count from the end. find, match and gsub use Lua patterns, not regex.
+example:
+  local s = "Hello World"
+  print(s:upper())          -- HELLO WORLD
+  print(s:sub(1, 5))        -- Hello
+  print(string.format("%d coins", 5))
+status: unconfirmed
+]]
+
+--[[doc
+id: table_lib
+name: table functions
+kind: lua
+group: Lua
+words: table insert remove sort concat join
+syntax: table.insert(t, v)  table.insert(t, i, v)  table.remove(t, i)  table.sort(t, f)  table.concat(t, sep)
+lead: Lua's own list functions: add, remove, sort, and join a list of texts into one text.
+example:
+  local names = { "c", "a", "b" }
+  table.sort(names)
+  print(table.concat(names, ", "))   -- a, b, c
+status: unconfirmed
+]]
+
+--[[doc
+id: math_lib
+name: math functions
+kind: lua
+group: Lua
+words: math random floor ceil abs min max sqrt round
+syntax: math.floor(x)  math.ceil(x)  math.abs(x)  math.min(...)  math.max(...)  math.sqrt(x)  math.random(a, b)  math.pi
+lead: Lua's own math functions. math.random(a, b) gives a whole number from a to b; math.random() a decimal from 0 to 1.
+example:
+  local roll = math.random(1, 6)
+  local rounded = math.floor(2.7 + 0.5)   -- 3
+status: unconfirmed
+]]
+
+--[[doc
+id: locked
+name: locked libraries
+kind: lua
+group: Lua
+words: io os ffi debug require sandbox unlock config file
+lead: For safety, io, os, ffi, debug and require (C modules) are locked: they don't exist in scripts. Each can be unlocked in plugins/lullaby/config.lua under unlock (io, os, ffi, debug, modules). print writes to the server console.
+example:
+  -- plugins/lullaby/config.lua
+  return {
+    unlock = { io = true },
+  }
+status: unconfirmed
+]]
+
+--[[doc
+id: metatables
+name: metatables
+kind: lua
+group: Lua
+words: metatable setmetatable __index __add operator class object
+syntax: setmetatable(t, mt)   getmetatable(t)
+lead: A metatable changes how a table behaves: __index for missing fields, __add and others for operators, __tostring for tostring. Needed for own classes; most scripts never need it. Lullaby's own values have hidden metatables.
+example:
+  local Point = {}
+  Point.__index = Point
+  function Point.new(x) return setmetatable({ x = x }, Point) end
+  function Point:double() return self.x * 2 end
+  print(Point.new(4):double())   -- 8
+status: unconfirmed
+]]

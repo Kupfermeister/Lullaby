@@ -40,12 +40,12 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
- * Codec values (build step 3a, Kupfermeister 2026-11-15): item stacks, their component patch and text components, converted
+ * Codec values: item stacks, their component patch and text components, converted
  * with vanilla's own codecs through {@link LuaOps}. Lua sees plain tables in codec shape (the same shape as datapack
  * JSON). Item stacks are kept as vanilla as possible: no checks of Lullaby's own; the patch is exactly vanilla's
  * (only the changes against the item type's defaults, removals as "!minecraft:food"). Main thread only.
  *
- * <p>Text (Kupfermeister 2026-11-15): strings inside tables are literal text, exactly as vanilla's codecs read them. MiniMessage
+ * <p>Text: strings inside tables are literal text, exactly as vanilla's codecs read them. MiniMessage
  * is read only by component("...") and written only by tostring(component).
  */
 public final class Codecs {
@@ -142,7 +142,7 @@ public final class Codecs {
 
     /**
      * Makes the tree ready for a vanilla codec: a show_item hover's {@code item = <item_stack>} becomes vanilla's flat
-     * fields (id, count, components; Kupfermeister 2026-11-15); an item_stack anywhere else is an error.
+     * fields (id, count, components; ); an item_stack anywhere else is an error.
      */
     static Object unwrap(Object tree) {
         if (tree instanceof ItemRef) {
@@ -261,7 +261,7 @@ public final class Codecs {
     }
 
     /**
-     * Components holding raw NBT (Kupfermeister 2026-11-15): shown as SNBT text ("{Count:5b}") so NBT number kinds (byte,
+     * Components holding raw NBT: shown as SNBT text ("{Count:5b}") so NBT number kinds (byte,
      * short, float, ...) survive the trip through Lua; read back with vanilla's SNBT parser. The table form comes
      * with the nbt type (build step 3b).
      */
@@ -430,7 +430,7 @@ public final class Codecs {
         return ItemStack.matches(a, b);
     }
 
-    // ---- text components (plain Lua tables in vanilla codec shape; Kupfermeister 2026-11-15) ----
+    // ---- text components (plain Lua tables in vanilla codec shape) ----
 
     /** MiniMessage text to a vanilla component (only component("...") reads MiniMessage). */
     public static Component componentMini(String text) {

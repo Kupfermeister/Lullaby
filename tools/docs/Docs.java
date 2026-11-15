@@ -8,18 +8,18 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
- * Lullaby's docs generator (Kupfermeister 2026-11-15). Not part of the plugin: a single-file Java program, run with
- * `java tools/docs/Docs.java <lib dir> <out dir> [drafts]` (Gradle task `docs`, and the GitHub job on every push).
+ * Lullaby's docs generator. Not part of the plugin: a single-file Java program, run with
+ * `java tools/docs/Docs.java <lib dir> <out dir>` (Gradle task `docs`, and the GitHub job on every push).
  *
  * Bricks, each replaceable on its own; they only meet in docs.json (the ONE fixed contract, see FORMAT below):
  *   reader   - reads the `--[[doc ... ]]` blocks in lib/*.lua and finds the connections ("uses" / "used by")
  *   builders - docs.json -> index.html (site.html with the data put in), lullaby.md, lullaby.d.lua (VS Code)
  *
  * A doc block sits right above `function lib.NAME(` and has one `key: value` per line:
- *   name, kind (doing | reading | event | type), group, syntax, lead, note, returns, status (confirmed | unconfirmed),
- *   words (extra search words), arg: name | types | text (repeatable), expert: key | value (repeatable).
- * Every handwritten text needs Kupfermeister's yes: entries stay "unconfirmed" and are left out of the public site until then
- * (the `drafts` argument shows them, for review).
+ *   name, kind (doing | reading | event | type | lua), group, syntax, lead, note, returns, example (code; indented
+ *   lines below continue it), status (confirmed | unconfirmed), words (extra search words), arg: name | types | text
+ *   (repeatable), expert: key | value (repeatable). Topic pages without a function (tools/docs/lua.txt) give id:.
+ * "confirmed" means a human reviewed the text. Everything is published; unconfirmed texts carry a warning.
  *
  * Connections are found, not written: inside a function's body, a call of another documented library function
  * (`lib.name(` or `lib.name{`) or of a raw Java function (`J.name(`) counts as "uses". Raw Java functions get their own
@@ -27,12 +27,14 @@ import java.util.stream.Stream;
  *
  * FORMAT of docs.json (version 1). New fields may be added at any time; builders ignore fields they don't know.
  *   { "version": 1, "minecraft": "...", "entries": [ { "id", "name", "kind", "group", "syntax", "lead", "note",
- *     "returns", "status", "words", "args": [[name, types, text]], "expert": [[key, value]], "src": "file:line",
+ *     "returns", "example", "status", "words", "args": [[name, types, text]], "expert": [[key, value]], "src": "file:line",
  *     "uses": [id], "usedBy": [id] } ] }
  */
 public final class Docs {
 
-    private static final Pattern BLOCK = Pattern.compile("--\\[\\[doc\\r?\\n(.*?)]]\\s*\\r?\\nfunction lib\\.(\\w+)\\(",
+    // A block ends at a line that is just "]]". Right after it may come `function lib.NAME(` (the block's id); a block
+    // without that names itself with `id:` (topic pages, e.g. the Lua pages in tools/docs/lua.txt).
+    private static final Pattern BLOCK = Pattern.compile("--\\[\\[doc\\n(.*?)\\n]]\\n(?:function lib\\.(\\w+)\\()?",
             Pattern.DOTALL);
     // Library files run with the real _G as globals, so a plain `tostring(` is Lua's own: only `lib.name(` is lib's.
     private static final Pattern CALL = Pattern.compile("\\blib\\.(\\w+)\\s*[({]");
@@ -45,14 +47,14 @@ public final class Docs {
 
     public static void main(String[] argv) throws IOException {
         Path lib = Path.of(argv[0]), out = Path.of(argv[1]);
-        boolean drafts = argv.length > 2 && argv[2].equals("drafts");
         Path here = Path.of("tools/docs"); // run from the project folder
 
         Map<String, Entry> entries = new LinkedHashMap<>();
         Map<String, String> bodies = new HashMap<>();
         List<Path> files;
         try (Stream<Path> s = Files.list(lib)) { files = s.filter(p -> p.toString().endsWith(".lua")).sorted().toList(); }
-        for (Path file : files) read(file, entries, bodies);
+        read(here.resolve("lua.txt"), "tools/docs/lua.txt", entries, bodies); // first: the Lua group leads the sidebar
+        for (Path file : files) read(file, "src/main/resources/lullaby/lib/" + file.getFileName(), entries, bodies);
 
         // Connections: documented library functions and raw Java functions called inside each body.
         for (Entry e : List.copyOf(entries.values())) {
@@ -69,18 +71,8 @@ public final class Docs {
         }
         for (Entry e : entries.values()) for (String u : e.uses()) entries.get(u).usedBy().add(e.id());
 
-        // Public site: no unconfirmed entries (and no links to them); raw Java pages only if something shown uses them.
-        List<Entry> shown = new ArrayList<>();
-        for (Entry e : entries.values()) {
-            if (!drafts && "unconfirmed".equals(e.f().get("status"))) continue;
-            shown.add(e);
-        }
-        Set<String> ids = new HashSet<>();
-        for (Entry e : shown) ids.add(e.id());
-        shown.removeIf(e -> e.f().get("kind").equals("java") && e.usedBy().stream().noneMatch(ids::contains));
-        ids.clear();
-        for (Entry e : shown) ids.add(e.id());
-        for (Entry e : shown) { e.uses().retainAll(ids); e.usedBy().retainAll(ids); }
+        // Everything is shown; texts no human has reviewed yet (status unconfirmed) carry a warning on the page.
+        List<Entry> shown = new ArrayList<>(entries.values());
 
         String minecraft = minecraftVersion();
         String json = json(shown, minecraft);
@@ -95,34 +87,48 @@ public final class Docs {
         }
         Files.writeString(out.resolve("lullaby.md"), markdown(shown, minecraft));
         Files.writeString(out.resolve("lullaby.d.lua"), luals(shown));
-        System.out.println("docs: " + shown.size() + " entries -> " + out + (drafts ? " (with drafts)" : ""));
+        System.out.println("docs: " + shown.size() + " entries -> " + out);
     }
 
     // ---- reader ----------------------------------------------------------------------------------------------
 
-    private static void read(Path file, Map<String, Entry> entries, Map<String, String> bodies) throws IOException {
+    private static void read(Path file, String src, Map<String, Entry> entries, Map<String, String> bodies)
+            throws IOException {
         String text = Files.readString(file, StandardCharsets.UTF_8).replace("\r\n", "\n");
         Matcher m = BLOCK.matcher(text);
         while (m.find()) {
-            String id = m.group(2);
             Map<String, String> f = new LinkedHashMap<>();
             List<String[]> args = new ArrayList<>(), expert = new ArrayList<>();
-            f.put("id", id);
-            for (String line : m.group(1).split("\n")) {
+            // `key: value` per line; an indented line (tab or 2 spaces) or an empty line continues the key before it,
+            // keeping the line break (for `example:` code).
+            String last = null;
+            for (String line : m.group(1).split("\n", -1)) {
+                if (last != null && (line.isBlank() || line.startsWith("\t") || line.startsWith("  "))) {
+                    String more = line.startsWith("\t") ? line.substring(1) : line.startsWith("  ") ? line.substring(2) : "";
+                    f.merge(last, more, (a, b) -> a.isEmpty() ? b : a + "\n" + b);
+                    continue;
+                }
                 int colon = line.indexOf(':');
                 if (colon < 0) continue;
                 String key = line.substring(0, colon).trim(), value = line.substring(colon + 1).trim();
+                last = null;
                 if (key.equals("arg")) args.add(split(value, 3));
                 else if (key.equals("expert")) expert.add(split(value, 2));
-                else f.merge(key, value, (a, b) -> a + " " + b);
+                else { f.merge(key, value, (a, b) -> a + " " + b); last = key; }
             }
+            for (var kv : f.entrySet()) kv.setValue(kv.getValue().stripTrailing());
+            String id = m.group(2) != null ? m.group(2) : f.get("id");
+            if (id == null) throw new IllegalStateException(src + ": a doc block without id: and without function lib.NAME");
+            f.put("id", id);
             f.putIfAbsent("name", id);
             f.putIfAbsent("kind", "doing");
             f.putIfAbsent("group", "Other");
             f.putIfAbsent("status", "unconfirmed");
-            int line = 1 + (int) text.substring(0, m.start(2)).chars().filter(c -> c == '\n').count();
-            f.put("src", "src/main/resources/lullaby/lib/" + file.getFileName() + ":" + line);
+            int at = m.group(2) != null ? m.start(2) : m.start();
+            int line = 1 + (int) text.substring(0, at).chars().filter(c -> c == '\n').count();
+            f.put("src", src + ":" + line);
             entries.put(id, new Entry(f, args, expert, new LinkedHashSet<>(), new LinkedHashSet<>()));
+            if (m.group(2) == null) continue; // a topic page: no code, no connections
             // Strings and comments are no calls.
             bodies.put(id, body(text, m.end()).replaceAll("--[^\\n]*", "")
                     .replaceAll("\"(\\\\.|[^\"\\\\])*\"|'(\\\\.|[^'\\\\])*'", "\"\""));
@@ -233,20 +239,20 @@ public final class Docs {
         StringBuilder b = new StringBuilder("---@meta\n-- Lullaby library definitions for the Lua language server. Generated, do not edit.\n");
         for (Entry e : list) {
             String kind = e.f().get("kind");
-            if (kind.equals("java") || kind.equals("type")) continue;
+            if (kind.equals("java") || kind.equals("type") || kind.equals("lua")) continue;
             b.append('\n');
             if (e.f().containsKey("lead")) b.append("--- ").append(e.f().get("lead")).append('\n');
             boolean named = e.f().getOrDefault("syntax", "").contains(e.id() + "{");
             if (named && !e.args().isEmpty()) {
                 b.append("---@class lullaby.").append(e.id()).append("_args\n");
                 for (String[] a : e.args())
-                    for (String n : a[0].split("/"))
-                        b.append("---@field ").append(n.trim()).append("? ").append(luaType(a[1])).append(' ').append(a[2]).append('\n');
+                    for (String n : a[0].replace("?", "").split("/"))
+                        b.append("---@field ").append(n.trim().matches("\\d+") ? "[" + n.trim() + "]" : n.trim()).append("? ").append(luaType(a[1])).append(' ').append(a[2]).append('\n');
                 b.append("---@param a lullaby.").append(e.id()).append("_args\nfunction ").append(e.id()).append("(a) end\n");
             } else {
-                for (String[] a : e.args()) b.append("---@param ").append(a[0].split("/")[0].trim()).append(' ').append(luaType(a[1])).append('\n');
+                for (String[] a : e.args()) b.append("---@param ").append(a[0].replace("?", "").split("/")[0].trim()).append(' ').append(luaType(a[1])).append('\n');
                 StringJoiner params = new StringJoiner(", ");
-                for (String[] a : e.args()) params.add(a[0].split("/")[0].trim());
+                for (String[] a : e.args()) params.add(a[0].replace("?", "").split("/")[0].trim());
                 b.append("function ").append(e.id()).append('(').append(params).append(") end\n");
             }
         }

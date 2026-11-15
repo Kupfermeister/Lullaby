@@ -133,6 +133,16 @@ end
 -- Public functions
 -- ---------------------------------------------------------------------------------------------------------------
 
+--[[doc
+id: task
+name: task
+kind: type
+group: Tasks
+words: task handle alive running
+syntax: t.alive   t.id
+lead: A running function, from run{ }. t.alive is true until it ended; t.id is the id given to run{ } (or nil). Fields can't be changed. Stop it with stop{ task = t }.
+status: unconfirmed
+]]
 local TASK_META = {
 	__index = function(handle, key)
 		local task = handles[handle]
@@ -160,11 +170,11 @@ words: task start coroutine async thread
 syntax: run{ f, args = { ... }, final = function, id = value }
 lead: Starts f as a task that may wait. Returns the task, or nil if a task of the same function with that id is running.
 arg: 1 | function | The function to run.
-arg: args | table | Values passed to f.
-arg: final | function | Runs when the task ends, also on stop, error, reload and server stop. Never waits.
-arg: id | any | One running task per function and id.
+arg: args? | table | A list: f gets args[1], args[2], ...; final gets the same values.
+arg: final? | function | Runs when the task ends, also on stop, error, reload and server stop. Never waits.
+arg: id? | any | One running task per function and id. Same function means the same place in the code, so a function written inside a handler counts as one.
 returns: task · nil
-status: confirmed
+status: unconfirmed
 ]]
 function lib.run(a)
 	if type(a) ~= "table" then error("run needs { }: run{ f, args = { ... } }", 2) end
@@ -222,8 +232,8 @@ syntax: wait( number | text )
 lead: Pauses the task. A number is seconds; text is a number with one unit: t (tick), s, m, h, d.
 arg: duration | number · text | 2, "3t", "2s", "1m", "1h", "1d".
 returns: nothing
-note: Only inside a task (an event handler or run{ }). Inside final it is ignored with a warning.
-status: confirmed
+note: Only inside a task (an event handler, a command function or run{ }). Inside final it is ignored with a warning.
+status: unconfirmed
 ]]
 function lib.wait(duration)
 	local co = co_running()
@@ -252,9 +262,9 @@ words: cancel end kill
 syntax: stop{ task = task, force = boolean }
 lead: Ends a task and runs its final. Returns false if the task had already ended.
 arg: task | task | The task from run{ }.
-arg: force | boolean | true skips final.
+arg: force? | boolean | true skips final.
 returns: boolean
-status: confirmed
+status: unconfirmed
 ]]
 function lib.stop(a)
 	if type(a) ~= "table" then error("stop needs { }: stop{ task = t }", 2) end

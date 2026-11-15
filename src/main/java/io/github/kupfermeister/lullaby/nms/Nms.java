@@ -149,6 +149,33 @@ public final class Nms {
         return ResourceKey.create(Registries.DIMENSION, Identifier.parse(id));
     }
 
+    // ---- the raw Java door (lua/JavaDoor.java): what Lullaby's slots hold <-> Bukkit objects ----
+
+    /** The Bukkit world for a world slot's key; null if that world is not loaded. */
+    @SuppressWarnings("unchecked")
+    public static org.bukkit.World bukkitWorld(Object key) {
+        ServerLevel level = server().getLevel((ResourceKey<Level>) key);
+        return level == null ? null : level.getWorld();
+    }
+
+    /** A Bukkit world's full id ("minecraft:overworld"), the id Lullaby's world objects use. */
+    public static String worldIdOf(org.bukkit.World world) {
+        return ((org.bukkit.craftbukkit.CraftWorld) world).getHandle().dimension().identifier().toString();
+    }
+
+    /** A Bukkit copy of an item stack slot's vanilla stack. */
+    public static org.bukkit.inventory.ItemStack bukkitItem(Object stack) {
+        return org.bukkit.craftbukkit.inventory.CraftItemStack.asBukkitCopy((net.minecraft.world.item.ItemStack) stack);
+    }
+
+    /** A vanilla copy of a Bukkit or vanilla item stack, for a new item stack slot; null for anything else. */
+    public static Object vanillaItem(Object o) {
+        if (o instanceof org.bukkit.inventory.ItemStack bukkit)
+            return org.bukkit.craftbukkit.inventory.CraftItemStack.asNMSCopy(bukkit);
+        if (o instanceof net.minecraft.world.item.ItemStack stack) return stack.copy();
+        return null;
+    }
+
     // ---- block states (vanilla's state numbers: Block.getId / Block.stateById) ----
 
     /** Vanilla's block state text ("oak_stairs[facing=north]") to its state number; throws with vanilla's reason. */

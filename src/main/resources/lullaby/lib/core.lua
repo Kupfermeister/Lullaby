@@ -234,7 +234,7 @@ end
 -- ---------------------------------------------------------------------------------------------------------------
 
 local DEFAULTS = {
-	unlock = { io = false, os = false, ffi = false, debug = false, modules = false },
+	unlock = { io = false, os = false, ffi = false, debug = false, modules = false, java = false },
 	long_wait_warning = true,
 	error_repeat_seconds = 10,
 	particle_limit = 100000,
@@ -318,7 +318,8 @@ end
 
 -- Builds `lib` (what scripts see) from the safe standard functions plus unlocked libraries, then removes the
 -- dangerous ones from the real _G too.
--- The `java` table LuaJava adds can reach any Java class: it is removed always (raw doors come later as x.raw).
+-- The `java` table LuaJava adds can reach any Java class: it is removed always. unlock.java gives scripts Lullaby's
+-- own `java` table instead (java.lua): the same reach, but with Lullaby's errors and the script time limit.
 -- unlock.debug also brings the functions that reach into the Lua state shared by every script: getfenv/setfenv
 -- (other functions' globals, also the library's), collectgarbage/gcinfo (stopping the garbage collector), newproxy,
 -- and jit (turning LuaJIT's compiler off for everyone).
@@ -395,6 +396,7 @@ status: unconfirmed
 		lib.collectgarbage, lib.gcinfo, lib.newproxy = collectgarbage, gcinfo, newproxy
 	end
 	if unlock.modules then lib.require, lib.module, lib.package = require, module, package end
+	if unlock.java == true then lib.java = I.java_door() end
 	for _, name in ipairs({ "io", "os", "debug", "require", "module", "package", "dofile", "loadfile", "java" }) do
 		_G[name] = nil
 	end

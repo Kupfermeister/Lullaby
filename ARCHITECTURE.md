@@ -40,6 +40,7 @@ Java, under `src/main/java/io/github/kupfermeister/lullaby/`:
 | [lua/Wire.java](src/main/java/io/github/kupfermeister/lullaby/lua/Wire.java) | Lua tables as bytes in LuaJIT's own `string.buffer` format, so a whole table crosses in one call. |
 | [lua/Slots.java](src/main/java/io/github/kupfermeister/lullaby/lua/Slots.java) | Lua objects carry a slot number; this holds what the number stands for (a UUID, a world, an event). |
 | [lua/LuaText.java](src/main/java/io/github/kupfermeister/lullaby/lua/LuaText.java) | Text as real UTF-8 (LuaJava's own string conversion breaks emoji). |
+| [lua/JavaDoor.java](src/main/java/io/github/kupfermeister/lullaby/lua/JavaDoor.java) | The raw Java door (`unlock.java`): loads classes, picks the method that fits the arguments, turns Java values into Lua ones. Made only when unlocked. |
 | [lua/Watchdog.java](src/main/java/io/github/kupfermeister/lullaby/lua/Watchdog.java) | `script_time_limit`: stops scripts that run too long. Runs a thread (see Threads). |
 | [event/EventBridge.java](src/main/java/io/github/kupfermeister/lullaby/event/EventBridge.java) | The hand-picked Paper events and their fields (the one list, `EVENTS`). |
 | [error/ErrorReporter.java](src/main/java/io/github/kupfermeister/lullaby/error/ErrorReporter.java) | Error and warning format, repeat collapsing, console and ops. |
@@ -47,7 +48,8 @@ Java, under `src/main/java/io/github/kupfermeister/lullaby/`:
 
 The `nms` package ("net.minecraft server", Minecraft's own code) is the **only** package that may use
 `net.minecraft.*`, CraftBukkit or Paper internals (`io.papermc.paper.adventure`). So a Minecraft update only needs
-changes there. Names are Mojang's own, which Paper uses at runtime, so nothing is remapped.
+changes there. The raw Java door lets scripts reach Minecraft's classes by name at runtime; Lullaby's own code
+never goes through it, so this rule stays true for Lullaby itself. Names are Mojang's own, which Paper uses at runtime, so nothing is remapped.
 
 | File in `nms/` | What it does |
 |---|---|
@@ -71,6 +73,7 @@ what it holds and gets three tables: `J` Java functions, `lib` what scripts see 
 | [lazy.lua](src/main/resources/lullaby/lib/lazy.lua) | The wire, item stacks, components, `from_json`, Lullaby's own `pairs`/`next` (LuaJIT ignores `__pairs`). |
 | [commands.lua](src/main/resources/lullaby/lib/commands.lua) | `command{}`, `refresh_commands{}`, `online_players()`. |
 | [loader.lua](src/main/resources/lullaby/lib/loader.lua) | Loading script files, `import`. |
+| [java.lua](src/main/resources/lullaby/lib/java.lua) | The raw Java door's Lua side (table `java`, only when `unlock.java` is on) and its docs page. |
 
 Other files:
 
@@ -104,6 +107,10 @@ Today two places meet other threads:
   [ScriptCommands.java](src/main/java/io/github/kupfermeister/lullaby/nms/ScriptCommands.java) Brigadier's `requires`
   checks and suggestions never call Lua: they read a per-player snapshot that Lua computes on the main thread (on
   join, on reload, on `refresh_commands{}`).
+
+The raw Java door ([JavaDoor.java](src/main/java/io/github/kupfermeister/lullaby/lua/JavaDoor.java)) takes no Lua
+functions, so Java can never call a script back and Lullaby never hands a raw object to another thread. A script can
+still start a thread through the door itself; the docs page says plainly that this is not safe.
 
 ## Fundamentals
 
@@ -142,7 +149,7 @@ Lua's disagree, loading stops with a message starting `Lullaby bug:`. Nothing lo
 **The engine.**
 - Version lock: it runs only on the exact Minecraft version it was built for. No compatibility layers: what is
   replaced is removed.
-- Dangerous Lua parts (`io`, `os`, `ffi`, `debug`, C modules) are locked by default and unlocked in the config
+- Dangerous Lua parts (`io`, `os`, `ffi`, `debug`, C modules) and the raw Java door are locked by default and unlocked in the config
   (README lists what each allows). Deliberate power needs an unlock; one script must not break another by accident.
 - Error format: `⚠ Error in <path> on line N` in red (warnings yellow, `Warning`), then gray lines: `via <event> →
   <calls>`, the Lua message without its `file:line:` prefix, and `N times in 10s` for collapsed repeats. The console
@@ -239,7 +246,6 @@ server and say which build is needed.
 
 ## Plans (not built)
 
-Marked so nobody mistakes them for features: an unlockable raw Java door for scripts (off by default, like `io`);
-events generated from Paper's own methods instead of the hand-picked list; script data that lives in Java and
+Marked so nobody mistakes them for features: events generated from Paper's own methods instead of the hand-picked list; script data that lives in Java and
 survives reloads; a generated packet system (`on_packet`, `send_packet`) on the same send core; entities and
 inventories; worker threads for big block edits; mixins as an optional add-on.

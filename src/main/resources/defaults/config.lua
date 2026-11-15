@@ -8,6 +8,8 @@ return {
     debug = false,   -- look into and change other functions, including Lullaby's own (also jit, collectgarbage,
                      -- getfenv, setfenv, gcinfo, newproxy)
     modules = false, -- require, module and native (C) modules; scripts use import instead
+    java = false,    -- any Java directly: Paper, Minecraft's own classes, other plugins (the table java; see the
+                     -- docs page "the Java door"). Can do anything at all, and breaks on Minecraft updates
   },
 
   -- Warn when a script waits longer than a day (tasks end on reload and restart; store a time in script data instead).

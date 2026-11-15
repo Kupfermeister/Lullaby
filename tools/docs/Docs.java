@@ -272,10 +272,13 @@ public final class Docs {
     /** Definitions for the Lua language server (VS Code autocomplete). Types: "list of X" -> X[], text -> string. */
     private static String luals(List<Entry> list) {
         StringBuilder b = new StringBuilder("---@meta\n-- Lullaby library definitions for the Lua language server. Generated, do not edit.\n");
+        Set<String> tables = new HashSet<>(); // "java" of java.class: declared once, before its first function
         for (Entry e : list) {
             String kind = e.f().get("kind");
             if (kind.equals("java") || kind.equals("type") || kind.equals("lua")) continue;
             b.append('\n');
+            int dot = e.id().indexOf('.');
+            if (dot > 0 && tables.add(e.id().substring(0, dot))) b.append(e.id(), 0, dot).append(" = {}\n");
             if (e.f().containsKey("lead")) b.append("--- ").append(e.f().get("lead")).append('\n');
             boolean named = e.f().getOrDefault("syntax", "").contains(e.id() + "{");
             if (named && !e.args().isEmpty()) {

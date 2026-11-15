@@ -54,9 +54,10 @@ when a script you trust needs it, because it then works for every script on the 
 | `ffi` | call any native code directly | can crash the server or do anything at all |
 | `debug` | look into and change other functions, also Lullaby's own; `jit`, `collectgarbage`, `getfenv`, `setfenv`, `gcinfo`, `newproxy` | one script could break every other script and the library |
 | `modules` | `require`, `module` and native (C) modules | loads code from outside `scripts/`; scripts use `import` instead |
+| `java` | use any Java directly through the table `java`: Paper's and Bukkit's API, Minecraft's own classes, other plugins (the docs page "the Java door") | can do anything at all, like `io`, `os` and `ffi` together, and raw code breaks on Minecraft updates |
 
-LuaJava's `java` table (a way to reach any Java class) is always removed. *Planned:* an unlockable door to raw Java
-for experts, also off by default.
+LuaJava's own `java` table (a way to reach any Java class) is always removed; `unlock.java` gives Lullaby's own
+instead, with Lullaby's error messages and the script time limit.
 
 ## Honest limits
 

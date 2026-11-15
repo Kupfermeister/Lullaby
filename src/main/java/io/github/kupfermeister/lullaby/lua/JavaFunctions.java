@@ -284,6 +284,11 @@ final class JavaFunctions {
             Packets.stopSound(Wire.read(L.toBuffer(1)), slotLookup);
             return 0;
         });
+        // The raw Java door (config unlock.java): only called when unlocked, so when locked none of it exists.
+        addFree(lua, "java_door", L -> {
+            JavaDoor.fill(L, slots);
+            return 1;
+        });
         add(lua, "from_json", L -> {
             Object value = Codecs.fromJson(string(L, 1), string(L, 2));
             Object[] text = Codecs.componentOutIfText(value, addSlot);
@@ -293,8 +298,11 @@ final class JavaFunctions {
         });
     }
 
-    /** A library function; a script past the time limit is stopped here, at its next call into the game. */
-    private static void add(Lua lua, String name, JFunction function) {
+    /**
+     * A library function (also each raw Java door function, see JavaDoor.java); a script past the time limit is
+     * stopped here, at its next call into the game. LinkageError: a class missing at runtime (raw door calls).
+     */
+    static void add(Lua lua, String name, JFunction function) {
         lua.push((JFunction) L -> {
             if (watchdog.expired()) {
                 L.push(watchdog.stop());
@@ -302,7 +310,7 @@ final class JavaFunctions {
             }
             try {
                 return function.__call(L);
-            } catch (RuntimeException e) {
+            } catch (RuntimeException | LinkageError e) {
                 L.push(e.getMessage() != null ? e.getMessage() : e.toString());
                 return -1;
             }

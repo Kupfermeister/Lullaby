@@ -385,8 +385,8 @@ id: locked
 name: locked libraries
 kind: lua
 group: Lua
-words: io os ffi debug require sandbox unlock config file jit collectgarbage getfenv setfenv bytecode string table math copy
-lead: For safety, io, os, ffi, debug and require (C modules) are locked: they don't exist in scripts. Each can be unlocked in plugins/lullaby/config.lua under unlock (io, os, ffi, debug, modules). unlock.debug also brings jit, collectgarbage, gcinfo, getfenv, setfenv and newproxy, because they reach into the Lua state every script shares. load and loadstring take Lua text only, never bytecode. Every script file gets its own copy of string, table, math, coroutine and bit: adding string.trim in one file changes nothing in the others, and method calls like s:upper() always use the original string functions. print writes to the server console.
+words: io os ffi debug require java sandbox unlock config file jit collectgarbage getfenv setfenv bytecode string table math copy
+lead: For safety, io, os, ffi, debug and require (C modules) are locked: they don't exist in scripts. Each can be unlocked in plugins/lullaby/config.lua under unlock (io, os, ffi, debug, modules). unlock.java opens the Java door (its own page): any Java directly. unlock.debug also brings jit, collectgarbage, gcinfo, getfenv, setfenv and newproxy, because they reach into the Lua state every script shares. load and loadstring take Lua text only, never bytecode. Every script file gets its own copy of string, table, math, coroutine and bit: adding string.trim in one file changes nothing in the others, and method calls like s:upper() always use the original string functions. print writes to the server console.
 example:
   -- plugins/lullaby/config.lua
   return {

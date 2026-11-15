@@ -20,7 +20,7 @@ import party.iroiro.luajava.luajit.LuaJit;
  */
 public final class LuaRuntime {
 
-    private static final String[] LIBRARY = {"core", "values", "tasks", "events", "objects", "lazy", "commands", "loader"};
+    private static final String[] LIBRARY = {"core", "values", "tasks", "events", "objects", "lazy", "commands", "loader", "java"};
 
     private final Lua lua;
     private final Slots slots = new Slots();

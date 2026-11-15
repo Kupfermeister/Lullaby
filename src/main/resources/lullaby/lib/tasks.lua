@@ -164,7 +164,7 @@ arg: args | table | Values passed to f.
 arg: final | function | Runs when the task ends, also on stop, error, reload and server stop. Never waits.
 arg: id | any | One running task per function and id.
 returns: task · nil
-status: unconfirmed
+status: confirmed
 ]]
 function lib.run(a)
 	if type(a) ~= "table" then error("run needs { }: run{ f, args = { ... } }", 2) end
@@ -223,7 +223,7 @@ lead: Pauses the task. A number is seconds; text is a number with one unit: t (t
 arg: duration | number · text | 2, "3t", "2s", "1m", "1h", "1d".
 returns: nothing
 note: Only inside a task (an event handler or run{ }). Inside final it is ignored with a warning.
-status: unconfirmed
+status: confirmed
 ]]
 function lib.wait(duration)
 	local co = co_running()
@@ -254,7 +254,7 @@ lead: Ends a task and runs its final. Returns false if the task had already ende
 arg: task | task | The task from run{ }.
 arg: force | boolean | true skips final.
 returns: boolean
-status: unconfirmed
+status: confirmed
 ]]
 function lib.stop(a)
 	if type(a) ~= "table" then error("stop needs { }: stop{ task = t }", 2) end

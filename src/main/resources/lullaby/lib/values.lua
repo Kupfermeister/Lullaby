@@ -188,16 +188,49 @@ local function in_range(what, x, y, z)
 	end
 end
 
+--[[doc
+name: block_pos( )
+kind: reading
+group: Values
+words: position block coordinates xyz
+syntax: block_pos( x, y, z ) → block_pos
+lead: A block position: whole numbers (vanilla BlockPos). + - == :offset(dx, dy, dz) :vec3() :chunk_pos() :section_pos(). Also takes a value of its own type (returned as is), a table { 1, 2, 3 } or { x = , y = , z = }, or command text like "1 64 -3".
+arg: x, y, z | number | Whole numbers.
+returns: block_pos
+status: confirmed
+]]
 function lib.block_pos(...)
 	local first = ...
 	if is(BLOCK, first) and select("#", ...) == 1 then return first end
 	return new_block(parts("block_pos", { "x", "y", "z" }, whole, ...))
 end
+--[[doc
+name: section_pos( )
+kind: reading
+group: Values
+words: section cube
+syntax: section_pos( x, y, z ) → section_pos
+lead: A 16×16×16 cube of blocks: whole numbers (vanilla SectionPos). == :offset :chunk_pos() :contains(block_pos). Also takes a value of its own type (returned as is), a table { 1, 2, 3 } or { x = , y = , z = }.
+arg: x, y, z | number | Whole numbers.
+returns: section_pos
+status: confirmed
+]]
 function lib.section_pos(...)
 	local first = ...
 	if is(SECTION, first) and select("#", ...) == 1 then return first end
 	return new_section(parts("section_pos", { "x", "y", "z" }, whole, ...))
 end
+--[[doc
+name: chunk_pos( )
+kind: reading
+group: Values
+words: chunk column
+syntax: chunk_pos( x, z ) → chunk_pos
+lead: A 16×16 column of blocks: whole numbers (vanilla ChunkPos). == :offset(dx, dz). Also takes a value of its own type (returned as is), a table { 1, 2, 3 } or { x = , y = , z = }.
+arg: x, z | number | Whole numbers.
+returns: chunk_pos
+status: confirmed
+]]
 function lib.chunk_pos(...)
 	local first = ...
 	if is(CHUNK, first) and select("#", ...) == 1 then return first end
@@ -283,6 +316,17 @@ local function new_vec(x, y, z, what)
 end
 I.new_vec3 = new_vec
 
+--[[doc
+name: vec3( )
+kind: reading
+group: Values
+words: vector position direction
+syntax: vec3( x, y, z ) → vec3
+lead: An exact position or direction: decimals (vanilla Vec3). + - * / unary - == :length() :normalize() :dot(v) :cross(v) :distance_to(v) :lerp(v, t) :x_rot(deg) :y_rot(deg) :z_rot(deg) :rotate(q) :block_pos(). Also takes a value of its own type (returned as is), a table { 1, 2, 3 } or { x = , y = , z = }.
+arg: x, y, z | number | Decimals.
+returns: vec3
+status: confirmed
+]]
 function lib.vec3(...)
 	local first = ...
 	if is(VEC, first) and select("#", ...) == 1 then return first end
@@ -521,11 +565,33 @@ local function corners(what, meta, kind, first, second, n)
 	return first, second
 end
 
+--[[doc
+name: aabb( )
+kind: reading
+group: Values
+words: box area region hitbox
+syntax: aabb( min, max ) → aabb
+lead: A box between two vec3 corners, max side open (vanilla AABB). == :contains(vec3) :intersects(aabb) :grow(n) :move(vec3) :center() :size().
+arg: min, max | vec3 | The corners.
+returns: aabb
+status: confirmed
+]]
 function lib.aabb(...)
 	local first, second = ...
 	if is(AABB, first) and select("#", ...) == 1 then return first end
 	return new_aabb(corners("aabb", VEC, "vec3", first, second, select("#", ...)))
 end
+--[[doc
+name: bounding_box( )
+kind: reading
+group: Values
+words: box area region cuboid
+syntax: bounding_box( min, max ) → bounding_box
+lead: A box between two block_pos corners, both sides included (vanilla BoundingBox). == :contains(block_pos) :intersects(bounding_box) :center().
+arg: min, max | block_pos | The corners.
+returns: bounding_box
+status: confirmed
+]]
 function lib.bounding_box(...)
 	local first, second = ...
 	if is(BB, first) and select("#", ...) == 1 then return first end
@@ -597,6 +663,18 @@ local GP = value_type("global_pos", { "dimension", "pos" }, gp_methods)
 local LOC = value_type("location", { "world", "pos", "rot" }, loc_methods)
 I.LOCATION_META = LOC
 
+--[[doc
+name: global_pos( )
+kind: reading
+group: Values
+words: dimension position
+syntax: global_pos( dimension, block_pos ) → global_pos
+lead: A block position in a dimension (vanilla GlobalPos). Also takes { dimension = , pos = }.
+arg: dimension | text | An id like "overworld".
+arg: block_pos | block_pos | The position.
+returns: global_pos
+status: confirmed
+]]
 function lib.global_pos(...)
 	local first, second = ...
 	local n = select("#", ...)
@@ -619,6 +697,19 @@ GP.__tostring = function(g) return tostring(g[2]) .. " in " .. g[1] end -- FORMA
 local ZERO_ROT = new_yp(0, 0)
 function I.new_location(world, pos, rot) return setmetatable({ world, pos, rot or ZERO_ROT }, LOC) end
 
+--[[doc
+name: location( )
+kind: reading
+group: Values
+words: where place spot
+syntax: location( world, vec3, yaw_pitch ) → location
+lead: A world, an exact position and a direction (yaw_pitch optional: 0, 0). == :block() :offset(vec3). Also takes { world = , pos = , rot = }.
+arg: world | world | The world.
+arg: pos | vec3 | The exact position.
+arg: rot | yaw_pitch | The direction.
+returns: location
+status: confirmed
+]]
 function lib.location(...)
 	local world, pos, rot = ...
 	local n = select("#", ...)

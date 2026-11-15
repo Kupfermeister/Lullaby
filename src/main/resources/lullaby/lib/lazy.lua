@@ -231,7 +231,7 @@ syntax: item_stack( "diamond_sword[damage=5]" | table | item_stack )
 lead: An item stack from vanilla's item text, a table, or a copy of another item stack.
 arg: x | text · table · item_stack | The item.
 returns: item_stack
-status: unconfirmed
+status: confirmed
 ]]
 function lib.item_stack(x)
 	local t = type(x)
@@ -292,7 +292,7 @@ syntax: component( "<red>Hi" | table | component )
 lead: Text as a component. Text is read as MiniMessage (the only place that does); a table or component is a checked fresh copy.
 arg: x | text · table · component | The text.
 returns: component
-status: unconfirmed
+status: confirmed
 ]]
 function lib.component(x)
 	local t = type(x)
@@ -312,7 +312,7 @@ lead: Reads vanilla's JSON as an item stack or a component.
 arg: text | text | The JSON.
 arg: type_name | text | "item_stack" or "component".
 returns: item_stack · component
-status: unconfirmed
+status: confirmed
 ]]
 function lib.from_json(text, type_name)
 	-- FORMAT: wrong arguments for from_json()

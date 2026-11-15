@@ -212,8 +212,8 @@ T.location = {
 T.block_state = {
 	kind = "value", impl = "interned", vanilla = "net.minecraft.world.level.block.state.BlockState",
 	fields = { type = "id of the block (\"minecraft:oak_stairs\")", ["<property>"] = "e.g. s.facing == \"north\"" },
-	accepts = "block_state, text \"oak_stairs[facing=north]\", { type = \"oak_stairs\", facing = \"north\" }, "
-		.. "{ Name = , Properties = { } } (codec shape); missing properties take their default. Inside codec tables "
+	accepts = "block_state, text \"oak_stairs[facing=north]\", { id = \"oak_slab\", type = \"top\" }, "
+		.. "{ id = , properties = { } } (vanilla codec shape; a properties key means this form); missing properties take their default. Inside codec tables "
 		.. "(a block particle) a block_state goes as vanilla's codec shape",
 	codec = "BlockState.CODEC", stream = "global id (Block.BLOCK_STATE_REGISTRY)",
 	text = "BlockStateParser.parseForBlock", arg = "BlockStateArgument", fix = "BLOCK_STATE", save = "codec",

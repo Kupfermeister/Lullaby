@@ -273,7 +273,7 @@ arg: 1 | text | The command name, without /.
 arg: 2 | function | Runs when the command is typed.
 returns: nothing
 note: Works only while scripts load (at the top of a file).
-status: unconfirmed
+status: confirmed
 ]]
 function lib.command(a)
 	if type(a) ~= "table" then error("command needs { }: command{ \"name\", function(c) ... end }", 2) end
@@ -330,7 +330,7 @@ syntax: refresh_commands{ player = player }
 lead: Works out again which script commands the player sees, and sends them.
 arg: player | player | The player.
 returns: nothing
-status: unconfirmed
+status: confirmed
 ]]
 function lib.refresh_commands(a)
 	if type(a) ~= "table" then error("refresh_commands needs { }: refresh_commands{ player = p }", 2) end
@@ -348,7 +348,7 @@ words: list everyone all
 syntax: online_players( ) → { player, ... }
 lead: Every player online now, as a list.
 returns: list of player
-status: unconfirmed
+status: confirmed
 ]]
 function lib.online_players()
 	local list = {}

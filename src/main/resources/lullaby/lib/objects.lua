@@ -6,8 +6,8 @@
 --   player("Notch") / player(uuid text)  -> player or nil (online, or has played here)     p.name  p.uuid  p.online
 --   world("overworld")                   -> world ("minecraft:overworld") or nil
 --   block (a PLACE: world + position)    b.state (block_state, nil if the chunk is not loaded)  b.pos  b.world
---   block_state("oak_stairs[facing=north]") / block_state{ type = "oak_stairs", facing = "north" } /
---   block_state{ Name = "minecraft:oak_stairs", Properties = { facing = "north" } } -> block_state (exists once per state, so == is free)
+--   block_state("oak_stairs[facing=north]") / block_state{ id = "oak_stairs", facing = "north" } /
+--   block_state{ id = "oak_stairs", properties = { facing = "north" } } (vanilla's codec shape) -> block_state (exists once per state, so == is free)
 --                                        s.type (id)  s.<property> (s.facing)  s:with{ facing = "south" }
 --   message{ player = p, text = "Hi" | component("<red>Hi") | { text = "Hi", color = "red" } }   chat message (a string
 --       is literal text, as /tellraw "Hi"; a table is a component) -> true, false if p is offline
@@ -73,7 +73,7 @@ syntax: player( text ) → player | nil
 lead: Finds an online player by name or UUID. Each player exists once, so == works.
 arg: x | text | Name or UUID.
 returns: player · nil
-status: unconfirmed
+status: confirmed
 ]]
 function lib.player(x)
 	if player_uuid[x] then return x end
@@ -184,31 +184,32 @@ function I.block_state_by_id(id)
 	return s
 end
 
--- block_state("oak_stairs[facing=north]"): vanilla's own text. block_state{ type = "oak_stairs", facing = "north" }:
--- type plus properties as Lua values (checked like s:with). block_state{ Name = , Properties = { } }: vanilla's codec
--- shape (property values as text). Missing properties take their default in every form.
+-- block_state("oak_stairs[facing=north]"): vanilla's own text. block_state{ id = "oak_stairs", properties = { facing =
+-- "north" } }: vanilla's codec shape (BlockState.CODEC; property values as text). block_state{ id = "oak_slab", type =
+-- "top" }: the short form, every key but id is a property as a Lua value (checked like s:with). A table with a
+-- properties key is always read as vanilla's codec. Missing properties take their default in every form.
 --[[doc
 name: block_state( )
 kind: reading
 group: Blocks
 words: block properties stairs
-syntax: block_state( "oak_stairs[facing=north]" | { type = text, ... } | { Name = text, Properties = { } } )
-lead: A block state from vanilla's text, from type plus properties, or from vanilla's codec shape. Missing properties take their default.
+syntax: block_state( "oak_stairs[facing=north]" | { id = text, ... } | { id = text, properties = { } } )
+lead: A block state from vanilla's text, from id plus properties, or from vanilla's codec shape. Missing properties take their default.
 arg: x | text · table · block_state | The state.
 returns: block_state
-status: unconfirmed
+status: confirmed
 ]]
 function lib.block_state(x)
 	if state_id[x] then return x end
 	if type(x) == "table" and debug_getmetatable(x) == nil then
-		if x.Name ~= nil then return I.block_state_by_id(J.block_state_from_table(I.wire(x))) end
-		-- FORMAT: block_state table without type or Name
-		if type(x.type) ~= "string" then error("block_state{}: needs type = \"oak_stairs\" (or vanilla's Name = )", 0) end
+		if x.properties ~= nil then return I.block_state_by_id(J.block_state_from_table(I.wire(x))) end
+		-- FORMAT: block_state table without id
+		if type(x.id) ~= "string" then error("block_state{}: needs id = \"oak_stairs\"", 0) end
 		local props, any = {}, false
 		for key, value in raw_next, x do
-			if key ~= "type" then props[key] = value; any = true end
+			if key ~= "id" then props[key] = value; any = true end
 		end
-		local s = lib.block_state(x.type)
+		local s = lib.block_state(x.id)
 		if any then s = state_methods.with(s, props) end
 		return s
 	end
@@ -294,7 +295,7 @@ arg: player | player | Who gets it.
 arg: text | text · component | The message.
 returns: nothing
 expert: Packet | System Chat (play, clientbound)
-status: unconfirmed
+status: confirmed
 ]]
 function lib.message(a)
 	if type(a) ~= "table" then error("message needs { }: message{ player = p, text = \"...\" }", 2) end
@@ -374,7 +375,7 @@ returns: nothing
 note: Positions × count over the config's particle_limit is refused with an error.
 expert: Packet | Level Particles (play, clientbound), one per position, bundled by 4096
 expert: Lua → Java | one call
-status: unconfirmed
+status: confirmed
 ]]
 function lib.particle(a)
 	action_table(a, "particle")
@@ -414,7 +415,7 @@ arg: seed | number | Picks the variant from the sound's pool. Random by default,
 returns: nothing
 expert: Packet | Sound / Sound Entity (play, clientbound)
 expert: Lua → Java | one call
-status: unconfirmed
+status: confirmed
 ]]
 function lib.sound(a)
 	action_table(a, "sound")
@@ -442,7 +443,7 @@ arg: sound | text | Only this sound.
 arg: source | text | Only this source.
 returns: nothing
 expert: Packet | Stop Sound (play, clientbound)
-status: unconfirmed
+status: confirmed
 ]]
 function lib.stop_sound(a)
 	action_table(a, "stop_sound")

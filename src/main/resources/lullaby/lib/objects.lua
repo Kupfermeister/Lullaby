@@ -6,12 +6,15 @@
 --   player("Notch") / player(uuid text)  -> player or nil (online, or has played here)     p.name  p.uuid  p.online
 --   world("overworld")                   -> world ("minecraft:overworld") or nil
 --   block (a PLACE: world + position)    b.state (block_state, nil if the chunk is not loaded)  b.pos  b.world
---   block_state("oak_stairs[facing=north]") -> block_state (exists once per state, so == is free)
+--   block_state("oak_stairs[facing=north]") / block_state{ type = "oak_stairs", facing = "north" } /
+--   block_state{ Name = "minecraft:oak_stairs", Properties = { facing = "north" } } -> block_state (exists once per state, so == is free)
 --                                        s.type (id)  s.<property> (s.facing)  s:with{ facing = "south" }
---   message{ player = p, text = "<red>Hi" }   chat message (MiniMessage text or a component) -> true, false if p is offline
+--   message{ player = p, text = "Hi" | component("<red>Hi") | { text = "Hi", color = "red" } }   chat message (a string
+--       is literal text, as /tellraw "Hi"; a table is a component) -> true, false if p is offline
 local J, lib, I = ...
 
-local type, error, setmetatable, tostring = type, error, setmetatable, tostring
+local type, error, setmetatable, tostring, raw_next = type, error, setmetatable, tostring, next
+local debug_getmetatable = I.debug_getmetatable
 
 local WEAK_KEYS = { __mode = "k" }
 local WEAK_VALUES = { __mode = "v" }
@@ -61,6 +64,17 @@ function I.player_by_uuid(uuid)
 	return p
 end
 
+--[[doc
+name: player( )
+kind: reading
+group: Players
+words: get find user name uuid
+syntax: player( text ) → player | nil
+lead: Finds an online player by name or UUID. Each player exists once, so == works.
+arg: x | text | Name or UUID.
+returns: player · nil
+status: unconfirmed
+]]
 function lib.player(x)
 	if player_uuid[x] then return x end
 	if type(x) ~= "string" then error("player: needs a name or UUID text, got " .. I.type_name(x), 2) end
@@ -158,21 +172,49 @@ local STATE = {
 	__metatable = false,
 }
 I.kind_by_meta[STATE] = "block_state"
+I.STATE_META = STATE
 
 function I.block_state_by_id(id)
 	local s = states[id]
 	if not s then
-		s = setmetatable({}, STATE)
+		s = setmetatable({ id }, STATE) -- [1]: the state number, so the wire can send a block_state inside a table
 		state_id[s] = id
 		states[id] = s
 	end
 	return s
 end
 
--- block_state("oak_stairs[facing=north]"): vanilla's own text (missing properties take their default).
+-- block_state("oak_stairs[facing=north]"): vanilla's own text. block_state{ type = "oak_stairs", facing = "north" }:
+-- type plus properties as Lua values (checked like s:with). block_state{ Name = , Properties = { } }: vanilla's codec
+-- shape (property values as text). Missing properties take their default in every form.
+--[[doc
+name: block_state( )
+kind: reading
+group: Blocks
+words: block properties stairs
+syntax: block_state( "oak_stairs[facing=north]" | { type = text, ... } | { Name = text, Properties = { } } )
+lead: A block state from vanilla's text, from type plus properties, or from vanilla's codec shape. Missing properties take their default.
+arg: x | text · table · block_state | The state.
+returns: block_state
+status: unconfirmed
+]]
 function lib.block_state(x)
 	if state_id[x] then return x end
-	if type(x) ~= "string" then error("block_state needs text like \"oak_stairs[facing=north]\", got " .. I.type_name(x), 0) end
+	if type(x) == "table" and debug_getmetatable(x) == nil then
+		if x.Name ~= nil then return I.block_state_by_id(J.block_state_from_table(I.wire(x))) end
+		-- FORMAT: block_state table without type or Name
+		if type(x.type) ~= "string" then error("block_state{}: needs type = \"oak_stairs\" (or vanilla's Name = )", 0) end
+		local props, any = {}, false
+		for key, value in raw_next, x do
+			if key ~= "type" then props[key] = value; any = true end
+		end
+		local s = lib.block_state(x.type)
+		if any then s = state_methods.with(s, props) end
+		return s
+	end
+	if type(x) ~= "string" then
+		error("block_state needs text like \"oak_stairs[facing=north]\" or a table, got " .. I.type_name(x), 0)
+	end
 	return I.block_state_by_id(J.block_state_parse(x))
 end
 
@@ -241,10 +283,168 @@ end
 -- Actions
 -- ---------------------------------------------------------------------------------------------------------------
 
+--[[doc
+name: message{ }
+kind: doing
+group: Text
+words: chat send tell tellraw
+syntax: message{ player = player, text = text | component }
+lead: Sends a chat message. Plain text is literal, like /tellraw; component( ) reads MiniMessage.
+arg: player | player | Who gets it.
+arg: text | text · component | The message.
+returns: nothing
+expert: Packet | System Chat (play, clientbound)
+status: unconfirmed
+]]
 function lib.message(a)
 	if type(a) ~= "table" then error("message needs { }: message{ player = p, text = \"...\" }", 2) end
 	if kind_of[a.player] ~= "player" then error("message: player must be a player, got " .. I.type_name(a.player), 2) end
-	if I.type_name(a.text) == "component" then return J.message_component(slot_of[a.player], slot_of[a.text]) end
-	if type(a.text) ~= "string" then error("message: text must be text or a component, got " .. I.type_name(a.text), 2) end
-	return J.message(slot_of[a.player], a.text)
+	local text = a.text
+	if type(text) == "table" and (I.type_name(text) == "component" or debug_getmetatable(text) == nil) then
+		return J.message_component(slot_of[a.player], I.wire(text))
+	end
+	if type(text) ~= "string" then error("message: text must be text or a component, got " .. I.type_name(text), 2) end
+	return J.message(slot_of[a.player], text)
+end
+
+-- ---------------------------------------------------------------------------------------------------------------
+-- Packet actions (Kupfermeister 2026-11-15): straight on vanilla's packets, sent by nms/Packets.java (the one send core).
+-- Every field crosses in ONE wire call; Java checks the fields and names the wrong one. Nothing is returned.
+--   particle{ player = p | players = { ... }, particle = "flame" | "dust{color:[1,0,0],scale:1}" |
+--             { type = "dust", color = { 1, 0, 0 }, scale = 1 }, pos = vec3 or a list of vec3,
+--             dist = vec3, max_speed = vec3, count = 0, override_limiter = false, always_show = false,
+--             randomization_type = "default" | "alternative" | "alternative_with_speed" }
+--             One packet per position, bundled by 4096; config particle_limit caps positions x count.
+--   sound{ player | players, sound = "entity.player.levelup" | { sound_id = , range = }, source = "master" | "music" |
+--          "record" | "weather" | "block" | "hostile" | "neutral" | "player" | "ambient" | "voice" | "ui",
+--          pos = vec3 | entity = player, volume = 1, pitch = 1, seed = (random, as vanilla) }
+--   stop_sound{ player | players, sound = id, source = ... }   both optional: nothing given stops every sound
+-- ---------------------------------------------------------------------------------------------------------------
+
+-- The receivers as slot numbers: player = p or players = { p1, p2, ... } (exactly one of them).
+local function receivers(a, what)
+	local p, list = a.player, a.players
+	-- FORMAT: player/players wrong
+	if (p == nil) == (list == nil) then error(what .. ": give player = p or players = { ... } (one of them)", 3) end
+	if p ~= nil then
+		if kind_of[p] ~= "player" then error(what .. ": player must be a player, got " .. I.type_name(p), 3) end
+		return { slot_of[p] }
+	end
+	if type(list) ~= "table" or debug_getmetatable(list) ~= nil then
+		error(what .. ": players must be a list of players, got " .. I.type_name(list), 3)
+	end
+	local n = 0
+	for key in raw_next, list do
+		n = n + 1
+		-- FORMAT: players is not a plain list
+		if type(key) ~= "number" or key < 1 or key ~= math.floor(key) then
+			error(what .. ": players must be a list (no other keys), found key " .. tostring(key), 3)
+		end
+	end
+	local slots = {}
+	for i = 1, n do
+		local q = list[i]
+		-- FORMAT: a list entry that is not a player (nil: a hole in the list)
+		if kind_of[q] ~= "player" then error(what .. ": players[" .. i .. "] must be a player, got " .. I.type_name(q), 3) end
+		slots[i] = slot_of[q]
+	end
+	return slots
+end
+
+local function action_table(a, what)
+	-- FORMAT: action called without { }
+	if type(a) ~= "table" then error(what .. " needs { }: " .. what .. "{ player = p, ... }", 3) end
+end
+
+--[[doc
+name: particle{ }
+kind: doing
+group: Effects
+words: effect dust flame
+syntax: particle{ player = player | players = { player, ... }, particle = text | table, pos = vec3 | { vec3, ... }, dist = vec3, max_speed = vec3, count = number, override_limiter = boolean, always_show = boolean, randomization_type = text }
+lead: Shows particles at one or many positions.
+arg: player / players | player · list of player | Who sees them. Exactly one of the two.
+arg: particle | text · table | "flame", "dust{color:[1,0,0],scale:1}" or { type = "dust", ... }.
+arg: pos | vec3 · list of vec3 | One or many positions.
+arg: dist | vec3 | Spread.
+arg: max_speed | vec3 | Speed.
+arg: count | number | Default 0.
+arg: randomization_type | text | default, alternative, alternative_with_speed.
+returns: nothing
+note: Positions × count over the config's particle_limit is refused with an error.
+expert: Packet | Level Particles (play, clientbound), one per position, bundled by 4096
+expert: Lua → Java | one call
+status: unconfirmed
+]]
+function lib.particle(a)
+	action_table(a, "particle")
+	local limit = I.config.particle_limit
+	-- The limit is checked here first, so a huge list is refused before it is sent (Java checks again).
+	local pos, count = a.pos, a.count
+	if limit and type(pos) == "table" and debug_getmetatable(pos) == nil and type(count) ~= "string" then
+		local c = tonumber(count) or 0
+		local total = #pos * (c >= 1 and c or 1)
+		if total > limit then
+			-- FORMAT: particle limit from the config (same text as Packets.java)
+			error("particle{}: " .. I.number_text(total) .. " particles (positions x count) is over the config's "
+				.. "particle_limit of " .. I.number_text(limit), 2)
+		end
+	end
+	J.particle(I.wire({
+		players = receivers(a, "particle"), particle = a.particle, pos = a.pos, dist = a.dist,
+		max_speed = a.max_speed, count = a.count, override_limiter = a.override_limiter, always_show = a.always_show,
+		randomization_type = a.randomization_type,
+	}), type(limit) == "number" and limit or 0)
+end
+
+--[[doc
+name: sound{ }
+kind: doing
+group: Effects
+words: play audio noise
+syntax: sound{ player = player | players = { player, ... }, sound = text | { sound_id = text, range = number }, source = text, pos = vec3, entity = player, volume = number, pitch = number, seed = number }
+lead: Plays a sound to one player or a list of players.
+arg: player / players | player · list of player | Who hears it. Exactly one of the two.
+arg: sound | text · table | A sound id like "entity.player.levelup", or { sound_id, range }.
+arg: source | text | master, music, record, weather, block, hostile, neutral, player, ambient, voice, ui.
+arg: pos / entity | vec3 · player | Where it plays; entity follows that player.
+arg: volume | number | Default 1.
+arg: pitch | number | Default 1.
+arg: seed | number | Picks the variant from the sound's pool. Random by default, as in vanilla.
+returns: nothing
+expert: Packet | Sound / Sound Entity (play, clientbound)
+expert: Lua → Java | one call
+status: unconfirmed
+]]
+function lib.sound(a)
+	action_table(a, "sound")
+	local entity = a.entity
+	if entity ~= nil then
+		-- FORMAT: sound entity is not a player (other entities come with the entity object)
+		if kind_of[entity] ~= "player" then error("sound: entity must be a player, got " .. I.type_name(entity), 2) end
+		entity = slot_of[entity]
+	end
+	J.sound(I.wire({
+		players = receivers(a, "sound"), sound = a.sound, source = a.source, pos = a.pos, entity = entity,
+		volume = a.volume, pitch = a.pitch, seed = a.seed,
+	}))
+end
+
+--[[doc
+name: stop_sound{ }
+kind: doing
+group: Effects
+words: silence mute
+syntax: stop_sound{ player = player | players = { player, ... }, sound = text, source = text }
+lead: Stops sounds. Without sound and source it stops every sound.
+arg: player / players | player · list of player | Who.
+arg: sound | text | Only this sound.
+arg: source | text | Only this source.
+returns: nothing
+expert: Packet | Stop Sound (play, clientbound)
+status: unconfirmed
+]]
+function lib.stop_sound(a)
+	action_table(a, "stop_sound")
+	J.stop_sound(I.wire({ players = receivers(a, "stop_sound"), sound = a.sound, source = a.source }))
 end

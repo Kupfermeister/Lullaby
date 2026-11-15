@@ -54,7 +54,35 @@ local function register(kind, a)
 	end)
 end
 
+--[[doc
+name: on{ }
+kind: event
+group: Events
+words: listen hook before cancel
+syntax: on{ "EventName", function(e) ... end, order = number, stage = text }
+lead: Runs the function before the event happens; it may change e (e.cancelled = true, ...).
+arg: 1 | text | The event name, e.g. "BlockBreakEvent".
+arg: 2 | function | Gets the event e.
+arg: order | number | Lower runs first; ties by load order. Default 0.
+arg: stage | text | Place among other plugins: lowest, low, normal, high, highest. Default normal.
+returns: nothing
+note: Each handler runs as its own task and may wait; after its first wait the event is over and changes only give a warning.
+status: unconfirmed
+]]
 function lib.on(a) register("on", a) end
+--[[doc
+name: after{ }
+kind: event
+group: Events
+words: listen hook monitor
+syntax: after{ "EventName", function(e) ... end, order = number }
+lead: Runs the function once the event happened and was not cancelled; e is read only.
+arg: 1 | text | The event name, or "reload".
+arg: 2 | function | Gets the event e.
+arg: order | number | Lower runs first. Default 0.
+returns: nothing
+status: unconfirmed
+]]
 function lib.after(a) register("after", a) end
 
 -- Event objects: e.field reads from the Java event, e.field = v writes to it (only in `on`, only before a wait).
@@ -65,6 +93,7 @@ local function from_java(kind, a, b, c, d)
 	if kind == "v" then return a end
 	if kind == "player" then return I.player_by_uuid(a) end
 	if kind == "block" then return I.block_at(a, b, c, d) end
+	if kind == "c" then return I.new_component(a, b) end
 	return nil
 end
 
@@ -81,6 +110,10 @@ local EVENT_META = {
 			return
 		end
 		local t = type(value)
+		if t == "table" and (I.type_name(value) == "component" or I.debug_getmetatable(value) == nil) then
+			J.event_set_component(s.java, s.name, field, I.wire(value)) -- a text field set to a component table
+			return
+		end
 		if t ~= "boolean" and t ~= "number" and t ~= "string" and value ~= nil then
 			error("e." .. tostring(field) .. " can't be set to a " .. I.type_name(value), 2)
 		end

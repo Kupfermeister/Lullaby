@@ -10,7 +10,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.minimessage.MiniMessage;
+import io.github.kupfermeister.lullaby.nms.Codecs;
 import org.bukkit.Bukkit;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
@@ -90,10 +90,16 @@ public final class EventBridge implements Listener {
             L.push((long) block.getZ());
             return 5;
         }
-        L.push("v");
         if (value instanceof Component text) {
-            LuaText.push(L, MiniMessage.miniMessage().serialize(text)); // text is MiniMessage until text objects exist
-        } else if (value instanceof Enum<?> constant) {
+            // a component table (Kupfermeister 2026-11-15): wire bytes plus the count of item slots in show_item hovers
+            Object[] out = Codecs.componentOut(Codecs.vanilla(text), addSlot);
+            L.push("c");
+            L.push((java.nio.ByteBuffer) out[0]);
+            L.push((int) out[1]);
+            return 3;
+        }
+        L.push("v");
+        if (value instanceof Enum<?> constant) {
             L.push(constant.name().toLowerCase(Locale.ROOT));
         } else if (value instanceof Boolean bool) {
             L.push(bool);
@@ -126,8 +132,9 @@ public final class EventBridge implements Listener {
             if (!L.isNumber(index)) throw wrong(field, "a number");
             value = L.toNumber(index);
         } else if (Component.class.isAssignableFrom(type)) {
-            if (!L.isString(index)) throw wrong(field, "text");
-            value = MiniMessage.miniMessage().deserialize(LuaText.string(L, index));
+            // a plain string is literal text, as /tellraw "text"; component tables go through setComponent
+            if (!L.isString(index)) throw wrong(field, "text or a component");
+            value = Component.text(LuaText.string(L, index));
         } else if (type == String.class) {
             if (!L.isString(index)) throw wrong(field, "text");
             value = LuaText.string(L, index);
@@ -136,6 +143,22 @@ public final class EventBridge implements Listener {
         }
         invoke(setter, event, value);
     }
+
+    /** Sets a text field from a component table (already turned into a component by Codecs). */
+    public void setComponent(Object event, String name, String field, Component text) {
+        Method setter = accessor(event, name, field, true);
+        if (setter == null || !Component.class.isAssignableFrom(setter.getParameterTypes()[0])) {
+            throw new IllegalArgumentException("e." + field + " can't be set to a component"); // FORMAT
+        }
+        invoke(setter, event, text);
+    }
+
+    /** Gives event text fields their item slots (show_item hovers); set by JavaFunctions. */
+    public void slots(java.util.function.ToIntFunction<Object> addSlot) {
+        this.addSlot = addSlot;
+    }
+
+    private java.util.function.ToIntFunction<Object> addSlot;
 
     private static IllegalArgumentException wrong(String field, String expected) {
         return new IllegalArgumentException("e." + field + " must be " + expected);

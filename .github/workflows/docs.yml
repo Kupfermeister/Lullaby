@@ -1,0 +1,30 @@
+# Builds the docs site (tools/docs/Docs.java) on every push to main and publishes it on GitHub Pages.
+name: docs
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+      - run: java tools/docs/Docs.java src/main/resources/lullaby/lib build/docs
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/docs
+      - id: deploy
+        uses: actions/deploy-pages@v4

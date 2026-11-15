@@ -35,9 +35,9 @@
 --   (a) a value of that type
 --   (b) a table in codec shape: the same shape as datapack JSON, so the wiki's datapack pages apply directly
 --   (c) vanilla command text ("diamond_sword[enchantments={sharpness:5}]", "oak_stairs[facing=north]")
---   tostring(v) gives form (c), so printed text can be pasted back. Exception: component (a string is MiniMessage,
---   tostring gives MiniMessage). Strings inside form (b) tables written in Lua are MiniMessage at text positions
---   (TEXT_POSITIONS below); from_json(text, type) keeps vanilla's own meaning so datapack files work unchanged.
+--   tostring(v) gives form (c), so printed text can be pasted back. Exception: component (component("<red>Hi")
+--   reads MiniMessage, tostring gives MiniMessage). Strings inside tables are ALWAYS literal, exactly as vanilla's
+--   codecs read them (Kupfermeister 2026-11-15: MiniMessage only where necessary); from_json(text, type) is vanilla's meaning.
 --   Everything is strict: "5" is not a number, 2.5 where a whole number is needed is an error, not 2.
 --
 -- SAVING (field `save`): NBT { type = <name>, data_version = <Minecraft's>, value = ... }. On load an older
@@ -212,7 +212,9 @@ T.location = {
 T.block_state = {
 	kind = "value", impl = "interned", vanilla = "net.minecraft.world.level.block.state.BlockState",
 	fields = { type = "id of the block (\"minecraft:oak_stairs\")", ["<property>"] = "e.g. s.facing == \"north\"" },
-	accepts = "block_state, text \"oak_stairs[facing=north]\" (missing properties take their default)",
+	accepts = "block_state, text \"oak_stairs[facing=north]\", { type = \"oak_stairs\", facing = \"north\" }, "
+		.. "{ Name = , Properties = { } } (codec shape); missing properties take their default. Inside codec tables "
+		.. "(a block particle) a block_state goes as vanilla's codec shape",
 	codec = "BlockState.CODEC", stream = "global id (Block.BLOCK_STATE_REGISTRY)",
 	text = "BlockStateParser.parseForBlock", arg = "BlockStateArgument", fix = "BLOCK_STATE", save = "codec",
 	methods = "with{ facing = \"south\" } (vanilla setValue, one call)",
@@ -246,11 +248,12 @@ T.components = {
 		.. "(back to the default). Reading defaults would be its own function (later). Loads whole on first touch.",
 }
 T.component = {
-	kind = "value", impl = "lazy", vanilla = "net.minecraft.network.chat.Component (text)",
+	kind = "value", impl = "plain table (vanilla codec shape, changeable; only the top table has the component mark)", vanilla = "net.minecraft.network.chat.Component (text)",
 	accepts = "component, MiniMessage string, JSON text (from_json), table in codec shape",
 	codec = "ComponentSerialization.CODEC", stream = "ComponentSerialization.STREAM_CODEC (TRUSTED_ where vanilla uses it)",
 	arg = "ComponentArgument", fix = "TEXT_COMPONENT", save = "codec",
-	note = "tostring gives MiniMessage. Messages go out as System Chat Message packets.",
+	note = "tostring gives MiniMessage; == compares that text. A show_item hover holds item = <item_stack> instead "
+		.. "of vanilla's flat id/count/components. Messages go out as System Chat Message packets.",
 }
 T.nbt = {
 	kind = "value", impl = "lazy", vanilla = "net.minecraft.nbt.Tag / CompoundTag",
@@ -262,27 +265,27 @@ T.nbt = {
 		.. "when a script needs it (Kupfermeister's yes then).",
 }
 T.particle = {
-	kind = "value", impl = "lazy", vanilla = "net.minecraft.core.particles.ParticleOptions",
+	kind = "value", impl = "plain table (codec shape)", vanilla = "net.minecraft.core.particles.ParticleOptions",
 	fields = { type = "id of the particle", ["<option>"] = "its data (dust: color, scale; block: block_state; ...)" },
-	accepts = "particle, \"flame\", { type = \"dust\", color = , scale = }, text \"dust{color:[1,0,0],scale:1}\"",
+	accepts = "\"flame\", text \"dust{color:[1,0,0],scale:1}\" (as /particle), { type = \"dust\", color = , scale = }",
 	codec = "ParticleOptions.CODEC", stream = "ParticleOptions.STREAM_CODEC", text = "ParticleArgument.readParticle",
 	arg = "ParticleArgument", fix = "PARTICLE", save = "codec",
 }
 T.effect = {
-	kind = "value", impl = "lazy", vanilla = "net.minecraft.world.effect.MobEffectInstance",
+	kind = "value", impl = "plain table (codec shape)", vanilla = "net.minecraft.world.effect.MobEffectInstance",
 	fields = { id = "id of the effect", amplifier = "whole number", duration = "duration", ambient = "boolean",
 		show_particles = "boolean", show_icon = "boolean" },
 	accepts = "effect, table in codec shape", codec = "MobEffectInstance.CODEC",
 	stream = "MobEffectInstance.STREAM_CODEC", save = "codec",
 }
 T.attribute_modifier = {
-	kind = "value", impl = "lazy", vanilla = "net.minecraft.world.entity.ai.attributes.AttributeModifier",
+	kind = "value", impl = "plain table (codec shape)", vanilla = "net.minecraft.world.entity.ai.attributes.AttributeModifier",
 	fields = { id = "id", amount = "number", operation = "enum" },
 	accepts = "attribute_modifier, table in codec shape", codec = "AttributeModifier.CODEC",
 	stream = "AttributeModifier.STREAM_CODEC", save = "codec",
 }
 T.profile = {
-	kind = "value", impl = "lazy", vanilla = "net.minecraft.world.item.component.ResolvableProfile",
+	kind = "value", impl = "plain table (codec shape)", vanilla = "net.minecraft.world.item.component.ResolvableProfile",
 	fields = { name = "string or nil", uuid = "uuid or nil", properties = "list (textures: base64 value)",
 		skin = "skin override (body, cape, elytra, model) or nil" },
 	accepts = "profile, player name, table in codec shape (textures alone is enough for a head)",
@@ -330,21 +333,6 @@ T.recipe_display = {
 T.slot_display = {
 	kind = "value", impl = "lazy", vanilla = "net.minecraft.world.item.crafting.display.SlotDisplay", later = true,
 	codec = "SlotDisplay.CODEC", stream = "SlotDisplay.STREAM_CODEC", save = "codec",
-}
-
--- Item components whose value holds text: here a plain string means MiniMessage (see ACCEPTED FORMS in the header). Generated later from
--- DataComponents.java; a build check fails if a new component uses the text codec and is not listed.
-I.TEXT_POSITIONS = {
-	custom_name = "the value", item_name = "the value", lore = "each line",
-	written_book_content = "pages[].raw and pages[].filtered (title and author are plain strings)",
-	attribute_modifiers = "modifiers[].display.value (when display type is override)",
-	sign_text_front = "messages[] and filtered_messages[] (4 lines each)",
-	sign_text_back = "messages[] and filtered_messages[] (4 lines each)",
-	instrument = "description (inline definition only)", provides_trim_material = "description (inline only)",
-	trim = "material.description, pattern.description (inline only)",
-	jukebox_playable = "song.description (inline song definition only)",
-	-- container, bundle_contents, charged_projectiles hold item stacks: their components follow these same rules.
-	-- custom_data, entity_data, block_entity_data, bucket_entity_data are raw NBT: strings there stay strings.
 }
 
 -- =================================================================================================================

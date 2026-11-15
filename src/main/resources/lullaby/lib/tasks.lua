@@ -152,6 +152,20 @@ local function place_of(f)
 	return info.source .. ":" .. info.linedefined
 end
 
+--[[doc
+name: run{ }
+kind: doing
+group: Tasks
+words: task start coroutine async thread
+syntax: run{ f, args = { ... }, final = function, id = value }
+lead: Starts f as a task that may wait. Returns the task, or nil if a task of the same function with that id is running.
+arg: 1 | function | The function to run.
+arg: args | table | Values passed to f.
+arg: final | function | Runs when the task ends, also on stop, error, reload and server stop. Never waits.
+arg: id | any | One running task per function and id.
+returns: task · nil
+status: unconfirmed
+]]
 function lib.run(a)
 	if type(a) ~= "table" then error("run needs { }: run{ f, args = { ... } }", 2) end
 	local f, args, final, id = a[1], a.args, a.final, a.id
@@ -199,6 +213,18 @@ local function duration_ms(value)
 end
 I.duration_ms = duration_ms
 
+--[[doc
+name: wait( )
+kind: reading
+group: Tasks
+words: sleep delay pause later
+syntax: wait( number | text )
+lead: Pauses the task. A number is seconds; text is a number with one unit: t (tick), s, m, h, d.
+arg: duration | number · text | 2, "3t", "2s", "1m", "1h", "1d".
+returns: nothing
+note: Only inside a task (an event handler or run{ }). Inside final it is ignored with a warning.
+status: unconfirmed
+]]
 function lib.wait(duration)
 	local co = co_running()
 	if (in_final[co or I.MAIN] or 0) > 0 then
@@ -218,6 +244,18 @@ function lib.wait(duration)
 	co_yield(WAIT, max(1, ceil(ms / 50)))
 end
 
+--[[doc
+name: stop{ }
+kind: doing
+group: Tasks
+words: cancel end kill
+syntax: stop{ task = task, force = boolean }
+lead: Ends a task and runs its final. Returns false if the task had already ended.
+arg: task | task | The task from run{ }.
+arg: force | boolean | true skips final.
+returns: boolean
+status: unconfirmed
+]]
 function lib.stop(a)
 	if type(a) ~= "table" then error("stop needs { }: stop{ task = t }", 2) end
 	local task = a.task ~= nil and handles[a.task]

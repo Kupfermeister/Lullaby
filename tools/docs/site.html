@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lullaby Docs</title>
+<style>
+@font-face { font-family: "Grenze Gotisch"; font-weight: 500; font-display: swap; src: url(fonts/GrenzeGotisch-500.ttf); }
+@font-face { font-family: Inter; font-weight: 400; font-display: swap; src: url(fonts/Inter-400.ttf); }
+@font-face { font-family: Inter; font-weight: 600; font-display: swap; src: url(fonts/Inter-600.ttf); }
+@font-face { font-family: "JetBrains Mono"; font-weight: 400; font-display: swap; src: url(fonts/JetBrainsMono-400.ttf); }
+/* Fonts: SIL Open Font License, see fonts/OFL-*.txt. Stored here, so the site loads nothing from outside. */
+/* Lullaby docs site template (tools/docs/site.html). Docs.java puts docs.json in at DOCS below. Dark mode only (Kupfermeister).
+   Every color means one thing: */
+:root {
+  --bg: #0d0e10; --side: #111315; --box: #121417; --panel: #181a1e; --line: #23262a;
+  --text: #e6e8ea; --dim: #868b91;
+  --doing: #e07b4c;    /* fresh copper: { } functions */
+  --reading: #5fb3a1;  /* oxidized copper: ( ) . : reading */
+  --type: #d4a84a;     /* gold: types */
+  --event: #a88bd6;    /* violet: events */
+  --field: #8fb8de;    /* pale blue: argument / field names */
+  --warn: #d4a84a;     /* gold: warnings (in the docs; in-game they are yellow) */
+  --error: #ff5555;    /* vanilla red: errors */
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body { font: 15px/1.6 Inter, system-ui, sans-serif; }
+code, .mono { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 13.5px; }
+a { color: inherit; text-decoration: none; }
+
+.layout { display: grid; grid-template-columns: 270px 1fr; min-height: 100vh; }
+aside { background: var(--side); border-right: 1px solid var(--line); padding: 28px 20px; }
+.brand { font-family: "Grenze Gotisch", serif; font-weight: 500; font-size: 28px; line-height: 1;
+  color: var(--text); margin: 0 0 6px; }
+.sub { color: var(--dim); font-size: 12px; padding-bottom: 18px; margin-bottom: 18px; border-bottom: 1px solid var(--line); }
+#q { width: 100%; background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 6px;
+  padding: 9px 11px; font: 13.5px "JetBrains Mono", monospace; outline: none; }
+#q:focus { border-color: var(--doing); }
+.hint { color: var(--dim); font-size: 11.5px; margin: 6px 2px 20px; }
+.group { color: var(--dim); font-size: 12px; margin: 16px 0 6px; padding-top: 12px; border-top: 1px solid var(--line); }
+.item { display: block; padding: 3px 8px; border-radius: 4px; cursor: pointer; }
+.item:hover, .item.on { background: var(--panel); }
+
+main { padding: 48px 56px 80px; max-width: 900px; }
+.kind { color: var(--dim); font-size: 13px; }
+h1 { font-family: "Grenze Gotisch", serif; font-weight: 500; font-size: 52px; line-height: 1.05; margin: 4px 0 18px; }
+.syntax { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--c, var(--doing));
+  border-radius: 6px; padding: 16px 18px; font-size: 15px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.lead { font-size: 16px; margin: 18px 0 0; max-width: 680px; }
+section { background: var(--box); border: 1px solid var(--line); border-radius: 8px; padding: 14px 18px; margin-top: 16px; }
+h2 { font-size: 13px; font-weight: 600; color: var(--dim); margin: 0 0 8px; }
+section table tr:last-child td { border-bottom: 0; }
+table { border-collapse: collapse; width: 100%; }
+td { padding: 7px 12px 7px 0; vertical-align: top; border-bottom: 1px solid var(--line); }
+td:first-child { white-space: nowrap; width: 1%; }
+.opt { color: var(--dim); }
+.links { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.links ul { list-style: none; padding: 0; margin: 0; }
+.links li { padding: 2px 0; }
+.go { cursor: pointer; } .go:hover { text-decoration: underline; text-underline-offset: 3px; }
+.arrow { color: var(--dim); margin-right: 6px; }
+.note { border-left: 3px solid var(--warn); padding: 6px 12px; margin: 14px 0; background: #17150f; }
+.note b { color: var(--warn); font-weight: 600; }
+details { background: var(--box); border: 1px solid var(--line); border-radius: 8px; padding: 12px 18px; margin-top: 16px; }
+summary { cursor: pointer; color: var(--dim); font-size: 13px; font-weight: 600; }
+.nerd { margin-top: 10px; color: var(--dim); }
+.nerd td { color: var(--text); }
+.src { color: var(--dim); font-size: 12.5px; margin-top: 16px; }
+.src a:hover { color: var(--text); }
+.draft { display: inline-block; margin-left: 10px; font-size: 11px; color: var(--dim); border: 1px solid var(--line);
+  border-radius: 10px; padding: 1px 8px; vertical-align: middle; }
+.c-doing { color: var(--doing); } .c-reading { color: var(--reading); } .c-type { color: var(--type); }
+.c-event { color: var(--event); } .c-field { color: var(--field); } .c-dim { color: var(--dim); }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; margin-top: 26px; color: var(--dim); }
+.empty { color: var(--dim); padding: 4px 8px; }
+@media (max-width: 760px) {
+  .layout { grid-template-columns: 1fr; }
+  aside { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 20px 16px; }
+  main { padding: 28px 16px 60px; }
+  h1 { font-size: 40px; }
+  .links { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside>
+    <div class="brand">Lullaby</div>
+    <div class="sub" id="sub">Library</div>
+    <input id="q" placeholder="search…  or /regex/" autocomplete="off" spellcheck="false">
+    <div class="hint">Typos are fine: <span class="mono">sond</span> finds sound.</div>
+    <nav id="nav"></nav>
+    <div class="legend">
+      <span class="c-doing">doing { }</span><span class="c-reading">reading ( ) . :</span>
+      <span class="c-type">type</span><span class="c-event">event</span><span class="c-field">field</span>
+    </div>
+  </aside>
+  <main id="page"></main>
+</div>
+<script>
+// The data from docs.json (format: see Docs.java). Nothing below knows any entry by name.
+const DATA = /*DOCS*/null;
+const E = DATA.entries;
+const BY = Object.fromEntries(E.map(e => [e.id, e]));
+const REPO = "https://github.com/Kupfermeister/Lullaby/blob/main/";
+const COLOR = { doing:"--doing", reading:"--reading", event:"--event", type:"--type", java:"--dim" };
+const TYPES = new Set(["text","number","boolean","function","table","nil","nothing","uuid","list",
+  ...E.filter(e => e.kind === "type").map(e => e.id)]);
+const esc = s => String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+document.getElementById("sub").textContent = "Library · Minecraft " + DATA.minecraft;
+
+// Syntax colors come from the text itself: name{ doing, name( reading, name = field, known types gold.
+function paint(s) {
+  return esc(s).replace(/[A-Za-z_][\w.]*/g, (w, i, all) => {
+    const after = all.slice(i + w.length).match(/^\s*(\S)/)?.[1];
+    if (after === "{" ) return `<span class="c-doing">${w}</span>`;
+    if (after === "(") return `<span class="c-reading">${w}</span>`;
+    if (after === "=" && all[i + w.length + 1] !== "=") return `<span class="c-field">${w}</span>`;
+    if (TYPES.has(w)) return `<span class="c-type">${w}</span>`;
+    return w;
+  });
+}
+const typed = s => esc(s).split(" · ").map(x => `<span class="c-type mono">${x}</span>`).join(" · ");
+function linkList(ids) {
+  if (!ids.length) return '<li class="c-dim">—</li>';
+  return ids.map(id => `<li><a class="mono go" data-id="${esc(id)}" style="color:var(${COLOR[BY[id].kind]})">${esc(BY[id].name)}</a></li>`).join("");
+}
+let current = null;
+function show(id) {
+  const e = BY[id] || E[0];
+  if (!e) { document.getElementById("page").innerHTML = '<p class="c-dim">No entries yet.</p>'; return; }
+  current = e.id;
+  document.querySelectorAll(".item").forEach(a => a.classList.toggle("on", a.dataset.id === e.id));
+  const [file, line] = e.src.split(":");
+  document.getElementById("page").innerHTML = `
+    <div class="kind">${esc(e.group)}${e.status === "unconfirmed" ? ' <span class="draft">draft · unconfirmed</span>' : ""}</div>
+    <h1 style="color:var(${COLOR[e.kind]})">${esc(e.name)}</h1>
+    ${e.syntax ? `<div class="syntax mono" style="--c:var(${COLOR[e.kind]})">${paint(e.syntax)}</div>` : ""}
+    ${e.lead ? `<p class="lead">${esc(e.lead)}</p>` : ""}
+    ${e.note ? `<div class="note"><b>⚠</b> ${esc(e.note)}</div>` : ""}
+    ${e.args.length ? `<section><h2>Arguments</h2><table>${e.args.map(([n, t, d]) =>
+      `<tr><td class="mono c-field">${esc(n)}</td><td>${typed(t)}</td><td>${esc(d)}</td></tr>`).join("")}</table></section>` : ""}
+    ${e.returns ? `<section><h2>Returns</h2><div class="mono c-type">${esc(e.returns)}</div></section>` : ""}
+    <section><h2>Connections</h2>
+    <div class="links"><div><div class="c-dim"><span class="arrow">→</span>uses</div><ul>${linkList(e.uses)}</ul></div>
+      <div><div class="c-dim"><span class="arrow">←</span>used by</div><ul>${linkList(e.usedBy)}</ul></div></div></section>
+    ${e.expert.length ? `<details><summary>For experts</summary><table class="nerd">${e.expert.map(([k, v]) =>
+      `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join("")}</table></details>` : ""}
+    <div class="src">↗ <a href="${REPO}${esc(file)}${line ? "#L" + line : ""}" target="_blank" rel="noopener">${esc(file.split("/").pop())}${line ? ":" + line : ""}</a></div>`;
+  window.scrollTo(0, 0);
+}
+
+// Search: /regex/, or typo-tolerant (edit distance against the name's parts and the search words).
+function dist(a, b) {
+  const m = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = m[0]; m[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const t = m[j]; m[j] = Math.min(m[j] + 1, m[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = t;
+    }
+  }
+  return m[b.length];
+}
+function score(e, q) {
+  const terms = (e.id + " " + (e.words || "")).toLowerCase().split(/[\s_.]+/).filter(Boolean);
+  if (e.id.toLowerCase().startsWith(q)) return 0;
+  let best = 99;
+  for (const t of terms) {
+    if (t.startsWith(q)) return 0.5;
+    best = Math.min(best, dist(q, t.slice(0, q.length + 1)));
+  }
+  return best <= Math.max(1, Math.floor(q.length / 3)) ? best : 99;
+}
+function nav() {
+  const q = document.getElementById("q").value.trim().toLowerCase();
+  let list = E;
+  const rx = q.match(/^\/(.+)\/$/);
+  if (rx) { try { const r = new RegExp(rx[1], "i"); list = E.filter(e => r.test(e.id + " " + (e.words || ""))); } catch { list = []; } }
+  else if (q) list = E.map(e => [e, score(e, q)]).filter(x => x[1] < 99).sort((a, b) => a[1] - b[1]).map(x => x[0]);
+  const groups = [...new Set(list.map(e => e.group))];
+  document.getElementById("nav").innerHTML = list.length ? groups.map(g =>
+    `<div class="group">${esc(g)}</div>` + list.filter(e => e.group === g).map(e =>
+      `<a class="item mono go" data-id="${esc(e.id)}" style="color:var(${COLOR[e.kind]})">${esc(e.name)}</a>`).join("")).join("")
+    : '<div class="empty">nothing found</div>';
+  document.querySelectorAll(".item").forEach(a => a.classList.toggle("on", a.dataset.id === current));
+}
+document.getElementById("q").addEventListener("input", nav);
+document.addEventListener("click", ev => {
+  const a = ev.target.closest(".go"); if (!a) return;
+  ev.preventDefault(); show(a.dataset.id);
+});
+nav(); show(E[0]?.id);
+</script>
+</body>
+</html>

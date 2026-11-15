@@ -50,12 +50,12 @@ local function script_frames(co, level)
 	return frames
 end
 
--- How a frame's function is called in reports: its name, "at line N" for an unnamed function, nil for the top of a
--- file. `head` is for the first line ("(function greet)" / "(function at line 12)"), otherwise for the via line.
-local function frame_name(info, head)
+-- How a frame's function is called in the via line: its name, "function at line N" for an unnamed function, nil for
+-- the top of a file.
+local function frame_name(info)
 	if info.what == "main" then return nil end
 	if info.name then return info.name end
-	return (head and "" or "function ") .. "at line " .. info.linedefined -- FORMAT
+	return "function at line " .. info.linedefined -- FORMAT
 end
 
 -- Sends an error or warning to Java (ErrorReporter.java formats, collapses repeats, shows console + ops).
@@ -64,11 +64,10 @@ end
 function I.report(kind, co, level, message, origin)
 	message = tostring(message)
 	local frames = script_frames(co, level)
-	local file, line, fn = "", -1, ""
+	local file, line = "", -1
 	if frames[1] then
 		file = frames[1].source:sub(2)
 		line = frames[1].currentline
-		fn = frame_name(frames[1], true) or ""
 	end
 	-- Lua's own "file:line: " prefix knows the line when the stack does not (e.g. errors from the Lua VM itself)
 	local prefix_file, prefix_line = message:match("^([^\n]-):(%d+): ")
@@ -78,14 +77,14 @@ function I.report(kind, co, level, message, origin)
 	local via = {}
 	if origin then via[1] = origin end
 	for i = #frames, 1, -1 do
-		local name = frame_name(frames[i], false)
+		local name = frame_name(frames[i])
 		if name then via[#via + 1] = name end
 	end
 	message = message:gsub("^[^\n]-:%d+: ", "", 1) -- cut Lua's own "file:line: " prefix
-	J.report(kind, file, line, fn, concat(via, " → "), message)
+	J.report(kind, file, line, concat(via, " → "), message)
 end
 
--- A gold warning about the script line `level` levels up (2 = the caller of the library function).
+-- A yellow warning about the script line `level` levels up (2 = the caller of the library function).
 function I.warn(message, level)
 	I.report("warning", nil, level + 1, message, I.current_origin())
 end
@@ -163,6 +162,17 @@ local debug_getmetatable = debug.getmetatable
 I.debug_getmetatable = debug_getmetatable
 
 -- type_of(x): the Lullaby type name of any value: "player", "vec3", "event", "number", "string", ...
+--[[doc
+name: type_of( )
+kind: reading
+group: Values
+words: kind check
+syntax: type_of( value ) → text
+lead: The Lullaby type name of any value: "player", "vec3", "event", "number", "string", ...
+arg: value | any | Anything.
+returns: text
+status: unconfirmed
+]]
 function lib.type_of(value)
 	local kind = kind_of[value]
 	if kind then return kind end
@@ -194,6 +204,17 @@ end
 
 -- Lullaby's tostring (scripts see this one): exact numbers, 64-bit numbers without "LL"; everything else as Lua's.
 local lua_tostring = tostring
+--[[doc
+name: tostring( )
+kind: reading
+group: Values
+words: text number string
+syntax: tostring( value ) → text
+lead: Like Lua's tostring, but numbers are exact (the shortest text that reads back as the same number).
+arg: value | any | Anything.
+returns: text
+status: unconfirmed
+]]
 function lib.tostring(value)
 	local t = type(value)
 	if t == "number" then return I.number_text(value) end
@@ -211,6 +232,7 @@ local DEFAULTS = {
 	file_safety = true,
 	file_whitelist = { "plugins/lullaby" },
 	error_repeat_seconds = 10,
+	particle_limit = 100000,
 }
 
 -- Reads config.lua (a Lua file that returns a table) with nothing in reach, fills in defaults for missing keys.
@@ -231,12 +253,24 @@ local function read_config()
 			config = result
 		else
 			local line = tonumber(tostring(result):match(":(%d+): ")) or -1
-			J.report("error", "plugins/lullaby/config.lua", line, "", "loading the config",
+			J.report("error", "plugins/lullaby/config.lua", line, "loading the config",
 				tostring(result):gsub("^[^\n]-:%d+: ", "", 1) .. " (using the defaults)")
 		end
 	end
 	for key, value in pairs(DEFAULTS) do
 		if config[key] == nil then config[key] = value end
+	end
+	-- particle_limit: false (off) or a whole number >= 1; anything else warns and uses the default.
+	local limit = config.particle_limit
+	if limit ~= false then
+		limit = tonumber(limit)
+		if not limit or limit < 1 or limit ~= math.floor(limit) then
+			-- FORMAT: bad particle_limit in the config
+			J.report("warning", "plugins/lullaby/config.lua", -1, "", "loading the config",
+				"particle_limit must be false or a whole number of 1 or more (using " .. DEFAULTS.particle_limit .. ")")
+			limit = DEFAULTS.particle_limit
+		end
+		config.particle_limit = limit
 	end
 	if type(config.unlock) ~= "table" then config.unlock = {} end
 	for key, value in pairs(DEFAULTS.unlock) do

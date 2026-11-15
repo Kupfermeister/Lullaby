@@ -4,6 +4,7 @@ import io.github.kupfermeister.lullaby.Engine;
 import io.github.kupfermeister.lullaby.event.EventBridge;
 import io.github.kupfermeister.lullaby.nms.Codecs;
 import io.github.kupfermeister.lullaby.nms.Nms;
+import io.github.kupfermeister.lullaby.nms.Packets;
 import java.util.function.IntFunction;
 import io.github.kupfermeister.lullaby.nms.ScriptCommands;
 import java.util.HashMap;
@@ -14,7 +15,6 @@ import java.util.Set;
 import java.util.UUID;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
-import net.kyori.adventure.text.minimessage.MiniMessage;
 import party.iroiro.luajava.JFunction;
 import party.iroiro.luajava.Lua;
 
@@ -37,14 +37,14 @@ final class JavaFunctions {
     /** Fills the table on top of the stack with every function. */
     static void fill(Lua lua, Engine engine, Slots slots) {
         EventBridge events = engine.events();
+        events.slots(slots::add);
 
         add(lua, "log", L -> {
             engine.plugin().getComponentLogger().info(string(L, 1));
             return 0;
         });
         add(lua, "report", L -> {
-            engine.errors().report(string(L, 1), string(L, 2), (int) L.toInteger(3), string(L, 4), string(L, 5),
-                    string(L, 6));
+            engine.errors().report(string(L, 1), string(L, 2), (int) L.toInteger(3), string(L, 4), string(L, 5));
             return 0;
         });
         add(lua, "set_error_window", L -> {
@@ -77,6 +77,11 @@ final class JavaFunctions {
         add(lua, "event_get", L -> events.get(L, slots.get(slot(L, 1)), string(L, 2), string(L, 3)));
         add(lua, "event_set", L -> {
             events.set(L, slots.get(slot(L, 1)), string(L, 2), string(L, 3), 4);
+            return 0;
+        });
+        add(lua, "event_set_component", L -> {
+            events.setComponent(slots.get(slot(L, 1)), string(L, 2), string(L, 3),
+                    Codecs.adventure(Codecs.componentFromTable(Wire.read(L.toBuffer(4)), slots::get)));
             return 0;
         });
         // Slots (see Slots.java): objects are created in Lua, Java keeps what each number stands for.
@@ -171,18 +176,20 @@ final class JavaFunctions {
             engine.commands().refresh(UUID.fromString(string(L, 1)), visible, suggestions);
             return 0;
         });
-        // A command's check rejected a value: the script's text (MiniMessage) to whoever typed it, in red.
+        // A command's check rejected a value: the script's text (literal, as /tellraw "text") to whoever typed it, in red.
         add(lua, "cmd_reject", L -> {
-            engine.commands().reject(MiniMessage.miniMessage().deserialize(string(L, 1)));
+            engine.commands().reject(net.kyori.adventure.text.Component.text(string(L, 1)));
             return 0;
         });
 
         add(lua, "message", L -> {
-            L.push(Nms.sendMessage(slots.get(slot(L, 1)), MiniMessage.miniMessage().deserialize(string(L, 2))));
+            L.push(Nms.sendMessage(slots.get(slot(L, 1)), net.kyori.adventure.text.Component.text(string(L, 2))));
             return 1;
         });
+        // Arguments: player slot, the component's wire bytes (a plain table in codec shape).
         add(lua, "message_component", L -> {
-            L.push(Nms.sendMessage(slots.get(slot(L, 1)), Codecs.adventure(slots.get(slot(L, 2)))));
+            L.push(Nms.sendMessage(slots.get(slot(L, 1)),
+                    Codecs.adventure(Codecs.componentFromTable(Wire.read(L.toBuffer(2)), slots::get))));
             return 1;
         });
 
@@ -232,24 +239,38 @@ final class JavaFunctions {
             L.push(Codecs.itemMatches(slots.get(slot(L, 1)), slots.get(slot(L, 2))));
             return 1;
         });
-        add(lua, "component_mini", L -> {
-            L.push(slots.add(Codecs.componentMini(string(L, 1))));
-            return 1;
-        });
-        add(lua, "component_from_table", L -> {
-            L.push(slots.add(Codecs.componentFromTable(Wire.read(L.toBuffer(1)), slotLookup)));
-            return 1;
-        });
+        // Components are plain Lua tables (Kupfermeister 2026-11-15): they cross as wire bytes both ways. Results: the bytes
+        // and how many show_item hovers hold a new item stack slot (lazy.lua turns those into item_stacks).
+        java.util.function.ToIntFunction<Object> addSlot = slots::add;
+        add(lua, "component_mini", L -> pushComponent(L, Codecs.componentOut(Codecs.componentMini(string(L, 1)), addSlot)));
+        add(lua, "component_from_table", L -> pushComponent(L, Codecs.componentOut(
+                Codecs.componentFromTable(Wire.read(L.toBuffer(1)), slotLookup), addSlot)));
         add(lua, "component_text", L -> {
-            push(L, Codecs.componentText(slots.get(slot(L, 1))));
+            push(L, Codecs.componentText(Codecs.componentFromTable(Wire.read(L.toBuffer(1)), slotLookup)));
             return 1;
         });
-        add(lua, "component_equals", L -> {
-            L.push(slots.get(slot(L, 1)).equals(slots.get(slot(L, 2))));
+        add(lua, "block_state_from_table", L -> {
+            L.push(Codecs.blockStateFromTable(Wire.read(L.toBuffer(1)), slotLookup));
             return 1;
+        });
+
+        // Packet actions (nms/Packets.java): each takes one wire table holding every field.
+        add(lua, "particle", L -> {
+            Packets.particle(Wire.read(L.toBuffer(1)), slotLookup, L.toNumber(2));
+            return 0;
+        });
+        add(lua, "sound", L -> {
+            Packets.sound(Wire.read(L.toBuffer(1)), slotLookup);
+            return 0;
+        });
+        add(lua, "stop_sound", L -> {
+            Packets.stopSound(Wire.read(L.toBuffer(1)), slotLookup);
+            return 0;
         });
         add(lua, "from_json", L -> {
-            L.push(slots.add(Codecs.fromJson(string(L, 1), string(L, 2))));
+            Object value = Codecs.fromJson(string(L, 1), string(L, 2));
+            if (value instanceof net.minecraft.network.chat.Component text) return pushComponent(L, Codecs.componentOut(text, addSlot));
+            L.push(slots.add(value));
             return 1;
         });
     }
@@ -269,6 +290,12 @@ final class JavaFunctions {
     /** "a\nb" -> [a, b]; "" -> []. */
     private static List<String> lines(String text) {
         return text.isEmpty() ? List.of() : List.of(text.split("\n"));
+    }
+
+    private static int pushComponent(Lua L, Object[] out) {
+        L.push((java.nio.ByteBuffer) out[0]);
+        L.push((int) out[1]);
+        return 2;
     }
 
     private static int slot(Lua L, int index) {

@@ -262,6 +262,19 @@ function build_step(step, word, fn, parent, head_parent, checks, origin)
 	return head
 end
 
+--[[doc
+name: command{ }
+kind: doing
+group: Commands
+words: slash brigadier cmd
+syntax: command{ "name", function(c) ... end, ... }
+lead: Adds a script command on vanilla's command system.
+arg: 1 | text | The command name, without /.
+arg: 2 | function | Runs when the command is typed.
+returns: nothing
+note: Works only while scripts load (at the top of a file).
+status: unconfirmed
+]]
 function lib.command(a)
 	if type(a) ~= "table" then error("command needs { }: command{ \"name\", function(c) ... end }", 2) end
 	-- Kupfermeister 2026-11-14: players' trees are worked out after loading, so a later command would be half there
@@ -308,6 +321,17 @@ function I.refresh_player(uuid)
 	J.cmd_refresh(uuid, concat(ids, "\n"), concat(records, RS))
 end
 
+--[[doc
+name: refresh_commands{ }
+kind: doing
+group: Commands
+words: update resend tree
+syntax: refresh_commands{ player = player }
+lead: Works out again which script commands the player sees, and sends them.
+arg: player | player | The player.
+returns: nothing
+status: unconfirmed
+]]
 function lib.refresh_commands(a)
 	if type(a) ~= "table" then error("refresh_commands needs { }: refresh_commands{ player = p }", 2) end
 	if I.object_kind(a.player) ~= "player" then
@@ -316,6 +340,16 @@ function lib.refresh_commands(a)
 	if a.player.online then I.refresh_player(a.player.uuid) end
 end
 
+--[[doc
+name: online_players( )
+kind: reading
+group: Players
+words: list everyone all
+syntax: online_players( ) → { player, ... }
+lead: Every player online now, as a list.
+returns: list of player
+status: unconfirmed
+]]
 function lib.online_players()
 	local list = {}
 	for uuid in J.online_players():gmatch("[^\n]+") do list[#list + 1] = I.player_by_uuid(uuid) end

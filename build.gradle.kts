@@ -108,3 +108,12 @@ tasks.register<JavaExec>("runServer") {
     args("--nogui")
     standardInput = System.`in`
 }
+
+// `gradlew docs`: builds the docs site into build/docs (tools/docs/Docs.java; drafts shown: `gradlew docs -Pdrafts`).
+// The GitHub job .github/workflows/docs.yml runs the same program on every push and publishes the site.
+tasks.register<JavaExec>("docs") {
+    classpath = files() // Docs.java is one file: Java runs it straight from the source
+    mainClass = "tools/docs/Docs.java"
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+    args = listOfNotNull("src/main/resources/lullaby/lib", "build/docs", if (project.hasProperty("drafts")) "drafts" else null)
+}

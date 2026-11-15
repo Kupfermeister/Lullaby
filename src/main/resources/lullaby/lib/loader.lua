@@ -53,7 +53,7 @@ function load_file(path)
 	local source = J.read_script(path)
 	local chunk, err = loadstring(source, "@scripts/" .. path)
 	if not chunk then -- a syntax error: the whole file is skipped
-		J.report("error", "scripts/" .. path, tonumber(err:match(":(%d+): ")) or -1, "", "loading",
+		J.report("error", "scripts/" .. path, tonumber(err:match(":(%d+): ")) or -1, "loading",
 			(err:gsub("^[^\n]-:%d+: ", "", 1)))
 		file.done = true
 		return nil

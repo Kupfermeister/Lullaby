@@ -21,4 +21,7 @@ return {
 
   -- The same error repeating within this many seconds is counted instead of shown again.
   error_repeat_seconds = 10,
+
+  -- Most particles one particle{} call may send (positions x count; count 0 counts as 1). false: no limit.
+  particle_limit = 100000,
 }

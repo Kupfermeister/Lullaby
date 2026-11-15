@@ -155,7 +155,7 @@ public final class Nms {
         }
     }
 
-    private static BlockState state(int id) {
+    static BlockState state(int id) {
         BlockState state = Block.stateById(id);
         if (state == null || Block.getId(state) != id) throw new IllegalStateException("Lullaby bug: no block state " + id);
         return state;

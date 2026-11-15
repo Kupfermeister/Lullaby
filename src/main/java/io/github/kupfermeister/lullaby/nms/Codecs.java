@@ -15,6 +15,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.IntFunction;
+import java.util.function.ToIntFunction;
+import net.minecraft.commands.arguments.ParticleArgument;
+import net.minecraft.core.particles.ParticleOptions;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.world.level.block.Block;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.minecraft.commands.arguments.item.ItemInput;
 import net.minecraft.commands.arguments.item.ItemParser;
@@ -32,7 +37,7 @@ import net.minecraft.resources.RegistryOps;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.ItemLore;
+import net.minecraft.world.level.block.state.BlockState;
 
 /**
  * Codec values (build step 3a, Kupfermeister 2026-11-15): item stacks, their component patch and text components, converted
@@ -40,9 +45,8 @@ import net.minecraft.world.item.component.ItemLore;
  * JSON). Item stacks are kept as vanilla as possible: no checks of Lullaby's own; the patch is exactly vanilla's
  * (only the changes against the item type's defaults, removals as "!minecraft:food"). Main thread only.
  *
- * <p>MiniMessage (Kupfermeister 2026-11-15, TEXT_POSITIONS in lib/types.lua): in Lua tables a string at a text position is
- * MiniMessage, and reading gives MiniMessage back. Built so far: custom_name, item_name, lore. The other positions
- * (books, signs, trims, ...) still take vanilla's codec shape and come with build step 3b.
+ * <p>Text (Kupfermeister 2026-11-15): strings inside tables are literal text, exactly as vanilla's codecs read them. MiniMessage
+ * is read only by component("...") and written only by tostring(component).
  */
 public final class Codecs {
 
@@ -115,7 +119,7 @@ public final class Codecs {
      * A table whose whole-number keys are exactly 1..n, partly or wholly in the hash part (LuaJIT puts {[1]=a} and
      * grown lists there), as its items in order; null if it is not such a list.
      */
-    private static List<Object> sequence(Wire.Table t) {
+    static List<Object> sequence(Wire.Table t) {
         int n = t.array.size() + t.hash.size();
         Object[] items = new Object[n];
         for (int i = 0; i < t.array.size(); i++) {
@@ -132,13 +136,19 @@ public final class Codecs {
         return List.of(items);
     }
 
-    /** A component placed inside a table: already in codec shape, never read again as MiniMessage. */
-    private record Literal(Object tree) {
+    /** An item_stack placed inside a table (only a show_item hover takes one: item = <item_stack>). */
+    private record ItemRef(ItemStack stack) {
     }
 
-    /** Takes the {@link Literal} wrappers out again, right before a vanilla codec reads the tree. */
-    private static Object unwrap(Object tree) {
-        if (tree instanceof Literal l) return l.tree();
+    /**
+     * Makes the tree ready for a vanilla codec: a show_item hover's {@code item = <item_stack>} becomes vanilla's flat
+     * fields (id, count, components; Kupfermeister 2026-11-15); an item_stack anywhere else is an error.
+     */
+    static Object unwrap(Object tree) {
+        if (tree instanceof ItemRef) {
+            // FORMAT: an item_stack in a table where vanilla has no item
+            throw new IllegalArgumentException("an item_stack can only go into a show_item hover (item = ...)");
+        }
         if (tree instanceof List<?> list) {
             List<Object> result = new ArrayList<>(list.size());
             for (Object item : list) result.add(unwrap(item));
@@ -146,7 +156,21 @@ public final class Codecs {
         }
         if (tree instanceof Map<?, ?> map) {
             Map<Object, Object> result = new LinkedHashMap<>();
-            for (Map.Entry<?, ?> e : map.entrySet()) result.put(e.getKey(), unwrap(e.getValue()));
+            boolean showItem = "show_item".equals(map.get("action")) && map.get("item") instanceof ItemRef;
+            for (Map.Entry<?, ?> e : map.entrySet()) {
+                if (showItem && "item".equals(e.getKey())) continue;
+                result.put(e.getKey(), unwrap(e.getValue()));
+            }
+            if (showItem) {
+                Object fields;
+                try {
+                    fields = get(ItemStack.CODEC.encodeStart(ops(), ((ItemRef) map.get("item")).stack()));
+                } catch (IllegalArgumentException e) {
+                    // FORMAT: an item vanilla can't show in a hover (e.g. count above 99)
+                    throw new IllegalArgumentException("show_item hover: " + e.getMessage());
+                }
+                if (fields instanceof Map<?, ?> f) result.putAll(f);
+            }
             return result;
         }
         return tree;
@@ -178,9 +202,17 @@ public final class Codecs {
                 map.put("pos", new ArrayList<>(((Wire.Table) t.array.get(1)).array));
                 return map;
             }
+            case "block_state" -> {
+                // objects.lua keeps the state number at [1] (vanilla's Block.getId)
+                return get(BlockState.CODEC.encodeStart(ops(), Nms.state(((Number) t.array.get(0)).intValue())));
+            }
+            case "item_stack" -> {
+                // lazy.lua puts the item's current slot at [true] while the table is on the wire
+                return new ItemRef((ItemStack) slots.apply(((Number) t.hash.get(Boolean.TRUE)).intValue()));
+            }
             case "component" -> {
-                Component text = (Component) slots.apply(((Number) t.array.get(0)).intValue());
-                return new Literal(get(ComponentSerialization.CODEC.encodeStart(ops(), text)));
+                t.kind = -1; // a component is a plain table in codec shape
+                return plain(t, slots);
             }
             case "components" -> {
                 t.kind = -1; // vanilla's patch table read from an item: a plain table
@@ -191,6 +223,11 @@ public final class Codecs {
                 throw new IllegalArgumentException("a " + kind + " can't go inside this table");
             }
         }
+    }
+
+    /** The wire kind's name ("vec3", "player", ...) for error messages. */
+    static String kindName(int kind) {
+        return kind >= 0 && kind < KINDS.length ? KINDS[kind] : "?";
     }
 
     /** Short text for an error message. */
@@ -207,7 +244,7 @@ public final class Codecs {
         return Double.toString(d);
     }
 
-    // ---- MiniMessage at text positions ----
+    // ---- MiniMessage (only for component("...") and tostring(component)) ----
 
     private static Component mini(String text) {
         return PaperAdventure.asVanilla(MiniMessage.miniMessage().deserialize(text));
@@ -217,53 +254,10 @@ public final class Codecs {
         return MiniMessage.miniMessage().serialize(PaperAdventure.asAdventure(text));
     }
 
-    /** A text position's value from Lua: a string is MiniMessage, anything else is vanilla's codec shape. */
-    private static Object textIn(Object value) {
-        if (value instanceof Literal) return value;
-        if (value instanceof String s) return get(ComponentSerialization.CODEC.encodeStart(ops(), mini(s)));
-        if (value instanceof Map<?, ?> m) return componentTableIn(m);
-        return value;
-    }
-
-    /** Inside a component codec table "text" stays literal (vanilla); strings in "extra" are MiniMessage. */
-    private static Object componentTableIn(Map<?, ?> table) {
-        Object extra = table.get("extra");
-        if (!(extra instanceof List<?> list)) return table;
-        Map<Object, Object> copy = new LinkedHashMap<>(table);
-        List<Object> lines = new ArrayList<>();
-        for (Object item : list) lines.add(textIn(item));
-        copy.put("extra", lines);
-        return copy;
-    }
-
     /** The full id of a patch key ("custom_name", "!food" -> "minecraft:custom_name", "minecraft:food"). */
     private static String componentId(String key) {
         String id = key.startsWith("!") ? key.substring(1) : key;
         return id.indexOf(':') < 0 ? "minecraft:" + id : id;
-    }
-
-    private static Object patchIn(Object patch) {
-        if (!(patch instanceof Map<?, ?> map)) return patch;
-        Map<Object, Object> result = new LinkedHashMap<>();
-        for (Map.Entry<?, ?> e : map.entrySet()) {
-            Object value = e.getValue();
-            if (e.getKey() instanceof String key && !key.startsWith("!")) {
-                switch (componentId(key)) {
-                    case "minecraft:custom_name", "minecraft:item_name" -> value = textIn(value);
-                    case "minecraft:lore" -> {
-                        if (value instanceof List<?> lines) {
-                            List<Object> converted = new ArrayList<>();
-                            for (Object line : lines) converted.add(textIn(line));
-                            value = converted;
-                        }
-                    }
-                    default -> {
-                    }
-                }
-            }
-            result.put(e.getKey(), value);
-        }
-        return result;
     }
 
     /**
@@ -274,7 +268,7 @@ public final class Codecs {
     private static final java.util.Set<DataComponentType<?>> NBT_TYPES = java.util.Set.of(DataComponents.CUSTOM_DATA,
             DataComponents.ENTITY_DATA, DataComponents.BLOCK_ENTITY_DATA, DataComponents.BUCKET_ENTITY_DATA);
 
-    /** A patch from Lua: SNBT text for the NBT components, codec shape (MiniMessage at text positions) for the rest. */
+    /** A patch from Lua: SNBT text for the NBT components, codec shape (strings literal) for the rest. */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static DataComponentPatch patchParse(Object tree) {
         ops();
@@ -299,7 +293,7 @@ public final class Codecs {
             }
             rest = copy.isEmpty() ? LuaOps.EMPTY_TABLE : copy;
         }
-        DataComponentPatch patch = get(DataComponentPatch.CODEC.parse(ops(), unwrap(patchIn(rest))));
+        DataComponentPatch patch = get(DataComponentPatch.CODEC.parse(ops(), unwrap(rest)));
         if (snbt.isEmpty()) return patch;
         DataComponentPatch.Builder builder = DataComponentPatch.builder();
         builder.copy(patch);
@@ -326,12 +320,6 @@ public final class Codecs {
                 result.put("!" + id, LuaOps.EMPTY_TABLE);
             } else if (NBT_TYPES.contains(type)) {
                 result.put(id, get(type.codecOrThrow().encodeStart(nbtOps, value)).toString());
-            } else if (type == DataComponents.CUSTOM_NAME || type == DataComponents.ITEM_NAME) {
-                result.put(id, mini((Component) value));
-            } else if (type == DataComponents.LORE) {
-                List<Object> lines = new ArrayList<>();
-                for (Component line : ((ItemLore) value).lines()) lines.add(mini(line));
-                result.put(id, lines.isEmpty() ? LuaOps.EMPTY_TABLE : lines);
             } else {
                 result.put(id, get(type.codecOrThrow().encodeStart(ops(), value)));
             }
@@ -442,22 +430,98 @@ public final class Codecs {
         return ItemStack.matches(a, b);
     }
 
-    // ---- text components ----
+    // ---- text components (plain Lua tables in vanilla codec shape; Kupfermeister 2026-11-15) ----
 
+    /** MiniMessage text to a vanilla component (only component("...") reads MiniMessage). */
     public static Component componentMini(String text) {
         return mini(text);
     }
 
+    /** A vanilla component from a Lua table in codec shape (strings are literal text, as vanilla). */
+    public static Component componentFromTable(Object wire, IntFunction<Object> slots) {
+        return get(ComponentSerialization.CODEC.parse(ops(), unwrap(plain(wire, slots))));
+    }
+
+    /** A component as MiniMessage text (tostring of a component). */
     public static String componentText(Component text) {
         return mini(text);
     }
 
-    public static Component componentFromTable(Object wire, IntFunction<Object> slots) {
-        return get(ComponentSerialization.CODEC.parse(ops(), unwrap(textIn(plain(wire, slots)))));
+    /**
+     * A component as wire bytes of its codec table (never a bare string: plain text becomes { text = }). A show_item
+     * hover gets {@code item = {[true] = slot}} (a new item stack in a slot) instead of vanilla's flat id/count/
+     * components; the second value is how many, so lazy.lua only looks for them when there are any.
+     */
+    public static Object[] componentOut(Component text, ToIntFunction<Object> addSlot) {
+        Object tree = get(ComponentSerialization.CODEC.encodeStart(ops(), text));
+        if (tree instanceof String s) {
+            Map<Object, Object> map = new LinkedHashMap<>();
+            map.put("text", s);
+            tree = map;
+        }
+        int[] items = {0};
+        tree = itemsOut(tree, addSlot, items);
+        return new Object[]{Wire.write(tree), items[0]};
+    }
+
+    private static Object itemsOut(Object tree, ToIntFunction<Object> addSlot, int[] items) {
+        if (tree instanceof List<?> list) {
+            List<Object> result = new ArrayList<>(list.size());
+            for (Object item : list) result.add(itemsOut(item, addSlot, items));
+            return result;
+        }
+        if (!(tree instanceof Map<?, ?> map)) return tree;
+        Map<Object, Object> result = new LinkedHashMap<>();
+        if ("show_item".equals(map.get("action"))) {
+            Map<Object, Object> fields = new LinkedHashMap<>(map);
+            fields.remove("action");
+            ItemStack stack = get(ItemStack.CODEC.parse(ops(), fields));
+            Map<Object, Object> ref = new LinkedHashMap<>();
+            ref.put(Boolean.TRUE, addSlot.applyAsInt(stack));
+            items[0]++;
+            result.put("action", "show_item");
+            result.put("item", ref);
+            return result;
+        }
+        for (Map.Entry<?, ?> e : map.entrySet()) result.put(e.getKey(), itemsOut(e.getValue(), addSlot, items));
+        return result;
+    }
+
+    public static Component vanilla(net.kyori.adventure.text.Component text) {
+        return PaperAdventure.asVanilla(text);
     }
 
     public static net.kyori.adventure.text.Component adventure(Component text) {
         return PaperAdventure.asAdventure(text);
+    }
+
+    // ---- block states and particles from Lua ----
+
+    /** block_state{ Name = , Properties = } (vanilla's BlockState.CODEC) to vanilla's state number. */
+    public static int blockStateFromTable(Object wire, IntFunction<Object> slots) {
+        return Block.getId(get(BlockState.CODEC.parse(ops(), unwrap(plain(wire, slots)))));
+    }
+
+    /**
+     * A particle from Lua: vanilla's command text ("flame", "dust{color:[1,0,0],scale:1}", as /particle takes it) or
+     * a codec table { type = "dust", color = , scale = } (ParticleTypes.CODEC).
+     */
+    public static ParticleOptions particle(Object wire, IntFunction<Object> slots) {
+        if (wire instanceof String text) {
+            StringReader reader = new StringReader(text);
+            ParticleOptions options;
+            try {
+                options = ParticleArgument.readParticle(reader, registries());
+            } catch (CommandSyntaxException e) {
+                throw new IllegalArgumentException("particle: " + e.getMessage()); // FORMAT: bad particle text
+            }
+            // FORMAT: text left after the particle text
+            if (reader.canRead()) throw new IllegalArgumentException("particle: unexpected text " + reader.getRemaining());
+            return options;
+        }
+        if (wire instanceof Wire.Table) return get(ParticleTypes.CODEC.parse(ops(), unwrap(plain(wire, slots))));
+        // FORMAT: particle of the wrong type
+        throw new IllegalArgumentException("particle must be text like \"flame\" or a table { type = \"dust\", ... }");
     }
 
     // ---- from_json ----

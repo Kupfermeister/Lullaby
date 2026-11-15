@@ -177,6 +177,9 @@ Lua's disagree, loading stops with a message starting `Lullaby bug:`. Nothing lo
 **Docs.** Everything scripts can use has a `--[[doc ... ]]` block right above its `function lib.NAME(`, in the same
 change that adds or changes it. The format is at the top of [Docs.java](tools/docs/Docs.java). The block feeds the
 docs site, VS Code autocomplete and the Markdown copy; uses and used-by are found from the code, not written.
+Pages changed in the last three commits that changed any page are marked new or changed, brightest for the newest
+(`fresh` in Docs.java, from git blame over each page's lines; uncommitted changes count as the newest), so nothing
+has to be marked by hand. The GitHub job checks out the whole history for this.
 
 ## Build and test
 

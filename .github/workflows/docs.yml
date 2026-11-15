@@ -18,6 +18,8 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the whole history: Docs.java marks recently new or changed pages with git blame
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

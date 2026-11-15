@@ -44,6 +44,8 @@ import java.util.stream.Stream;
  *     "uses": [id], "usedBy": [id], "fields": [[name, type, text]] } ] }
  *   Generated event pages also have "sub" (their sub group), "dot" (untested | changeable | readonly | unusable) and
  *   "paper" (the address of Paper's own page for the event); their status is "generated".
+ *   Recently new or changed pages have "fresh" (1 | 2 | 3: 1 is the newest change), "freshAs" (new | changed) and
+ *   "freshDate" (yyyy-mm-dd, or "not committed"); see fresh().
  */
 public final class Docs {
 
@@ -54,6 +56,9 @@ public final class Docs {
     // Library files run with the real _G as globals, so a plain `tostring(` is Lua's own: only `lib.name(` is lib's.
     private static final Pattern CALL = Pattern.compile("\\blib\\.(\\w+)\\s*[({]");
     private static final Pattern JCALL = Pattern.compile("\\bJ\\.(\\w+)\\s*\\(");
+
+    // Where each page's text lives, for fresh(): id -> { file, first line, last line } (1-based, both included).
+    private static final Map<String, Object[]> SPANS = new HashMap<>();
 
     record Entry(Map<String, String> f, List<String[]> args, List<String[]> expert, Set<String> uses,
                  Set<String> usedBy, List<String[]> fields) {
@@ -83,6 +88,7 @@ public final class Docs {
         String minecraft = minecraftVersion();
         events(entries, minecraft);
         checkExpertRows(entries);
+        fresh(entries);
 
         // Connections: documented library functions and raw Java functions called inside each body.
         for (Entry e : List.copyOf(entries.values())) {
@@ -265,6 +271,10 @@ public final class Docs {
             int at = m.group(2) != null ? m.start(2) : m.start();
             int line = 1 + (int) text.substring(0, at).chars().filter(c -> c == '\n').count();
             f.put("src", src + ":" + line);
+            int first = 1 + (int) text.substring(0, m.start()).chars().filter(c -> c == '\n').count();
+            // the doc block and the function line below it (a topic page: the block alone)
+            int end = m.group(2) != null ? line : (int) text.substring(0, m.end()).chars().filter(c -> c == '\n').count();
+            SPANS.put(id, new Object[]{src, first, end});
             entries.put(id, new Entry(f, args, expert, new LinkedHashSet<>(), new LinkedHashSet<>(), fields));
             if (m.group(2) == null) continue; // a topic page: no code, no connections
             // Strings and comments are no calls.
@@ -307,6 +317,87 @@ public final class Docs {
         return "";
     }
 
+    // ---- fresh: recently new or changed pages ------------------------------------------------------------------
+
+    /** How many docs-changing commits stay highlighted: the newest brightest, each older one dimmer. */
+    private static final int FRESH_LEVELS = 3;
+    private static final String UNCOMMITTED = "0000000000000000000000000000000000000000";
+
+    /**
+     * Marks pages whose text changed in one of the last FRESH_LEVELS commits that changed any page (git blame over
+     * each page's lines, see SPANS): fresh 1 is the newest such commit, 2 the one before, and so on; older changes
+     * get no mark. A page whose lines all come from that one commit is "new", otherwise "changed". Changes not
+     * committed yet count as the newest (so a local build shows them). Needs the git history: the GitHub job checks
+     * out with fetch-depth 0; without git the site is built without marks and says so here.
+     */
+    private static void fresh(Map<String, Entry> entries) {
+        Map<String, String[]> lineCommits = new HashMap<>(); // file -> commit per line (index 0 = line 1)
+        Map<String, Long> times = new HashMap<>();           // commit -> committer time (seconds)
+        for (Object[] span : SPANS.values()) {
+            String file = (String) span[0];
+            if (lineCommits.containsKey(file)) continue;
+            String[] commits = blame(file, times);
+            if (commits == null) {
+                // FORMAT: docs build without git history (console)
+                System.out.println("docs: no git history for " + file + ": built without new/changed marks");
+                return;
+            }
+            lineCommits.put(file, commits);
+        }
+        Map<String, String> newest = new HashMap<>();
+        Map<String, Boolean> allOne = new HashMap<>();
+        for (var span : SPANS.entrySet()) {
+            String[] commits = lineCommits.get((String) span.getValue()[0]);
+            int from = (int) span.getValue()[1], to = Math.min((int) span.getValue()[2], commits.length);
+            String best = null;
+            boolean one = true;
+            for (int i = from; i <= to; i++) {
+                String c = commits[i - 1];
+                if (best != null && !c.equals(best)) one = false;
+                if (best == null || times.get(c) > times.get(best)) best = c;
+            }
+            if (best == null) continue;
+            newest.put(span.getKey(), best);
+            allOne.put(span.getKey(), one);
+        }
+        List<String> order = new ArrayList<>(new HashSet<>(newest.values()));
+        order.sort((a, b) -> Long.compare(times.get(b), times.get(a)));
+        for (var n : newest.entrySet()) {
+            int level = order.indexOf(n.getValue()) + 1;
+            Entry e = entries.get(n.getKey());
+            if (e == null || level > FRESH_LEVELS) continue;
+            e.f().put("fresh", String.valueOf(level));
+            e.f().put("freshAs", allOne.get(n.getKey()) ? "new" : "changed");
+            e.f().put("freshDate", n.getValue().equals(UNCOMMITTED) ? "not committed"
+                    : java.time.Instant.ofEpochSecond(times.get(n.getValue())).toString().substring(0, 10));
+        }
+    }
+
+    /** The commit of every line of a file (git blame --porcelain), filling in commit times; null without git. */
+    private static String[] blame(String file, Map<String, Long> times) {
+        try {
+            Process p = new ProcessBuilder("git", "blame", "--porcelain", "--", file).redirectErrorStream(false).start();
+            List<String> out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8).lines().toList();
+            if (p.waitFor() != 0) return null;
+            List<String> commits = new ArrayList<>();
+            String current = null;
+            for (String line : out) {
+                if (line.startsWith("\t")) {
+                    commits.add(current);
+                } else if (line.matches("[0-9a-f]{40} \\d+ \\d+.*")) {
+                    current = line.substring(0, 40);
+                } else if (line.startsWith("committer-time ")) {
+                    times.put(current, Long.parseLong(line.substring(15).trim()));
+                }
+            }
+            // a change not committed yet has no real time: it is the newest of all
+            if (times.containsKey(UNCOMMITTED)) times.put(UNCOMMITTED, Long.MAX_VALUE);
+            return commits.toArray(new String[0]);
+        } catch (IOException | InterruptedException | RuntimeException e) {
+            return null;
+        }
+    }
+
     // ---- events: one generated page per Paper event --------------------------------------------------------------
 
     private static final String EVENTS_FILE = "src/main/resources/lullaby/events.txt";
@@ -340,6 +431,9 @@ public final class Docs {
                 seen.add(p[0]);
                 event = eventEntry(p, i + 1, minecraft);
                 entries.put(p[0], event);
+                int last = i + 1;
+                while (last < lines.size() && lines.get(last).startsWith("\t")) last++;
+                SPANS.put(p[0], new Object[]{EVENTS_FILE, i + 1, last}); // the event line and its field lines
             } else {
                 event.fields().add(fieldRow(p));
             }
@@ -490,7 +584,9 @@ public final class Docs {
         StringBuilder b = new StringBuilder("# Lullaby library (Minecraft " + minecraft + ")\n\nGenerated by tools/docs/Docs.java; do not edit.\n");
         for (Entry e : list) {
             var f = e.f();
-            b.append("\n## ").append(f.get("name")).append("\n\n`").append(f.getOrDefault("syntax", f.get("name"))).append("`\n");
+            b.append("\n## ").append(f.get("name"));
+            if (f.containsKey("fresh")) b.append(" *(").append(f.get("freshAs")).append(", ").append(f.get("freshDate")).append(")*");
+            b.append("\n\n`").append(f.getOrDefault("syntax", f.get("name"))).append("`\n");
             if (f.containsKey("lead")) b.append('\n').append(f.get("lead")).append('\n');
             if (f.containsKey("note")) b.append("\n> ⚠ ").append(f.get("note")).append('\n');
             if (!e.args().isEmpty()) {

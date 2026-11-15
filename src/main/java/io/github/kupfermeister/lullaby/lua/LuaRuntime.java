@@ -19,16 +19,17 @@ import party.iroiro.luajava.luajit.LuaJit;
  */
 public final class LuaRuntime {
 
-    private static final String[] LIBRARY = {"core", "tasks", "events", "objects", "commands", "loader"};
+    private static final String[] LIBRARY = {"core", "types", "tasks", "events", "objects", "commands", "loader"};
 
     private final Lua lua;
+    private final Slots slots = new Slots();
     private final int internals; // registry reference to the I table
 
     public LuaRuntime(Engine engine) throws IOException {
         lua = new LuaJit();
         lua.openLibraries();
         lua.newTable();
-        JavaFunctions.fill(lua, engine);
+        JavaFunctions.fill(lua, engine, slots);
         int javaFunctions = lua.ref();
         lua.newTable();
         int library = lua.ref();
@@ -121,7 +122,7 @@ public final class LuaRuntime {
         call("stop_all_tasks");
     }
 
-    /** Runs the script handlers for one event. The event object stays private to the library. */
+    /** Runs the script handlers for one event. Lua gets only the event's slot number (see {@link Slots}). */
     public void dispatch(String name, String kind, String stage, Object event) {
         int top = lua.getTop();
         try {
@@ -129,7 +130,7 @@ public final class LuaRuntime {
             lua.push(name);
             lua.push(kind);
             lua.push(stage);
-            lua.pushJavaObject(event);
+            lua.push(slots.add(event));
             lua.pCall(4, 0);
         } finally {
             lua.setTop(top);

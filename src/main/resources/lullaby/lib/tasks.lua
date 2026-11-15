@@ -1,4 +1,4 @@
--- Lullaby library, file 2 of 6: tasks (run, wait, stop) and the scheduler that resumes waiting tasks each tick.
+-- Lullaby library, file 3 of 7: tasks (run, wait, stop) and the scheduler that resumes waiting tasks each tick.
 --
 -- A task is one running function inside its own coroutine. Event handlers run as tasks automatically.
 --   run{ f, args = { ... }, final = g, id = x }   starts f(...) now; returns the task, or nil if a task of the same
@@ -118,6 +118,7 @@ end
 
 -- Called by Java once per server tick.
 function I.tick()
+	I.flush_slots()
 	now = now + 1
 	local bucket = buckets[now]
 	if not bucket then return end
@@ -173,6 +174,7 @@ function lib.run(a)
 	local handle = setmetatable({}, TASK_META)
 	local task = { f = f, args = copy, origin = origin, final = final, id = id, id_slot = slot, alive = true }
 	handles[handle] = task
+	I.kind_of[handle] = "task"
 	-- start like I.start_task, but the handle must exist before the task's first line runs
 	alive[task] = true
 	if slot then slot[id] = task end

@@ -33,7 +33,7 @@ final class JavaFunctions {
     }
 
     /** Fills the table on top of the stack with every function. */
-    static void fill(Lua lua, Engine engine) {
+    static void fill(Lua lua, Engine engine, Slots slots) {
         EventBridge events = engine.events();
 
         add(lua, "log", L -> {
@@ -72,15 +72,28 @@ final class JavaFunctions {
             events.listen(string(L, 1), string(L, 2), string(L, 3));
             return 0;
         });
-        add(lua, "event_get", L -> events.get(L, L.toJavaObject(1), string(L, 2), string(L, 3)));
+        add(lua, "event_get", L -> events.get(L, slots.get(slot(L, 1)), string(L, 2), string(L, 3)));
         add(lua, "event_set", L -> {
-            events.set(L, L.toJavaObject(1), string(L, 2), string(L, 3), 4);
+            events.set(L, slots.get(slot(L, 1)), string(L, 2), string(L, 3), 4);
             return 0;
         });
+        // Slots (see Slots.java): objects are created in Lua, Java keeps what each number stands for.
+        add(lua, "free_slots", L -> {
+            slots.free(string(L, 1));
+            return 0;
+        });
+        add(lua, "player_slot", L -> {
+            L.push(slots.add(UUID.fromString(string(L, 1))));
+            return 1;
+        });
+        add(lua, "world_slot", L -> {
+            L.push(slots.add(Nms.worldKey(string(L, 1))));
+            return 1;
+        });
 
-        add(lua, "player_name", L -> pushOrNil(L, Nms.playerName(UUID.fromString(string(L, 1)))));
+        add(lua, "player_name", L -> pushOrNil(L, Nms.playerName(slots.get(slot(L, 1)))));
         add(lua, "player_online", L -> {
-            L.push(Nms.isOnline(UUID.fromString(string(L, 1))));
+            L.push(Nms.isOnline(slots.get(slot(L, 1))));
             return 1;
         });
         add(lua, "player_find", L -> {
@@ -90,14 +103,14 @@ final class JavaFunctions {
         add(lua, "material_id", L -> pushOrNil(L, Nms.materialId(string(L, 1))));
         add(lua, "world_id", L -> pushOrNil(L, Nms.worldId(string(L, 1))));
         add(lua, "block_type", L -> pushOrNil(L,
-                Nms.blockType(string(L, 1), (int) L.toInteger(2), (int) L.toInteger(3), (int) L.toInteger(4))));
+                Nms.blockType(slots.get(slot(L, 1)), (int) L.toInteger(2), (int) L.toInteger(3), (int) L.toInteger(4))));
 
         add(lua, "online_players", L -> {
             push(L, String.join("\n", Nms.onlinePlayers()));
             return 1;
         });
         add(lua, "has_permission", L -> {
-            Player player = Bukkit.getPlayer(UUID.fromString(string(L, 1)));
+            Player player = Bukkit.getPlayer(slots.<UUID>get(slot(L, 1)));
             L.push(player != null && player.hasPermission(string(L, 2)));
             return 1;
         });
@@ -141,7 +154,7 @@ final class JavaFunctions {
         });
 
         add(lua, "message", L -> {
-            L.push(Nms.sendMessage(UUID.fromString(string(L, 1)), MiniMessage.miniMessage().deserialize(string(L, 2))));
+            L.push(Nms.sendMessage(slots.get(slot(L, 1)), MiniMessage.miniMessage().deserialize(string(L, 2))));
             return 1;
         });
     }
@@ -161,6 +174,10 @@ final class JavaFunctions {
     /** "a\nb" -> [a, b]; "" -> []. */
     private static List<String> lines(String text) {
         return text.isEmpty() ? List.of() : List.of(text.split("\n"));
+    }
+
+    private static int slot(Lua L, int index) {
+        return (int) L.toInteger(index);
     }
 
     private static int pushOrNil(Lua L, String text) {

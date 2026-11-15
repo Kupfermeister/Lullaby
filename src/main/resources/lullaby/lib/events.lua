@@ -1,4 +1,4 @@
--- Lullaby library, file 3 of 6: events.
+-- Lullaby library, file 4 of 7: events.
 --
 --   on{ "BlockBreakEvent", function(e) ... end, order = 0, stage = "normal" }   before it happens: may change e
 --   after{ "PlayerJoinEvent", function(e) ... end, order = 0 }                  once it happened (not cancelled): read only
@@ -58,7 +58,7 @@ function lib.on(a) register("on", a) end
 function lib.after(a) register("after", a) end
 
 -- Event objects: e.field reads from the Java event, e.field = v writes to it (only in `on`, only before a wait).
-local state = setmetatable({}, { __mode = "k" }) -- event object -> { java = event, name, kind, over }
+local state = setmetatable({}, { __mode = "k" }) -- event object -> { java = its slot (Slots.java), name, kind, over }
 
 -- Java answers a field read with a kind word plus values; turn that into a Lua value.
 local function from_java(kind, a, b, c, d)
@@ -91,12 +91,18 @@ local EVENT_META = {
 }
 
 -- Called by Java for each event a script listens to.
+-- java_event is the event's slot number; it is freed when the Lua event object is collected.
 function I.dispatch(name, kind, stage, java_event)
 	local list = handlers[name .. "|" .. kind .. "|" .. stage]
-	if not list then return end
+	if not list then
+		J.free_slots(tostring(java_event))
+		return
+	end
 	local e = setmetatable({}, EVENT_META)
 	local s = { java = java_event, name = name, kind = kind, over = false }
 	state[e] = s
+	I.kind_of[e] = "event"
+	I.give_slot(e, java_event)
 	local origin = name .. " (" .. kind .. ")"
 	for i = 1, #list do
 		I.start_task(list[i].fn, { n = 1, e }, origin)
@@ -114,6 +120,7 @@ function I.fire_reload(scripts, errors, ms, uuid)
 		__tostring = function() return "reload" end,
 		__metatable = false,
 	})
+	I.kind_of[e] = "event"
 	for _, kind in ipairs({ "on", "after" }) do
 		local list = handlers["reload|" .. kind .. "|" .. (kind == "on" and "normal" or "monitor")]
 		if list then

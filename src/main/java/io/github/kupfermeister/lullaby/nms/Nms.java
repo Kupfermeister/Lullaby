@@ -16,6 +16,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.players.NameAndId;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.storage.LevelResource;
 import net.kyori.adventure.text.Component;
@@ -132,9 +133,14 @@ public final class Nms {
         return level == null ? null : level.dimension().identifier().toString();
     }
 
+    /** The key of a loaded world by its full id (the library checked it exists), kept in a world's slot. */
+    public static ResourceKey<Level> worldKey(String id) {
+        return ResourceKey.create(Registries.DIMENSION, Identifier.parse(id));
+    }
+
     /** The block type id at a position; null if the world or chunk is not loaded (never loads a chunk). */
-    public static String blockType(String world, int x, int y, int z) {
-        ServerLevel level = level(world);
+    public static String blockType(ResourceKey<Level> world, int x, int y, int z) {
+        ServerLevel level = server().getLevel(world);
         if (level == null) return null;
         BlockState state = level.getBlockStateIfLoaded(new BlockPos(x, y, z));
         return state == null ? null : BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();

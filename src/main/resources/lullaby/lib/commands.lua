@@ -1,4 +1,4 @@
--- Lullaby library, file 5 of 6: script commands (Kupfermeister 2026-11-14).
+-- Lullaby library, file 6 of 7: script commands (Kupfermeister 2026-11-14).
 --
 --   command{ "name", function(c) ... end, args = { ... }, branches = { ... }, permission = "x", show = function(p),
 --            aliases = { "n" } }
@@ -280,7 +280,7 @@ function I.refresh_player(uuid)
 	local visible, ids = {}, {}
 	for _, h in ipairs(heads) do
 		local see = h.parent == nil or visible[h.parent]
-		if see and h.permission then see = J.has_permission(uuid, h.permission) end
+		if see and h.permission then see = J.has_permission(I.slot_of[p], h.permission) end
 		if see and h.show then
 			local ok, result = I.protected("show (" .. h.origin .. ")", h.show, p)
 			see = ok and result and true or false

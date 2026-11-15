@@ -1,7 +1,7 @@
--- Lullaby library: the type list (Kupfermeister 2026-11-15). NOT LOADED YET: LuaRuntime.LIBRARY does not list this file.
--- It is the agreed description of every type and every conversion, written first so Kupfermeister can read and change all of
--- it before code exists. The code built later reads this same table (argument checks, error texts, event fields,
--- packet fields, command arguments, saving, docs, type_of), so it stays the one place a type is described.
+-- Lullaby library, file 2 of 7: the type list (Kupfermeister 2026-11-15).
+-- The agreed description of every type and every conversion. It is data: the library reads it (type_of, and later
+-- argument checks, error texts, event fields, packet fields, command arguments, saving, docs), so it stays the one
+-- place a type is described. Most types here are not built yet (see `later` and the build order in Kupfermeister's notes).
 --
 -- THE RULE: a type exists only if Minecraft (or the server) really has that structure where Lua meets the game
 -- (a packet field, an event field, a server function). Nothing is invented. Plain fields are checked plain Lua
@@ -56,7 +56,7 @@
 --   later          true: listed for completeness, built when its area is built
 -- Function and method names in `methods` and in this header (type_of, from_json, :with) are proposals: each one
 -- needs Kupfermeister's yes when it is built. Everything else here was agreed with Kupfermeister (2026-11-15). `later = true` types are built
--- when their area is built; until LuaRuntime loads this file, nothing here does anything.
+-- when their area is built; the entries are descriptions; code that uses them is added step by step.
 --
 -- Like every library file this gets three tables from LuaRuntime.java when it is loaded: J (raw Java functions),
 -- lib (what scripts see) and I (internal, shared by the library files). See core.lua.

@@ -1,4 +1,4 @@
--- Lullaby library, file 1 of 6: shared setup, error reports, config and the script sandbox.
+-- Lullaby library, file 1 of 7: shared setup, error reports, config and the script sandbox.
 --
 -- Every library file is run once per Lua state (each start and each reload) by LuaRuntime.java and gets three tables:
 --   J   raw Java functions (JavaFunctions.java). Private: scripts never see J.
@@ -99,9 +99,78 @@ function I.protected(origin, f, ...)
 	end)
 end
 
--- Readable type of a value for error messages: "player", "material", ... or Lua's own type.
-function I.type_name(value)
-	return I.object_kind(value) or type(value)
+-- ---------------------------------------------------------------------------------------------------------------
+-- Kinds, slots and type_of (Kupfermeister 2026-11-15, see types.lua)
+-- ---------------------------------------------------------------------------------------------------------------
+
+-- Lullaby's own things -> their type name ("player", "event", "task", "location", ...). Weak keys: an entry goes when
+-- its thing is no longer used anywhere.
+I.kind_of = setmetatable({}, { __mode = "k" })
+local kind_of = I.kind_of
+
+-- Slots (Slots.java): an object's number on the Java side. When Lua's garbage collector frees an object, a proxy
+-- (LuaJIT 5.1 runs __gc only for userdata, so each object gets a tiny one) notes its number; I.flush_slots hands
+-- all of them to Java in one call per tick. The object holds nothing of the proxy: the weak-key table does, so the
+-- object can be collected, and the proxy goes with it.
+I.slot_of = setmetatable({}, { __mode = "k" })
+local slot_of = I.slot_of
+local anchors = setmetatable({}, { __mode = "k" }) -- object -> its proxy
+local freed, freed_n = {}, 0
+
+function I.give_slot(object, slot)
+	slot_of[object] = slot
+	local proxy = newproxy(true)
+	getmetatable(proxy).__gc = function()
+		freed_n = freed_n + 1
+		freed[freed_n] = slot
+	end
+	anchors[object] = proxy
+end
+
+function I.flush_slots()
+	if freed_n == 0 then return end
+	local list = concat(freed, "\n", 1, freed_n)
+	freed, freed_n = {}, 0
+	J.free_slots(list)
+end
+
+-- LuaJIT's built-in 64-bit whole numbers (cdata, written 5LL) count as numbers. Their tostring is "5LL"/"5ULL".
+local function is_int64(value)
+	return type(value) == "cdata" and tostring(value):find("^%-?%d+U?LL$") ~= nil
+end
+
+-- type_of(x): the Lullaby type name of any value: "player", "event", "number", "string", ...
+function lib.type_of(value)
+	local kind = kind_of[value]
+	if kind then return kind end
+	if is_int64(value) then return "number" end
+	return type(value)
+end
+I.type_name = lib.type_of -- readable type for error messages
+
+-- Number -> text: the SHORTEST text that reads back as exactly the same number (Lua's own tostring and `..` use 14
+-- digits: 1297632424.123456 would become "1297632424.1235"). Whole numbers print without ".0" or exponent.
+local format, floor, huge = string.format, math.floor, math.huge
+local TWO53 = 2 ^ 53
+function I.number_text(n)
+	if n ~= n then return "nan" end
+	if n == huge then return "inf" end
+	if n == -huge then return "-inf" end
+	if n == floor(n) and n > -TWO53 and n < TWO53 then return format("%d", n) end
+	local text = format("%.15g", n)
+	if tonumber(text) == n then return text end
+	text = format("%.16g", n)
+	if tonumber(text) == n then return text end
+	return format("%.17g", n)
+end
+
+-- Lullaby's tostring (scripts see this one): exact numbers, 64-bit numbers without "LL"; everything else as Lua's.
+local lua_tostring = tostring
+function lib.tostring(value)
+	local t = type(value)
+	if t == "number" then return I.number_text(value) end
+	if t == "cdata" and is_int64(value) then return (lua_tostring(value):gsub("U?LL$", "")) end
+	return lua_tostring(value)
 end
 
 -- ---------------------------------------------------------------------------------------------------------------
@@ -162,7 +231,7 @@ end
 -- The `java` table LuaJava adds can reach any Java class: it is removed always (raw doors come later as x.raw).
 local function build_sandbox(unlock)
 	for _, name in ipairs({ "assert", "error", "ipairs", "next", "pairs", "pcall", "xpcall", "select", "tonumber",
-		"tostring", "type", "unpack", "rawequal", "rawget", "rawset", "getmetatable", "setmetatable", "getfenv",
+		"type", "unpack", "rawequal", "rawget", "rawset", "getmetatable", "setmetatable", "getfenv",
 		"setfenv", "collectgarbage", "gcinfo", "newproxy", "_VERSION" }) do
 		lib[name] = _G[name]
 	end
@@ -170,7 +239,7 @@ local function build_sandbox(unlock)
 	lib.load, lib.loadstring = loader_for(load), loader_for(loadstring)
 	lib.print = function(...)
 		local parts = {}
-		for i = 1, select("#", ...) do parts[i] = tostring((select(i, ...))) end
+		for i = 1, select("#", ...) do parts[i] = lib.tostring((select(i, ...))) end
 		J.log(concat(parts, "\t"))
 	end
 	if unlock.io then lib.io, lib.dofile, lib.loadfile = io, dofile, loadfile end

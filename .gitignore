@@ -8,3 +8,6 @@ run/
 *.iml
 out/
 .vscode/
+# Local working notes and scripts, not part of the plugin (Kupfermeister 2026-11-15)
+CLAUDE.md
+start-server.bat

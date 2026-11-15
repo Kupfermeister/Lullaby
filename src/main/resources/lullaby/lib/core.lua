@@ -1,4 +1,4 @@
--- Lullaby library, file 1 of 7: shared setup, error reports, config and the script sandbox.
+-- Lullaby library, file 1 of 8: shared setup, error reports, config and the script sandbox.
 --
 -- Every library file is run once per Lua state (each start and each reload) by LuaRuntime.java and gets three tables:
 --   J   raw Java functions (JavaFunctions.java). Private: scripts never see J.
@@ -138,13 +138,26 @@ end
 local function is_int64(value)
 	return type(value) == "cdata" and tostring(value):find("^%-?%d+U?LL$") ~= nil
 end
+I.is_int64 = is_int64
 
--- type_of(x): the Lullaby type name of any value: "player", "event", "number", "string", ...
+-- Values (values.lua) are known by their metatable, so making one needs no bookkeeping. The library reads hidden
+-- metatables (__metatable = false) with its private copy of debug.getmetatable; scripts can't.
+I.kind_by_meta = {}
+local kind_by_meta = I.kind_by_meta
+local debug_getmetatable = debug.getmetatable
+I.debug_getmetatable = debug_getmetatable
+
+-- type_of(x): the Lullaby type name of any value: "player", "vec3", "event", "number", "string", ...
 function lib.type_of(value)
 	local kind = kind_of[value]
 	if kind then return kind end
-	if is_int64(value) then return "number" end
-	return type(value)
+	local t = type(value)
+	if t == "table" then
+		local meta = debug_getmetatable(value)
+		return meta and kind_by_meta[meta] or "table"
+	end
+	if t == "cdata" and is_int64(value) then return "number" end
+	return t
 end
 I.type_name = lib.type_of -- readable type for error messages
 

@@ -16,7 +16,13 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.players.NameAndId;
+import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import net.minecraft.commands.arguments.blocks.BlockStateParser;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.properties.BooleanProperty;
+import net.minecraft.world.level.block.state.properties.IntegerProperty;
+import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.storage.LevelResource;
 import net.kyori.adventure.text.Component;
@@ -116,10 +122,10 @@ public final class Nms {
         return Identifier.tryParse(id.contains(":") ? id : "minecraft:" + id);
     }
 
-    /** The full id of a block type ("stone" -> "minecraft:stone"); null if there is none. */
-    public static String materialId(String text) {
+    /** A full id ("overworld" -> "minecraft:overworld") if the text is a valid id at all; null otherwise. */
+    public static String dimensionId(String text) {
         Identifier id = identifier(text);
-        return id != null && BuiltInRegistries.BLOCK.containsKey(id) ? id.toString() : null;
+        return id == null ? null : id.toString();
     }
 
     private static ServerLevel level(String text) {
@@ -138,11 +144,69 @@ public final class Nms {
         return ResourceKey.create(Registries.DIMENSION, Identifier.parse(id));
     }
 
-    /** The block type id at a position; null if the world or chunk is not loaded (never loads a chunk). */
-    public static String blockType(ResourceKey<Level> world, int x, int y, int z) {
+    // ---- block states (vanilla's state numbers: Block.getId / Block.stateById) ----
+
+    /** Vanilla's block state text ("oak_stairs[facing=north]") to its state number; throws with vanilla's reason. */
+    public static int blockStateParse(String text) {
+        try {
+            return Block.getId(BlockStateParser.parseForBlock(BuiltInRegistries.BLOCK, text, false).blockState());
+        } catch (CommandSyntaxException e) {
+            throw new IllegalArgumentException("block_state: " + e.getRawMessage().getString() + " in \"" + text + "\"");
+        }
+    }
+
+    private static BlockState state(int id) {
+        BlockState state = Block.stateById(id);
+        if (state == null || Block.getId(state) != id) throw new IllegalStateException("Lullaby bug: no block state " + id);
+        return state;
+    }
+
+    /** "type id", then per property "name TAB kind TAB value" (kind: b boolean, i integer, e enum), one per line. */
+    public static String blockStateInfo(int id) {
+        BlockState state = state(id);
+        StringBuilder out = new StringBuilder(BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString());
+        for (Property<?> property : state.getProperties()) {
+            char kind = property instanceof BooleanProperty ? 'b' : property instanceof IntegerProperty ? 'i' : 'e';
+            out.append('\n').append(property.getName()).append('\t').append(kind).append('\t')
+                    .append(valueName(state, property));
+        }
+        return out.toString();
+    }
+
+    private static <T extends Comparable<T>> String valueName(BlockState state, Property<T> property) {
+        return property.getName(state.getValue(property));
+    }
+
+    /** Vanilla's own text of a state, with every property ("minecraft:oak_stairs[facing=north,half=top,...]"). */
+    public static String blockStateText(int id) {
+        return BlockStateParser.serialize(state(id));
+    }
+
+    /** The state with properties changed; changes are "name TAB value" lines (the library checked the kinds). */
+    public static int blockStateWith(int id, String changes) {
+        BlockState state = state(id);
+        for (String line : changes.split("\n")) {
+            int tab = line.indexOf('\t');
+            String name = line.substring(0, tab);
+            Property<?> property = state.getBlock().getStateDefinition().getProperty(name);
+            if (property == null) throw new IllegalArgumentException("block_state: no property " + name);
+            state = with(state, property, line.substring(tab + 1));
+        }
+        return Block.getId(state);
+    }
+
+    private static <T extends Comparable<T>> BlockState with(BlockState state, Property<T> property, String value) {
+        T parsed = property.getValue(value).orElseThrow(() -> new IllegalArgumentException(
+                "block_state: " + property.getName() + " can't be " + value + " (possible: "
+                        + String.join(", ", property.getPossibleValues().stream().map(property::getName).toList()) + ")"));
+        return state.setValue(property, parsed);
+    }
+
+    /** The state number at a position; -1 if the world or chunk is not loaded (never loads a chunk). */
+    public static int blockStateAt(ResourceKey<Level> world, int x, int y, int z) {
         ServerLevel level = server().getLevel(world);
-        if (level == null) return null;
+        if (level == null) return -1;
         BlockState state = level.getBlockStateIfLoaded(new BlockPos(x, y, z));
-        return state == null ? null : BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
+        return state == null ? -1 : Block.getId(state);
     }
 }

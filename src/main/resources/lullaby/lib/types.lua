@@ -1,4 +1,4 @@
--- Lullaby library, file 2 of 7: the type list (Kupfermeister 2026-11-15).
+-- Lullaby library, file 2 of 8: the type list (Kupfermeister 2026-11-15).
 -- The agreed description of every type and every conversion. It is data: the library reads it (type_of, and later
 -- argument checks, error texts, event fields, packet fields, command arguments, saving, docs), so it stays the one
 -- place a type is described. Most types here are not built yet (see `later` and the build order in Kupfermeister's notes).
@@ -136,7 +136,8 @@ T.block_pos = {
 	accepts = "block_pos, { x, y, z } or { x = , y = , z = } with whole numbers, text \"10 64 -5\"",
 	codec = "BlockPos.CODEC (3 ints)", stream = "BlockPos.STREAM_CODEC", text = "BlockPosArgument",
 	arg = "BlockPosArgument (~ ~1 ~)", save = "codec",
-	methods = "above(n) below(n) offset(dx,dy,dz) center() -> vec3, + - with block_pos",
+	methods = "+ - with block_pos, offset(dx, dy, dz), vec3() (the corner), chunk_pos(), section_pos() (only offset: "
+		.. "no above/below/north/..., Kupfermeister 2026-11-15)",
 }
 T.vec3 = {
 	kind = "value", impl = "small", vanilla = "net.minecraft.world.phys.Vec3",
@@ -144,27 +145,24 @@ T.vec3 = {
 	accepts = "vec3, { x, y, z } or { x = , y = , z = }, text \"0.5 64 0.5\"",
 	codec = "Vec3.CODEC (3 doubles)", stream = "Vec3.STREAM_CODEC (LP_STREAM_CODEC for velocities)",
 	text = "Vec3Argument", arg = "Vec3Argument", save = "codec",
-	methods = "+ - * /, length, normalize, dot, cross, distance, lerp, rotate(quaternion), block_pos()",
-}
-T.vec3f = {
-	kind = "value", impl = "small", vanilla = "org.joml.Vector3f (display entities: scale, translation)",
-	fields = { x = "number", y = "number", z = "number" },
-	accepts = "vec3f, vec3, { x, y, z }", codec = "ExtraCodecs.VECTOR3F", stream = "ByteBufCodecs.VECTOR3F",
-	save = "codec", note = "float precision (about 7 digits); kept apart from vec3 because vanilla keeps it apart",
-	methods = "same math as vec3",
+	methods = "+ - * / (by a number), unary -, length, normalize, dot, cross, distance_to, lerp, x_rot y_rot z_rot "
+		.. "(degrees), rotate(quaternion), block_pos() (rounds down)",
+	note = "also used for vanilla's Vector3f fields (display entity scale and translation: rounded to float at the "
+		.. "border, as vanilla does) and Rotations (armor stand angles): same handling, so one type (Kupfermeister 2026-11-15). "
+		.. "block_pos, section_pos and chunk_pos stay separate: whole numbers with their own handling.",
 }
 T.chunk_pos = {
 	kind = "value", impl = "small", vanilla = "net.minecraft.world.level.ChunkPos (a 16x16 column, full height)",
 	fields = { x = "whole number", z = "whole number" },
 	accepts = "chunk_pos, { x, z }, text \"10 -5\"", codec = "ChunkPos.CODEC (2 ints)",
-	stream = "ChunkPos.STREAM_CODEC", arg = "ColumnPosArgument", save = "codec",
+	stream = "ChunkPos.STREAM_CODEC", arg = "ColumnPosArgument", save = "codec", methods = "offset(dx, dz)",
 }
 T.section_pos = {
 	kind = "value", impl = "small", vanilla = "net.minecraft.core.SectionPos (a 16x16x16 cube)",
 	fields = { x = "whole number", y = "whole number", z = "whole number" },
 	accepts = "section_pos, { x, y, z }", stream = "SectionPos.STREAM_CODEC (one long)",
 	save = "own: list of 3 ints", note = "vanilla has no Codec for it",
-	methods = "chunk_pos(), contains(block_pos)",
+	methods = "offset(dx, dy, dz), chunk_pos(), contains(block_pos)",
 }
 T.global_pos = {
 	kind = "value", impl = "small", vanilla = "net.minecraft.core.GlobalPos (death location, lodestone, spawn)",
@@ -177,19 +175,14 @@ T.yaw_pitch = {
 	fields = { yaw = "number (degrees)", pitch = "number (degrees)" },
 	accepts = "yaw_pitch, { yaw, pitch }, text \"~ 0\"", arg = "RotationArgument (AngleArgument for yaw only)",
 	save = "own: list of 2 floats", note = "packets send it as angle bytes; Lullaby converts",
-	methods = "direction() -> vec3, from a vec3 direction",
-}
-T.rotations = {
-	kind = "value", impl = "small", vanilla = "net.minecraft.core.Rotations (armor stand body parts)",
-	fields = { x = "number", y = "number", z = "number" }, accepts = "rotations, { x, y, z }",
-	codec = "Rotations.CODEC (3 floats)", stream = "Rotations.STREAM_CODEC", save = "codec",
+	methods = "direction() -> vec3; yaw_pitch.from_direction(vec3)",
 }
 T.quaternion = {
 	kind = "value", impl = "small", vanilla = "org.joml.Quaternionf (display entity rotations)",
 	fields = { x = "number", y = "number", z = "number", w = "number" },
 	accepts = "quaternion, { x, y, z, w }, axis-angle table { angle = , axis = vec3 } (vanilla's second codec form)",
 	codec = "ExtraCodecs.QUATERNIONF", stream = "ByteBufCodecs.QUATERNIONF", save = "codec",
-	methods = "* (combine), rotate(vec3), from yaw_pitch, from axis and angle",
+	methods = "* (combine), rotate(vec3); quaternion.from_yaw_pitch(yp), quaternion.from_axis_angle(axis, degrees)",
 }
 T.aabb = {
 	kind = "value", impl = "small", vanilla = "net.minecraft.world.phys.AABB (hitboxes, collisions; areas)",
@@ -197,7 +190,7 @@ T.aabb = {
 	save = "own: list of 6 doubles",
 	note = "vanilla has neither Codec nor StreamCodec for it. Other area shapes (spheres, polygons, meshes from "
 		.. "Blender, block masks) may come later: area functions must not assume every area is an aabb.",
-	methods = "contains(vec3), intersects(aabb), grow(n), center(), size()",
+	methods = "contains(vec3) (max side open), intersects(aabb), grow(n), move(vec3), center(), size()",
 }
 T.bounding_box = {
 	kind = "value", impl = "small", vanilla = "net.minecraft.world.level.levelgen.structure.BoundingBox (structures)",
@@ -207,9 +200,9 @@ T.bounding_box = {
 T.location = {
 	kind = "value", impl = "small", vanilla = "Bukkit Location (every Paper event uses it; vanilla has no such type)",
 	fields = { world = "world (object)", pos = "vec3", rot = "yaw_pitch" },
-	accepts = "location, { world = , pos = , rot = } (rot optional), entity (its location), block (its center)",
+	accepts = "location, { world = , pos = , rot = } (rot optional: 0, 0, as in vanilla), entity (its location), block (its center)",
 	save = "own: { world = id, pos, rot }", note = "built from world + vec3 + yaw_pitch; replaces today's location",
-	methods = "above(n), block (the block object at it), distance(location), offset",
+	methods = "block() (the block object at it), offset(vec3)",
 }
 
 -- =================================================================================================================

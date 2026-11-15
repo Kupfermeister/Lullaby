@@ -100,10 +100,32 @@ final class JavaFunctions {
             UUID uuid = Nms.findPlayer(string(L, 1));
             return pushOrNil(L, uuid == null ? null : uuid.toString());
         });
-        add(lua, "material_id", L -> pushOrNil(L, Nms.materialId(string(L, 1))));
         add(lua, "world_id", L -> pushOrNil(L, Nms.worldId(string(L, 1))));
-        add(lua, "block_type", L -> pushOrNil(L,
-                Nms.blockType(slots.get(slot(L, 1)), (int) L.toInteger(2), (int) L.toInteger(3), (int) L.toInteger(4))));
+        add(lua, "dimension_id", L -> pushOrNil(L, Nms.dimensionId(string(L, 1))));
+        // Block states travel as vanilla's state numbers (Block.getId); objects.lua keeps one table per number.
+        add(lua, "block_state_parse", L -> {
+            L.push(Nms.blockStateParse(string(L, 1)));
+            return 1;
+        });
+        add(lua, "block_state_info", L -> {
+            push(L, Nms.blockStateInfo((int) L.toInteger(1)));
+            return 1;
+        });
+        add(lua, "block_state_text", L -> {
+            push(L, Nms.blockStateText((int) L.toInteger(1)));
+            return 1;
+        });
+        add(lua, "block_state_with", L -> {
+            L.push(Nms.blockStateWith((int) L.toInteger(1), string(L, 2)));
+            return 1;
+        });
+        add(lua, "block_state_at", L -> {
+            int id = Nms.blockStateAt(slots.get(slot(L, 1)), (int) L.toInteger(2), (int) L.toInteger(3),
+                    (int) L.toInteger(4));
+            if (id < 0) return 0;
+            L.push(id);
+            return 1;
+        });
 
         add(lua, "online_players", L -> {
             push(L, String.join("\n", Nms.onlinePlayers()));

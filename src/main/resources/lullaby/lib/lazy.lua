@@ -1,8 +1,8 @@
--- Lullaby library, file 7 of 9: codec values and the wire.
+-- Lullaby library: codec values and the wire.
 --
 -- THE WIRE: tables cross to Java as bytes in LuaJIT's own serialization format (string.buffer encode/decode, done in
 -- C), read and written by Wire.java. Small values (block_pos, vec3, ...), objects and text components inside a table
--- are tagged by their metatable (the KINDS list, same order as KINDS in nms/Codecs.java), so Java knows what they are
+-- are tagged by their metatable (the KINDS list, read from nms/Codecs.java, its owner), so Java knows what they are
 -- without a Lua loop. Java turns the tables into vanilla codec input (LuaOps.java).
 --
 -- LAZY VALUES: a small Lua table standing for an unchangeable Java copy (in a slot, see core.lua). A part loads
@@ -35,9 +35,23 @@ local find, sub, gsub, format = string.find, string.sub, string.gsub, string.for
 local kind_by_meta, slot_of = I.kind_by_meta, I.slot_of
 local meta_of = I.debug_getmetatable
 
--- Same order as KINDS in nms/Codecs.java (Java gets the 0-based index).
-local KINDS = { "block_pos", "section_pos", "chunk_pos", "vec3", "yaw_pitch", "quaternion", "aabb", "bounding_box",
-	"global_pos", "location", "block_state", "player", "world", "block", "item_stack", "component", "components" }
+-- Java owns the kind list (KINDS in nms/Codecs.java); Java gets the 0-based index of a kind on the wire.
+local KINDS = {}
+for name in string.gmatch(J.wire_kinds(), "[^\n]+") do KINDS[#KINDS + 1] = name end
+
+-- Each kind's metatable, in KINDS order. Built once after the whole library has loaded (I.check_kinds, from
+-- I.setup): a Java kind without a Lua side is a Lullaby bug and stops the load instead of quietly never matching.
+local function kind_metas()
+	local by_name = {}
+	for meta, name in raw_next, kind_by_meta do by_name[name] = meta end
+	for name, meta in raw_next, I.object_meta do by_name[name] = meta end
+	local metas, missing = {}, {}
+	for i = 1, #KINDS do
+		metas[i] = by_name[KINDS[i]]
+		if not metas[i] then missing[#missing + 1] = KINDS[i] end
+	end
+	return metas, missing
+end
 
 -- item_stacks inside a table (a show_item hover's item = ...) need their CURRENT Java slot on the wire: mark() finds
 -- them (each table visited once, so loops can't hang it), puts the slot at it[true] for the encoder and remembers
@@ -63,19 +77,18 @@ local function mark(t, level)
 	end
 end
 
+function I.check_kinds()
+	local _, missing = kind_metas()
+	-- FORMAT: Java and Lua disagree on the wire's kinds (a bug in Lullaby, not in a script)
+	if #missing > 0 then error("Lullaby bug: wire kinds without a Lua side: " .. table.concat(missing, ", "), 0) end
+end
+
 local depth = 0 -- I.wire calls itself while marking (a changed item_stack is built through the wire)
 local encoder
 -- Any Lua value as wire bytes. Errors (functions, coroutines, tables inside themselves, too deep) say what failed.
 -- Helper copies of changed item_stacks inside stay alive until the next outer I.wire call: send the bytes first.
 function I.wire(value)
-	if not encoder then
-		local by_name = {}
-		for meta, name in raw_next, kind_by_meta do by_name[name] = meta end
-		for name, meta in raw_next, I.object_meta do by_name[name] = meta end
-		local metas = {}
-		for i = 1, #KINDS do metas[i] = by_name[KINDS[i]] or {} end -- {}: a kind not built yet, never matches
-		encoder = buffer.new({ metatable = metas })
-	end
+	if not encoder then encoder = buffer.new({ metatable = (kind_metas()) }) end
 	if depth == 0 then
 		for i = #helpers, 1, -1 do I.release(helpers[i]); helpers[i] = nil end
 	end

@@ -1,4 +1,4 @@
--- Lullaby library, file 8 of 9: script commands.
+-- Lullaby library: script commands.
 --
 --   command{ "name", function(c) ... end, args = { ... }, branches = { ... }, permission = "x", show = function(p),
 --            aliases = { "n" } }

@@ -1,5 +1,6 @@
 package io.github.kupfermeister.lullaby.nms;
 
+import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import com.mojang.brigadier.StringReader;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
@@ -9,11 +10,13 @@ import com.mojang.serialization.DynamicOps;
 import com.mojang.serialization.JsonOps;
 import io.github.kupfermeister.lullaby.lua.Wire;
 import io.papermc.paper.adventure.PaperAdventure;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.IntFunction;
 import java.util.function.ToIntFunction;
 import net.minecraft.commands.arguments.ParticleArgument;
@@ -26,10 +29,13 @@ import net.minecraft.commands.arguments.item.ItemParser;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.component.DataComponentPatch;
+import net.minecraft.core.component.Removed;
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.NbtOps;
+import net.minecraft.nbt.Tag;
+import net.minecraft.nbt.TagParser;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.ComponentSerialization;
 import net.minecraft.resources.Identifier;
@@ -50,13 +56,17 @@ import net.minecraft.world.level.block.state.BlockState;
  */
 public final class Codecs {
 
-    /** The wire's kind list; lib/wire.lua sends tables with these metatables tagged by index, in this order. */
+    /**
+     * The wire's kind list, owned here: the library reads it once at startup ({@link #kindList}, J.wire_kinds) and
+     * tags tables with these metatables by their 0-based index; its self-check stops loading if a kind has no Lua
+     * side. Java code finds a kind's index by name ({@link #kindIndex}), never by a typed number.
+     */
     private static final String[] KINDS = {"block_pos", "section_pos", "chunk_pos", "vec3", "yaw_pitch", "quaternion",
             "aabb", "bounding_box", "global_pos", "location", "block_state", "player", "world", "block", "item_stack",
             "component", "components"};
 
     private static RegistryOps<Object> luaOps;
-    private static RegistryOps<net.minecraft.nbt.Tag> nbtOps;
+    private static RegistryOps<Tag> nbtOps;
     private static HolderLookup.Provider lookupFor;
 
     private Codecs() {
@@ -225,6 +235,17 @@ public final class Codecs {
         }
     }
 
+    /** Every wire kind, one per line, in index order (for the library, once at startup). */
+    public static String kindList() {
+        return String.join("\n", KINDS);
+    }
+
+    /** A wire kind's index by its name; an unknown name is a bug in Lullaby. */
+    static int kindIndex(String name) {
+        for (int i = 0; i < KINDS.length; i++) if (KINDS[i].equals(name)) return i;
+        throw new IllegalStateException("Lullaby bug: no wire kind " + name);
+    }
+
     /** The wire kind's name ("vec3", "player", ...) for error messages. */
     static String kindName(int kind) {
         return kind >= 0 && kind < KINDS.length ? KINDS[kind] : "?";
@@ -265,7 +286,7 @@ public final class Codecs {
      * short, float, ...) survive the trip through Lua; read back with vanilla's SNBT parser. The table form comes
      * with the nbt type (build step 3b).
      */
-    private static final java.util.Set<DataComponentType<?>> NBT_TYPES = java.util.Set.of(DataComponents.CUSTOM_DATA,
+    private static final Set<DataComponentType<?>> NBT_TYPES = Set.of(DataComponents.CUSTOM_DATA,
             DataComponents.ENTITY_DATA, DataComponents.BLOCK_ENTITY_DATA, DataComponents.BUCKET_ENTITY_DATA);
 
     /** A patch from Lua: SNBT text for the NBT components, codec shape (strings literal) for the rest. */
@@ -280,9 +301,9 @@ public final class Codecs {
                 Identifier key = e.getKey() instanceof String k && !k.startsWith("!") ? Identifier.tryParse(componentId(k)) : null;
                 DataComponentType type = key == null ? null : BuiltInRegistries.DATA_COMPONENT_TYPE.getValue(key);
                 if (type != null && NBT_TYPES.contains(type) && e.getValue() instanceof String text) {
-                    net.minecraft.nbt.Tag tag;
+                    Tag tag;
                     try {
-                        tag = net.minecraft.nbt.TagParser.create(NbtOps.INSTANCE).parseFully(text);
+                        tag = TagParser.create(NbtOps.INSTANCE).parseFully(text);
                     } catch (CommandSyntaxException ex) {
                         throw new IllegalArgumentException(e.getKey() + ": " + ex.getMessage()); // FORMAT: bad SNBT
                     }
@@ -316,7 +337,7 @@ public final class Codecs {
             if (type.isTransient()) continue; // vanilla's patch codec leaves these out too
             String id = BuiltInRegistries.DATA_COMPONENT_TYPE.getKey(type).toString();
             Object value = e.getValue(); // the value itself, or vanilla's Removed marker
-            if (!net.minecraft.core.component.Removed.isNotRemoved(value)) {
+            if (!Removed.isNotRemoved(value)) {
                 result.put("!" + id, LuaOps.EMPTY_TABLE);
             } else if (NBT_TYPES.contains(type)) {
                 result.put(id, get(type.codecOrThrow().encodeStart(nbtOps, value)).toString());
@@ -390,7 +411,7 @@ public final class Codecs {
     }
 
     /** The patch as wire bytes for Lua. */
-    public static java.nio.ByteBuffer itemComponents(ItemStack stack) {
+    public static ByteBuffer itemComponents(ItemStack stack) {
         return Wire.write(patchOut(stack.getComponentsPatch()));
     }
 
@@ -408,7 +429,7 @@ public final class Codecs {
             first = false;
             String id = BuiltInRegistries.DATA_COMPONENT_TYPE.getKey(type).toString();
             Object value = e.getValue(); // the value itself, or vanilla's Removed marker
-            if (!net.minecraft.core.component.Removed.isNotRemoved(value)) {
+            if (!Removed.isNotRemoved(value)) {
                 text.append('!').append(id);
             } else {
                 text.append(id).append('=').append(get(type.codecOrThrow().encodeStart(nbtOps, value)));
@@ -462,6 +483,11 @@ public final class Codecs {
         int[] items = {0};
         tree = itemsOut(tree, addSlot, items);
         return new Object[]{Wire.write(tree), items[0]};
+    }
+
+    /** from_json's result: a component as {@link #componentOut} gives it, or null if it is not a component. */
+    public static Object[] componentOutIfText(Object value, ToIntFunction<Object> addSlot) {
+        return value instanceof Component text ? componentOut(text, addSlot) : null;
     }
 
     private static Object itemsOut(Object tree, ToIntFunction<Object> addSlot, int[] items) {
@@ -529,14 +555,14 @@ public final class Codecs {
     /** Datapack JSON with vanilla's own meaning (strings are literal text, unknown keys ignored, as vanilla). */
     public static Object fromJson(String json, String type) {
         ops();
-        DynamicOps<com.google.gson.JsonElement> jsonOps = RegistryOps.create(JsonOps.INSTANCE, registries());
+        DynamicOps<JsonElement> jsonOps = RegistryOps.create(JsonOps.INSTANCE, registries());
         Codec<?> codec = switch (type) {
             case "item_stack" -> ItemStack.CODEC;
             case "component" -> ComponentSerialization.CODEC;
             // FORMAT: from_json type not supported
             default -> throw new IllegalArgumentException("from_json: unknown type " + type + " (item_stack, component)");
         };
-        com.google.gson.JsonElement element;
+        JsonElement element;
         try {
             element = JsonParser.parseString(json);
         } catch (RuntimeException e) {

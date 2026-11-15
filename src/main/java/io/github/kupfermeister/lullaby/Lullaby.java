@@ -67,7 +67,10 @@ public final class Lullaby extends JavaPlugin {
     @Override
     public void onDisable() {
         tickTarget = null;
-        if (engine != null) engine.unload(); // finals of running tasks run here
+        if (engine != null) {
+            engine.unload(); // finals of running tasks run here
+            engine.watchdog().shutdown();
+        }
     }
 
     private static String stripZeros(String version) {

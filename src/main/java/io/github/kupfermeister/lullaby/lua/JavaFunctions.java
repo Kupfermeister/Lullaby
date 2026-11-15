@@ -5,14 +5,16 @@ import io.github.kupfermeister.lullaby.event.EventBridge;
 import io.github.kupfermeister.lullaby.nms.Codecs;
 import io.github.kupfermeister.lullaby.nms.Nms;
 import io.github.kupfermeister.lullaby.nms.Packets;
-import java.util.function.IntFunction;
 import io.github.kupfermeister.lullaby.nms.ScriptCommands;
+import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.IntFunction;
+import java.util.function.ToIntFunction;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import party.iroiro.luajava.JFunction;
@@ -34,58 +36,74 @@ final class JavaFunctions {
     private JavaFunctions() {
     }
 
+    // The watchdog's flag is checked at the start of every function added with add() (see Watchdog.java). Set by
+    // fill; main thread only. Functions the library needs while reporting or loading use addFree (no check).
+    private static Watchdog watchdog;
+
     /** Fills the table on top of the stack with every function. */
     static void fill(Lua lua, Engine engine, Slots slots) {
+        watchdog = engine.watchdog();
         EventBridge events = engine.events();
         events.slots(slots::add);
 
-        add(lua, "log", L -> {
+        addFree(lua, "set_time_limit", L -> {
+            push(L, watchdog.setLimit(L.toNumber(1)));
+            return 1;
+        });
+        addFree(lua, "log", L -> {
             engine.plugin().getComponentLogger().info(string(L, 1));
             return 0;
         });
-        add(lua, "report", L -> {
+        addFree(lua, "report", L -> {
             engine.errors().report(string(L, 1), string(L, 2), (int) L.toInteger(3), string(L, 4), string(L, 5));
             return 0;
         });
-        add(lua, "set_error_window", L -> {
+        addFree(lua, "set_error_window", L -> {
             engine.errors().setWindowSeconds(L.toNumber(1));
             return 0;
         });
-        add(lua, "read_config", L -> {
+        addFree(lua, "read_config", L -> {
             String config = engine.readConfig();
             if (config == null) return 0;
             push(L, config);
             return 1;
         });
-        add(lua, "list_scripts", L -> {
+        addFree(lua, "list_scripts", L -> {
             push(L, String.join("\n", engine.listScripts()));
             return 1;
         });
-        add(lua, "read_script", L -> {
+        addFree(lua, "read_script", L -> {
+            watchdog.loading(string(L, 1)); // each script file gets its own time while loading
             push(L, engine.readScript(string(L, 1)));
             return 1;
         });
 
-        add(lua, "event_known", L -> {
-            L.push(EventBridge.known(string(L, 1)));
+        addFree(lua, "wire_kinds", L -> {
+            push(L, Codecs.kindList());
+            return 1;
+        });
+        // Events: names cross once (event_info at startup, listen per handler kind); every event and field read
+        // after that is whole numbers only (listener number, event slot, field number). See EventBridge.java.
+        addFree(lua, "event_info", L -> {
+            push(L, EventBridge.info());
             return 1;
         });
         add(lua, "listen", L -> {
-            events.listen(string(L, 1), string(L, 2), string(L, 3));
-            return 0;
+            L.push(events.listen(string(L, 1), string(L, 2), string(L, 3)));
+            return 1;
         });
-        add(lua, "event_get", L -> events.get(L, slots.get(slot(L, 1)), string(L, 2), string(L, 3)));
+        add(lua, "event_get", L -> events.get(L, slots.get(slot(L, 1)), (int) L.toInteger(2)));
         add(lua, "event_set", L -> {
-            events.set(L, slots.get(slot(L, 1)), string(L, 2), string(L, 3), 4);
+            events.set(L, slots.get(slot(L, 1)), (int) L.toInteger(2), 3);
             return 0;
         });
         add(lua, "event_set_component", L -> {
-            events.setComponent(slots.get(slot(L, 1)), string(L, 2), string(L, 3),
-                    Codecs.adventure(Codecs.componentFromTable(Wire.read(L.toBuffer(4)), slots::get)));
+            events.setComponent(slots.get(slot(L, 1)), (int) L.toInteger(2),
+                    Codecs.adventure(Codecs.componentFromTable(Wire.read(L.toBuffer(3)), slots::get)));
             return 0;
         });
         // Slots (see Slots.java): objects are created in Lua, Java keeps what each number stands for.
-        add(lua, "free_slots", L -> {
+        addFree(lua, "free_slots", L -> {
             slots.free(string(L, 1));
             return 0;
         });
@@ -178,18 +196,17 @@ final class JavaFunctions {
         });
         // A command's check rejected a value: the script's text (literal, as /tellraw "text") to whoever typed it, in red.
         add(lua, "cmd_reject", L -> {
-            engine.commands().reject(net.kyori.adventure.text.Component.text(string(L, 1)));
+            engine.commands().reject(string(L, 1));
             return 0;
         });
 
         add(lua, "message", L -> {
-            L.push(Nms.sendMessage(slots.get(slot(L, 1)), net.kyori.adventure.text.Component.text(string(L, 2))));
+            L.push(Nms.sendLiteral(slots.get(slot(L, 1)), string(L, 2)));
             return 1;
         });
         // Arguments: player slot, the component's wire bytes (a plain table in codec shape).
         add(lua, "message_component", L -> {
-            L.push(Nms.sendMessage(slots.get(slot(L, 1)),
-                    Codecs.adventure(Codecs.componentFromTable(Wire.read(L.toBuffer(2)), slots::get))));
+            L.push(Nms.sendMessage(slots.get(slot(L, 1)), Codecs.componentFromTable(Wire.read(L.toBuffer(2)), slots::get)));
             return 1;
         });
 
@@ -241,7 +258,7 @@ final class JavaFunctions {
         });
         // Components are plain Lua tables: they cross as wire bytes both ways. Results: the bytes
         // and how many show_item hovers hold a new item stack slot (lazy.lua turns those into item_stacks).
-        java.util.function.ToIntFunction<Object> addSlot = slots::add;
+        ToIntFunction<Object> addSlot = slots::add;
         add(lua, "component_mini", L -> pushComponent(L, Codecs.componentOut(Codecs.componentMini(string(L, 1)), addSlot)));
         add(lua, "component_from_table", L -> pushComponent(L, Codecs.componentOut(
                 Codecs.componentFromTable(Wire.read(L.toBuffer(1)), slotLookup), addSlot)));
@@ -256,7 +273,7 @@ final class JavaFunctions {
 
         // Packet actions (nms/Packets.java): each takes one wire table holding every field.
         add(lua, "particle", L -> {
-            Packets.particle(Wire.read(L.toBuffer(1)), slotLookup, L.toNumber(2));
+            Packets.particle(Wire.read(L.toBuffer(1)), slotLookup);
             return 0;
         });
         add(lua, "sound", L -> {
@@ -269,13 +286,32 @@ final class JavaFunctions {
         });
         add(lua, "from_json", L -> {
             Object value = Codecs.fromJson(string(L, 1), string(L, 2));
-            if (value instanceof net.minecraft.network.chat.Component text) return pushComponent(L, Codecs.componentOut(text, addSlot));
+            Object[] text = Codecs.componentOutIfText(value, addSlot);
+            if (text != null) return pushComponent(L, text);
             L.push(slots.add(value));
             return 1;
         });
     }
 
+    /** A library function; a script past the time limit is stopped here, at its next call into the game. */
     private static void add(Lua lua, String name, JFunction function) {
+        lua.push((JFunction) L -> {
+            if (watchdog.expired()) {
+                L.push(watchdog.stop());
+                return -1;
+            }
+            try {
+                return function.__call(L);
+            } catch (RuntimeException e) {
+                L.push(e.getMessage() != null ? e.getMessage() : e.toString());
+                return -1;
+            }
+        });
+        lua.setField(-2, name);
+    }
+
+    /** A function the library itself needs while loading or reporting errors: never stopped by the watchdog. */
+    private static void addFree(Lua lua, String name, JFunction function) {
         lua.push((JFunction) L -> {
             try {
                 return function.__call(L);
@@ -293,7 +329,7 @@ final class JavaFunctions {
     }
 
     private static int pushComponent(Lua L, Object[] out) {
-        L.push((java.nio.ByteBuffer) out[0]);
+        L.push((ByteBuffer) out[0]);
         L.push((int) out[1]);
         return 2;
     }

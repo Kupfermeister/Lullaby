@@ -1,4 +1,4 @@
--- Lullaby library, file 4 of 9: tasks (run, wait, stop) and the scheduler that resumes waiting tasks each tick.
+-- Lullaby library: tasks (run, wait, stop) and the scheduler that resumes waiting tasks each tick.
 --
 -- A task is one running function inside its own coroutine. Event handlers run as tasks automatically.
 --   run{ f, args = { ... }, final = g, id = x }   starts f(...) now; returns the task, or nil if a task of the same
@@ -17,6 +17,7 @@ local unpack, select, type, error, setmetatable = unpack, select, type, error, s
 local ceil, max, maxn = math.ceil, math.max, table.maxn
 
 local WAIT, DONE, STOP = {}, {}, {} -- unique markers passed between tasks and the scheduler
+I.STOP = STOP -- core.lua's pcall guards pass it on
 local DAY_MS = 86400000
 
 local now = 0                                   -- ticks since this Lua state started
@@ -107,6 +108,29 @@ function I.start_task(f, args, origin, final, id, id_slot)
 	return task
 end
 
+-- Starts an event handler f(e) as a task; returns true if it is still running (it waited). A handler that ended
+-- without waiting is held by nobody (handlers get no task handle), so its task table goes back to a pool: a busy
+-- event makes no new tables here.
+local task_pool = {}
+function I.start_handler(f, e, origin)
+	local n = #task_pool
+	local task = task_pool[n]
+	if task then task_pool[n] = nil else task = { args = { n = 1 } } end
+	task.f, task.origin, task.alive = f, origin, true
+	task.args[1] = e
+	alive[task] = true
+	local co = pool[#pool]
+	if co then pool[#pool] = nil else co = co_create(worker) end
+	task.co = co
+	co_task[co] = task
+	step(task, task)
+	if task.alive then return true end
+	task.f, task.origin, task.co, task.args[1] = nil, nil, nil, nil
+	task.pending_stop, task.force_stop, task.wake = nil, nil, nil
+	if n < POOL_MAX then task_pool[#task_pool + 1] = task end
+	return false
+end
+
 -- Runs every alive task's final and forgets all tasks. Called before a reload or server stop throws the state away.
 function I.stop_all_tasks()
 	for task in pairs(alive) do
@@ -174,6 +198,7 @@ arg: args? | table | A list: f gets args[1], args[2], ...; final gets the same v
 arg: final? | function | Runs when the task ends, also on stop, error, reload and server stop. Never waits.
 arg: id? | any | One running task per function and id. Same function means the same place in the code, so a function written inside a handler counts as one.
 returns: task · nil
+note: A task (and every event handler) that runs longer than the config's script_time_limit (5 s) without waiting is stopped with an error at its next call into the game; its final still runs. A loop that never calls into the game (pure math) can't be stopped; after twice the limit the console names the event or task that is stuck. Keep long work in steps with wait( ).
 status: unconfirmed
 ]]
 function lib.run(a)

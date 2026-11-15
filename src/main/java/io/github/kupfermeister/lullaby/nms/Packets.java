@@ -2,7 +2,6 @@ package io.github.kupfermeister.lullaby.nms;
 
 import io.github.kupfermeister.lullaby.lua.Wire;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -30,24 +29,18 @@ import net.minecraft.sounds.SoundSource;
  * receiver. The generated packet system (on_packet/send_packet) is planned to reuse {@link #send}.
  *
  * <p>Each action arrives as ONE wire table (lazy.lua's I.wire), so a list of 4096 positions crosses in one call. The
- * fields are read here, straight from the wire's picture; Lua only puts the receivers' slot numbers in. Receivers that
+ * fields are read and checked through {@link Fields} (the one place for that); Lua only puts the receivers' slot
+ * numbers in and checks the config's particle_limit before packing a huge list. Receivers that
  * are offline get nothing (there is no connection to send to). Main thread only.
  */
 public final class Packets {
 
     /** Vanilla's limit of packets in one bundle (BundlerInfo.BUNDLE_SIZE_LIMIT); more would kick the player. */
     private static final int BUNDLE_LIMIT = 4096;
-    private static final int VEC3 = 3; // index of "vec3" in the wire's kind list (Codecs.KINDS)
-
-    private static final Map<String, SoundSource> SOURCES = new HashMap<>();
-    private static final Map<String, ClientboundLevelParticlesPacket.RandomizationType> RANDOMIZATION = new HashMap<>();
-
-    static {
-        for (SoundSource source : SoundSource.values()) SOURCES.put(source.getName(), source);
-        for (ClientboundLevelParticlesPacket.RandomizationType type : ClientboundLevelParticlesPacket.RandomizationType.values()) {
-            RANDOMIZATION.put(type.name().toLowerCase(Locale.ROOT), type);
-        }
-    }
+    // Names straight from vanilla's own enums (their owner), so errors and checks can't drift from the game.
+    private static final Map<String, SoundSource> SOURCES = Fields.byName(SoundSource::getName, SoundSource.values());
+    private static final Map<String, ClientboundLevelParticlesPacket.RandomizationType> RANDOMIZATION = Fields.byName(
+            type -> type.name().toLowerCase(Locale.ROOT), ClientboundLevelParticlesPacket.RandomizationType.values());
 
     private Packets() {
     }
@@ -77,8 +70,8 @@ public final class Packets {
     }
 
     /** The online players among the slot numbers Lua sent (offline ones have no connection). */
-    private static List<ServerPlayer> receivers(Wire.Table a, IntFunction<Object> slots) {
-        List<Object> list = list(a.hash.get("players"), "players");
+    private static List<ServerPlayer> receivers(Fields a, IntFunction<Object> slots) {
+        List<Object> list = a.list("players");
         List<ServerPlayer> result = new ArrayList<>(list.size());
         var playerList = MinecraftServer.getServer().getPlayerList();
         for (Object slot : list) {
@@ -91,48 +84,31 @@ public final class Packets {
     // ---- particle{} ----
 
     /**
-     * particle{}: one ClientboundLevelParticlesPacket per position ({@code pos} is a vec3 or a list of vec3).
-     * {@code limit}: the config's particle_limit (positions x count, count 0 counts as 1), or 0 for none.
+     * particle{}: one ClientboundLevelParticlesPacket per position ({@code pos} is a vec3 or a list of vec3). The
+     * config's particle_limit is checked in Lua, before the list is packed (a huge list would cost memory first).
      */
-    public static void particle(Object wire, IntFunction<Object> slots, double limit) {
-        Wire.Table a = (Wire.Table) wire;
-        Object particleField = a.hash.get("particle");
-        // FORMAT: missing required field
-        if (particleField == null) throw new IllegalArgumentException("particle{}: particle is missing");
-        Object posField = a.hash.get("pos");
-        if (posField == null) throw new IllegalArgumentException("particle{}: pos is missing (a vec3 or a list of vec3)");
-        List<Object> points = posField instanceof Wire.Table t && t.kind == VEC3 ? List.of(t) : list(posField, "pos");
-
-        float[] dist = vec3f(a.hash.get("dist"), "dist");
-        float[] speed = vec3f(a.hash.get("max_speed"), "max_speed");
-        int count = whole(a.hash.get("count"), "count", 0);
-        boolean overrideLimiter = bool(a.hash.get("override_limiter"), "override_limiter");
-        boolean alwaysShow = bool(a.hash.get("always_show"), "always_show");
-        ClientboundLevelParticlesPacket.RandomizationType randomization = ClientboundLevelParticlesPacket.RandomizationType.DEFAULT;
-        Object r = a.hash.get("randomization_type");
-        if (r != null) {
-            randomization = r instanceof String s ? RANDOMIZATION.get(s) : null;
-            // FORMAT: bad randomization_type
-            if (randomization == null) throw new IllegalArgumentException("particle{}: randomization_type must be "
-                    + "\"default\", \"alternative\" or \"alternative_with_speed\", got " + Codecs.describe(r));
-        }
-        double total = (double) points.size() * Math.max(count, 1);
-        if (limit > 0 && total > limit) {
-            // FORMAT: particle limit from the config
-            throw new IllegalArgumentException("particle{}: " + Codecs.numberText(total) + " particles (positions x count) "
-                    + "is over the config's particle_limit of " + Codecs.numberText(limit));
-        }
+    public static void particle(Object wire, IntFunction<Object> slots) {
+        Fields a = new Fields("particle{}", wire);
+        Object particleField = a.required("particle", "text like \"flame\" or a table { type = \"dust\", ... }");
+        List<Object> points = a.vec3s("pos", "a vec3 or a list of vec3");
+        float[] dist = a.vec3f("dist");
+        float[] speed = a.vec3f("max_speed");
+        int count = a.whole("count", 0);
+        boolean overrideLimiter = a.bool("override_limiter", false);
+        boolean alwaysShow = a.bool("always_show", false);
+        var randomization = a.choice("randomization_type", RANDOMIZATION,
+                ClientboundLevelParticlesPacket.RandomizationType.DEFAULT);
         ParticleOptions options = Codecs.particle(particleField, slots);
         List<ServerPlayer> to = receivers(a, slots);
         // every point is still checked, but no packets are built for nobody
         if (to.isEmpty()) {
-            for (int i = 0; i < points.size(); i++) vec3(points.get(i), points.size() == 1 ? "pos" : "pos[" + (i + 1) + "]");
+            for (int i = 0; i < points.size(); i++) a.vec3(points.get(i), points.size() == 1 ? "pos" : "pos[" + (i + 1) + "]");
             return;
         }
 
         List<Packet<? super ClientGamePacketListener>> packets = new ArrayList<>(points.size());
         for (int i = 0; i < points.size(); i++) {
-            double[] p = vec3(points.get(i), points.size() == 1 ? "pos" : "pos[" + (i + 1) + "]");
+            double[] p = a.vec3(points.get(i), points.size() == 1 ? "pos" : "pos[" + (i + 1) + "]");
             packets.add(new ClientboundLevelParticlesPacket(options, overrideLimiter, alwaysShow, p[0], p[1], p[2],
                     dist[0], dist[1], dist[2], speed[0], speed[1], speed[2], count, randomization));
         }
@@ -146,31 +122,25 @@ public final class Packets {
      * player for now; offline: nothing is sent). Seed missing: a random one, as vanilla's /playsound.
      */
     public static void sound(Object wire, IntFunction<Object> slots) {
-        Wire.Table a = (Wire.Table) wire;
-        Holder<SoundEvent> sound = soundEvent(a.hash.get("sound"));
-        Object sourceField = a.hash.get("source");
-        // FORMAT: missing source
-        if (sourceField == null) throw new IllegalArgumentException("sound{}: source is missing (" + sourceNames() + ")");
-        SoundSource source = source(sourceField, "sound{}");
-        float volume = a.hash.get("volume") == null ? 1 : (float) number(a.hash.get("volume"), "volume");
-        float pitch = a.hash.get("pitch") == null ? 1 : (float) number(a.hash.get("pitch"), "pitch");
-        Object posField = a.hash.get("pos");
-        Object entityField = a.hash.get("entity");
+        Fields a = new Fields("sound{}", wire);
+        Holder<SoundEvent> sound = soundEvent(a);
+        SoundSource source = a.choice("source", SOURCES, null);
+        float volume = (float) a.number("volume", 1);
+        float pitch = (float) a.number("pitch", 1);
         // FORMAT: pos and entity both or neither
-        if ((posField == null) == (entityField == null)) {
+        if (a.has("pos") == a.has("entity")) {
             throw new IllegalArgumentException("sound{}: give pos (a vec3) or entity (a player), not both or neither");
         }
-        double[] p = posField != null ? vec3(posField, "pos") : null;
-        Object seedField = a.hash.get("seed");
-        long seed = seedField == null ? 0 : seed(seedField);
+        double[] p = a.has("pos") ? a.vec3("pos") : null;
+        long seed = a.long64("seed", 0);
         List<ServerPlayer> to = receivers(a, slots);
         if (to.isEmpty()) return;
-        if (seedField == null) seed = to.getFirst().level().getRandom().nextLong(); // vanilla: level.getRandom().nextLong()
+        if (!a.has("seed")) seed = to.getFirst().level().getRandom().nextLong(); // vanilla: level.getRandom().nextLong()
         Packet<? super ClientGamePacketListener> packet;
         if (p != null) {
             packet = new ClientboundSoundPacket(sound, source, p[0], p[1], p[2], volume, pitch, seed);
         } else {
-            Object who = slots.apply(((Number) entityField).intValue());
+            Object who = slots.apply(((Number) a.raw("entity")).intValue());
             ServerPlayer entity = MinecraftServer.getServer().getPlayerList().getPlayer((UUID) who);
             if (entity == null) return;
             packet = new ClientboundSoundEntityPacket(sound, source, entity, volume, pitch, seed);
@@ -180,129 +150,34 @@ public final class Packets {
 
     /** stop_sound{}: ClientboundStopSoundPacket; no sound and no source stops every sound. */
     public static void stopSound(Object wire, IntFunction<Object> slots) {
-        Wire.Table a = (Wire.Table) wire;
-        Object soundField = a.hash.get("sound");
-        Identifier id = null;
-        if (soundField != null) id = identifier(soundField, "stop_sound{}: sound");
-        Object sourceField = a.hash.get("source");
-        SoundSource source = sourceField == null ? null : source(sourceField, "stop_sound{}");
+        Fields a = new Fields("stop_sound{}", wire);
+        Identifier id = a.has("sound") ? identifier(a, "sound", a.raw("sound")) : null;
+        SoundSource source = a.has("source") ? a.choice("source", SOURCES, null) : null;
         send(receivers(a, slots), List.of(new ClientboundStopSoundPacket(id, source)));
     }
 
     /** "entity.player.levelup" (a registered sound by its registry entry; any other id inline, as /playsound) or
      * { sound_id = , range = } (vanilla's inline SoundEvent: range fixed in blocks instead of growing with volume). */
-    private static Holder<SoundEvent> soundEvent(Object value) {
-        // FORMAT: missing or wrong sound
-        if (value == null) throw new IllegalArgumentException("sound{}: sound is missing (an id or { sound_id = , range = })");
+    private static Holder<SoundEvent> soundEvent(Fields a) {
+        Object value = a.required("sound", "an id or { sound_id = , range = }");
         if (value instanceof String) {
-            Identifier id = identifier(value, "sound{}: sound");
+            Identifier id = identifier(a, "sound", value);
             var registered = BuiltInRegistries.SOUND_EVENT.get(id);
             if (registered.isPresent()) return registered.get();
             return Holder.direct(SoundEvent.createVariableRangeEvent(id));
         }
         if (value instanceof Wire.Table t && t.kind < 0) {
-            Object idField = t.hash.get("sound_id");
-            if (idField == null) throw new IllegalArgumentException("sound{}: sound table needs sound_id"); // FORMAT
-            Identifier id = identifier(idField, "sound{}: sound_id");
-            Object range = t.hash.get("range");
-            return Holder.direct(range == null ? SoundEvent.createVariableRangeEvent(id)
-                    : SoundEvent.createFixedRangeEvent(id, (float) number(range, "sound range")));
+            Fields inner = new Fields("sound{}: sound", t);
+            Identifier id = identifier(inner, "sound_id", inner.required("sound_id", "an id like \"entity.player.levelup\""));
+            return Holder.direct(inner.has("range") ? SoundEvent.createFixedRangeEvent(id, (float) inner.number("range", 0))
+                    : SoundEvent.createVariableRangeEvent(id));
         }
-        throw new IllegalArgumentException("sound{}: sound must be an id or { sound_id = , range = }, got " + Codecs.describe(value));
+        throw a.wrong("sound", "an id or { sound_id = , range = }", value);
     }
 
-    private static Identifier identifier(Object value, String what) {
+    private static Identifier identifier(Fields a, String field, Object value) {
         Identifier id = value instanceof String s ? Identifier.tryParse(s) : null;
-        // FORMAT: bad id
-        if (id == null) throw new IllegalArgumentException(what + " must be an id like \"entity.player.levelup\", got "
-                + Codecs.describe(value));
+        if (id == null) throw a.wrong(field, "an id like \"entity.player.levelup\"", value);
         return id;
-    }
-
-    private static SoundSource source(Object value, String what) {
-        SoundSource source = value instanceof String s ? SOURCES.get(s) : null;
-        // FORMAT: bad sound source
-        if (source == null) throw new IllegalArgumentException(what + ": source must be one of " + sourceNames()
-                + ", got " + Codecs.describe(value));
-        return source;
-    }
-
-    private static String sourceNames() {
-        List<String> names = new ArrayList<>();
-        for (SoundSource source : SoundSource.values()) names.add(source.getName());
-        return String.join(", ", names);
-    }
-
-    // ---- field readers (each error names the field) ----
-
-    /** A list: t[1..n] with no holes and nothing else (LuaJIT may keep part of a list in its hash part). */
-    private static List<Object> list(Object value, String field) {
-        if (value instanceof Wire.Table t && t.kind < 0) {
-            if (t.hash.isEmpty()) {
-                for (int i = 0; i < t.array.size(); i++) {
-                    // FORMAT: a list with a hole
-                    if (t.array.get(i) == null) throw new IllegalArgumentException(field + " has a hole at [" + (i + 1) + "]");
-                }
-                return t.array;
-            }
-            List<Object> sequence = Codecs.sequence(t);
-            if (sequence != null) return sequence;
-        }
-        // FORMAT: not a list
-        throw new IllegalArgumentException(field + " must be a list, got " + kindText(value));
-    }
-
-    private static double number(Object value, String field) {
-        if (value instanceof Double d) return d;
-        if (value instanceof Long l) return l;
-        // FORMAT: not a number
-        throw new IllegalArgumentException(field + " must be a number, got " + kindText(value));
-    }
-
-    private static int whole(Object value, String field, int missing) {
-        if (value == null) return missing;
-        number(value, field);
-        try {
-            return new LuaOps.Strict((Number) value).intValue();
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException(field + ": " + e.getMessage());
-        }
-    }
-
-    /** Any 64-bit whole number (the long64 rule): a Lua number that is whole, or a LuaJIT 64-bit number. */
-    private static long seed(Object value) {
-        number(value, "seed");
-        try {
-            return new LuaOps.Strict((Number) value).longValue();
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("seed: " + e.getMessage());
-        }
-    }
-
-    private static boolean bool(Object value, String field) {
-        if (value == null) return false;
-        if (value instanceof Boolean b) return b;
-        // FORMAT: not true/false
-        throw new IllegalArgumentException(field + " must be true or false, got " + kindText(value));
-    }
-
-    private static double[] vec3(Object value, String field) {
-        if (value instanceof Wire.Table t && t.kind == VEC3 && t.array.size() == 3) {
-            return new double[]{number(t.array.get(0), field), number(t.array.get(1), field), number(t.array.get(2), field)};
-        }
-        // FORMAT: not a vec3
-        throw new IllegalArgumentException(field + " must be a vec3, got " + kindText(value));
-    }
-
-    /** A vec3 as the packet's three floats; missing: 0, 0, 0 (vanilla's packet default). */
-    private static float[] vec3f(Object value, String field) {
-        if (value == null) return new float[3];
-        double[] v = vec3(value, field);
-        return new float[]{(float) v[0], (float) v[1], (float) v[2]};
-    }
-
-    private static String kindText(Object value) {
-        if (value instanceof Wire.Table t) return t.kind >= 0 ? "a " + Codecs.kindName(t.kind) : "a table";
-        return Codecs.describe(value == null ? LuaOps.NONE : value);
     }
 }

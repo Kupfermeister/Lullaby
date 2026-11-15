@@ -1,6 +1,7 @@
 package io.github.kupfermeister.lullaby.lua;
 
 import io.github.kupfermeister.lullaby.Engine;
+import io.github.kupfermeister.lullaby.event.EventBridge;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -19,13 +20,18 @@ import party.iroiro.luajava.luajit.LuaJit;
  */
 public final class LuaRuntime {
 
-    private static final String[] LIBRARY = {"core", "types", "values", "tasks", "events", "objects", "lazy", "commands", "loader"};
+    private static final String[] LIBRARY = {"core", "values", "tasks", "events", "objects", "lazy", "commands", "loader"};
 
     private final Lua lua;
     private final Slots slots = new Slots();
+    private final Watchdog watchdog;
+    private final EventBridge events;
     private final int internals; // registry reference to the I table
+    private final int dispatch;  // registry reference to I.dispatch (called for every event: no lookup by name)
 
     public LuaRuntime(Engine engine) throws IOException {
+        watchdog = engine.watchdog();
+        events = engine.events();
         lua = new LuaJit();
         lua.openLibraries();
         lua.newTable();
@@ -45,7 +51,9 @@ public final class LuaRuntime {
         // The library keeps J and lib as upvalues; the registry references are no longer needed.
         lua.unref(javaFunctions);
         lua.unref(library);
-        call("setup");
+        call("setup", "setting up the library");
+        pushInternal("dispatch");
+        dispatch = lua.ref();
     }
 
     /** Loads every script; returns how many files loaded. */
@@ -53,7 +61,7 @@ public final class LuaRuntime {
         int top = lua.getTop();
         try {
             pushInternal("load_all");
-            lua.pCall(0, 1);
+            enterLua("loading the scripts", 0, 1);
             return (int) lua.toInteger(-1);
         } finally {
             lua.setTop(top);
@@ -61,7 +69,7 @@ public final class LuaRuntime {
     }
 
     public void tick() {
-        call("tick");
+        call("tick", "the waiting tasks (a tick)");
     }
 
     /** The reload event; {@code player} is who reloaded (null: the console). */
@@ -73,7 +81,7 @@ public final class LuaRuntime {
             lua.push(errors);
             lua.push(millis);
             pushUuid(player);
-            lua.pCall(4, 0);
+            enterLua("the reload event", 4, 0);
         } finally {
             lua.setTop(top);
         }
@@ -85,7 +93,7 @@ public final class LuaRuntime {
         try {
             pushInternal("refresh_player");
             lua.push(uuid);
-            lua.pCall(1, 0);
+            enterLua("working out a player's commands", 1, 0);
         } finally {
             lua.setTop(top);
         }
@@ -106,7 +114,7 @@ public final class LuaRuntime {
                     default -> throw new IllegalArgumentException("unexpected command value " + value);
                 }
             }
-            lua.pCall(2 + args.size(), 0);
+            enterLua("a script command", 2 + args.size(), 0);
         } finally {
             lua.setTop(top);
         }
@@ -119,21 +127,32 @@ public final class LuaRuntime {
 
     /** Runs every running task's final; called before the state is closed. */
     public void stopAllTasks() {
-        call("stop_all_tasks");
+        call("stop_all_tasks", "the finals of the running tasks");
     }
 
-    /** Runs the script handlers for one event. Lua gets only the event's slot number (see {@link Slots}). */
-    public void dispatch(String name, String kind, String stage, Object event) {
+    /**
+     * Runs the script handlers for one event. Lua gets two whole numbers: the listener's number (from
+     * EventBridge.listen) and the event's slot (see {@link Slots}); no text crosses.
+     */
+    public void dispatch(int listener, Object event) {
         int top = lua.getTop();
         try {
-            pushInternal("dispatch");
-            lua.push(name);
-            lua.push(kind);
-            lua.push(stage);
+            lua.refGet(dispatch);
+            lua.push(listener);
             lua.push(slots.add(event));
-            lua.pCall(4, 0);
+            enterLua(events.listenerName(listener), 2, 0);
         } finally {
             lua.setTop(top);
+        }
+    }
+
+    /** Every call from Java into Lua (after loading the library) goes through here, so the watchdog sees it. */
+    private void enterLua(String what, int arguments, int results) {
+        watchdog.enter(what); // what: for the console note if Lua gets stuck
+        try {
+            lua.pCall(arguments, results);
+        } finally {
+            watchdog.exit();
         }
     }
 
@@ -141,11 +160,11 @@ public final class LuaRuntime {
         lua.close();
     }
 
-    private void call(String name) {
+    private void call(String name, String what) {
         int top = lua.getTop();
         try {
             pushInternal(name);
-            lua.pCall(0, 0);
+            enterLua(what, 0, 0);
         } finally {
             lua.setTop(top);
         }

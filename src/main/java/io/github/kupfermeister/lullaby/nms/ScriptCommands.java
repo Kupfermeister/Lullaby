@@ -15,6 +15,7 @@ import com.mojang.brigadier.suggestion.SuggestionProvider;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import com.mojang.brigadier.tree.CommandNode;
+import com.mojang.brigadier.tree.LiteralCommandNode;
 import com.mojang.brigadier.tree.RootCommandNode;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -27,10 +28,14 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
+import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.arguments.EntityArgument;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import org.bukkit.Bukkit;
+import org.spigotmc.SpigotConfig;
 
 /**
  * Script commands ({@code command{ ... }}, library file commands.lua) as nodes on vanilla's own Brigadier dispatcher.
@@ -176,11 +181,10 @@ public final class ScriptCommands {
      * (plain red, no ⚠: a rejection is not a script error). Only works while the command is being
      * run; checks run before the function's first wait, so they always are.
      */
-    public void reject(net.kyori.adventure.text.Component text) {
+    public void reject(String text) {
         if (running == null) return;
-        // FORMAT: check rejection (the script's own text; red where it sets no color)
-        running.sendFailure(io.papermc.paper.adventure.PaperAdventure.asVanilla(
-                text.colorIfAbsent(net.kyori.adventure.text.format.NamedTextColor.RED)));
+        // FORMAT: check rejection (the script's own text, literal as /tellraw "text", in red)
+        running.sendFailure(Component.literal(text).withStyle(ChatFormatting.RED));
     }
 
     /** Stores what an online player sees and resends their command tree (vanilla's Commands packet). Main thread. */
@@ -205,7 +209,7 @@ public final class ScriptCommands {
     public void treeEvent(UUID uuid, CommandNode<?> tree, boolean sync) {
         // While the server stops, Paper may run the "main-thread" firing on a pool thread (the main thread no longer
         // takes tasks); then this skips it, since the main thread may be clearing these lists at the same moment.
-        if (!sync || !org.bukkit.Bukkit.isPrimaryThread()) return;
+        if (!sync || !Bukkit.isPrimaryThread()) return;
         boolean pending = buildPending.remove(uuid);
         if (matches(uuid, tree) || pending) return;
         ServerPlayer player = MinecraftServer.getServer().getPlayerList().getPlayer(uuid);
@@ -239,7 +243,7 @@ public final class ScriptCommands {
     private boolean matches(Snapshot snapshot, CommandNode<CommandSourceStack> ours, CommandNode<?> sent) {
         // spigot.yml send-namespaced: false leaves out every node whose name has a ':' (at any depth), so such a node
         // is never in a sent tree and must not count as missing.
-        if (!org.spigotmc.SpigotConfig.sendNamespaced && ours.getName().contains(":")) return true;
+        if (!SpigotConfig.sendNamespaced && ours.getName().contains(":")) return true;
         Integer head = headOf.get(ours);
         boolean expected = head == null || snapshot != null && snapshot.visible().contains(head);
         if (expected != (sent != null)) return false;
@@ -343,8 +347,7 @@ public final class ScriptCommands {
     /** Whether the player typed this value (Brigadier only knows typed ones; an optional one may be left out). */
     private static boolean typed(CommandContext<CommandSourceStack> context, String name) {
         for (var parsed : context.getNodes()) {
-            if (parsed.getNode().getName().equals(name) && !(parsed.getNode() instanceof
-                    com.mojang.brigadier.tree.LiteralCommandNode)) return true;
+            if (parsed.getNode().getName().equals(name) && !(parsed.getNode() instanceof LiteralCommandNode)) return true;
         }
         return false;
     }

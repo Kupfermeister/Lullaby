@@ -96,11 +96,16 @@ public final class Nms {
     }
 
     /** Sends a chat message as vanilla's system message (System Chat Message packet); false if offline. */
-    public static boolean sendMessage(UUID uuid, Component text) {
+    public static boolean sendMessage(UUID uuid, net.minecraft.network.chat.Component text) {
         ServerPlayer player = server().getPlayerList().getPlayer(uuid);
         if (player == null) return false;
-        player.sendSystemMessage(PaperAdventure.asVanilla(text));
+        player.sendSystemMessage(text);
         return true;
+    }
+
+    /** Literal text (as /tellraw "text") as a system message; false if offline. */
+    public static boolean sendLiteral(UUID uuid, String text) {
+        return sendMessage(uuid, net.minecraft.network.chat.Component.literal(text));
     }
 
     /** Sends a system message to every online op. */

@@ -4,6 +4,7 @@ import com.destroystokyo.paper.event.brigadier.AsyncPlayerSendCommandsEvent;
 import io.github.kupfermeister.lullaby.error.ErrorReporter;
 import io.github.kupfermeister.lullaby.event.EventBridge;
 import io.github.kupfermeister.lullaby.lua.LuaRuntime;
+import io.github.kupfermeister.lullaby.lua.Watchdog;
 import io.github.kupfermeister.lullaby.nms.Nms;
 import io.github.kupfermeister.lullaby.nms.ScriptCommands;
 import io.papermc.paper.event.server.ServerResourcesReloadedEvent;
@@ -41,6 +42,7 @@ public final class Engine {
     private final Path scriptsFolder;
     private final ErrorReporter errors;
     private final EventBridge events;
+    private final Watchdog watchdog; // script_time_limit; lives as long as the plugin is on
     private LuaRuntime runtime;
     private volatile ScriptCommands commands; // volatile: also read on Paper's tree-building threads
     // Owns the join/quit listeners for script commands; registered only while scripts declare commands.
@@ -53,6 +55,7 @@ public final class Engine {
         this.scriptsFolder = dataFolder.resolve("scripts");
         this.errors = new ErrorReporter(plugin.getComponentLogger());
         this.events = new EventBridge(this);
+        this.watchdog = new Watchdog(plugin.getSLF4JLogger());
     }
 
     public Lullaby plugin() {
@@ -65,6 +68,10 @@ public final class Engine {
 
     public EventBridge events() {
         return events;
+    }
+
+    public Watchdog watchdog() {
+        return watchdog;
     }
 
     /** This load's script commands; null between loads. */
@@ -208,12 +215,13 @@ public final class Engine {
         errors.tick();
     }
 
-    public void dispatch(String name, String kind, String stage, Object event) {
+    /** One event for one registered listener (its number from {@link EventBridge#listen}). */
+    public void dispatch(int listener, Object event) {
         if (runtime == null) return;
         try {
-            runtime.dispatch(name, kind, stage, event);
+            runtime.dispatch(listener, event);
         } catch (RuntimeException e) {
-            internalError("the event " + name, e);
+            internalError("the event " + events.listenerName(listener), e);
         }
     }
 

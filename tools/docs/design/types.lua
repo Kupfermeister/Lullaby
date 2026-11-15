@@ -1,7 +1,8 @@
--- Lullaby library, file 2 of 9: the type list.
--- The agreed description of every type and every conversion. It is data: the library reads it (type_of, and later
--- argument checks, error texts, event fields, packet fields, command arguments, saving, docs), so it stays the one
--- place a type is described. Most types here are not built yet (see `later` and the build order in Kupfermeister's notes).
+-- Lullaby design page: the type list. NOT loaded by the plugin (it used to be lib/types.lua; nothing read it).
+-- The agreed description of every type and every conversion, written as Lua tables so code can read it once it
+-- needs to (argument checks, error texts, event fields, packet fields, command arguments, saving, docs): then it
+-- moves back into the library. Until then it is the place to look up how a type works and why. Most types here are
+-- not built yet (see `later` and the build order in Kupfermeister's notes).
 --
 -- THE RULE: a type exists only if Minecraft (or the server) really has that structure where Lua meets the game
 -- (a packet field, an event field, a server function). Nothing is invented. Plain fields are checked plain Lua
@@ -57,19 +58,14 @@
 -- Function and method names in `methods` and in this header (type_of, from_json, :with) are proposals: each one
 -- needs Kupfermeister's yes when it is built. Everything else here was agreed with Kupfermeister. `later = true` types are built
 -- when their area is built; the entries are descriptions; code that uses them is added step by step.
---
--- Like every library file this gets three tables from LuaRuntime.java when it is loaded: J (raw Java functions),
--- lib (what scripts see) and I (internal, shared by the library files). See core.lua.
-local J, lib, I = ...
 
 local T = {}
-I.types = T
 
 -- =================================================================================================================
 -- RULES: plain fields (no own type). One checker each; results of id lookups are cached per Lua state.
 -- =================================================================================================================
 
-I.rules = {
+local RULES = {
 	number   = { vanilla = "Byte, Short, Int, VarInt, Long, VarLong, Float, Double, Angle and the unsigned ones",
 	             lua = "a normal Lua number (a double, the same type vanilla uses for positions): every int, float and "
 	                 .. "double is exact, so precise coordinates never break because of Lullaby",
@@ -440,7 +436,7 @@ T.event = { kind = "object", vanilla = "Lullaby's own view of a Paper event", id
 -- type is then added here. Sub-interfaces (LivingEntity, Villager, Creeper, ...) map like their parent.
 -- =================================================================================================================
 
-I.EVENT_JAVA_TYPES = {
+local EVENT_JAVA_TYPES = {
 	-- plain (rules)
 	["boolean"] = "boolean", ["byte"] = "number", ["int"] = "number", ["long"] = "number", ["float"] = "number",
 	["double"] = "number", ["java.lang.String"] = "string", ["java.util.UUID"] = "uuid",
@@ -500,3 +496,5 @@ I.EVENT_JAVA_TYPES = {
 	-- LootContext, BlockTransformer/EntityTransformer maps, IntUnaryOperator, Throwable,
 	-- PersistentDataContainerView (saved data, later), EnchantmentOffer[] (enchanting table, later).
 }
+
+return { types = T, rules = RULES, event_java_types = EVENT_JAVA_TYPES }

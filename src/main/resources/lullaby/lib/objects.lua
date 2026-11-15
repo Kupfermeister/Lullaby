@@ -1,4 +1,4 @@
--- Lullaby library, file 6 of 9: game objects, block states, and the first action.
+-- Lullaby library: game objects, block states, and the first action.
 --
 -- Objects (player, world, block) are hand-made: each one exists once (cached), so == works and they can be table
 -- keys. Their identity (a UUID, an id, a position) is kept in private tables, never on the object, and every field
@@ -19,7 +19,7 @@ local debug_getmetatable = I.debug_getmetatable
 local WEAK_KEYS = { __mode = "k" }
 local WEAK_VALUES = { __mode = "v" }
 local kind_of = I.kind_of
-I.object_meta = {} -- kind -> metatable of player, world, block objects (the wire tags them, see lazy.lua) -- object -> "player", "world", "block" (core.lua)
+I.object_meta = {} -- kind -> metatable of player, world, block objects (the wire tags them, see lazy.lua)
 local slot_of = I.slot_of -- object -> its number in Java (Slots.java)
 
 -- "player", "world", "block" for Lullaby objects, nil for anything else.
@@ -333,15 +333,7 @@ end
 -- ---------------------------------------------------------------------------------------------------------------
 -- Packet actions: straight on vanilla's packets, sent by nms/Packets.java (the one send core).
 -- Every field crosses in ONE wire call; Java checks the fields and names the wrong one. Nothing is returned.
---   particle{ player = p | players = { ... }, particle = "flame" | "dust{color:[1,0,0],scale:1}" |
---             { type = "dust", color = { 1, 0, 0 }, scale = 1 }, pos = vec3 or a list of vec3,
---             dist = vec3, max_speed = vec3, count = 0, override_limiter = false, always_show = false,
---             randomization_type = "default" | "alternative" | "alternative_with_speed" }
---             One packet per position, bundled by 4096; config particle_limit caps positions x count.
---   sound{ player | players, sound = "entity.player.levelup" | { sound_id = , range = }, source = "master" | "music" |
---          "record" | "weather" | "block" | "hostile" | "neutral" | "player" | "ambient" | "voice" | "ui",
---          pos = vec3 | entity = player, volume = 1, pitch = 1, seed = (random, as vanilla) }
---   stop_sound{ player | players, sound = id, source = ... }   both optional: nothing given stops every sound
+-- What each action takes is in its doc block below (the doc block is the one description; don't copy it here).
 -- ---------------------------------------------------------------------------------------------------------------
 
 -- The receivers as slot numbers: player = p or players = { p1, p2, ... } (exactly one of them).
@@ -403,14 +395,16 @@ status: unconfirmed
 ]]
 function lib.particle(a)
 	action_table(a, "particle")
+	-- The config's particle_limit is checked ONLY here, before the list is packed for Java (a huge list would cost
+	-- memory first). Positions: a plain list counts its entries, anything else counts as one (Java checks the kinds).
 	local limit = I.config.particle_limit
-	-- The limit is checked here first, so a huge list is refused before it is sent (Java checks again).
-	local pos, count = a.pos, a.count
-	if limit and type(pos) == "table" and debug_getmetatable(pos) == nil and type(count) ~= "string" then
-		local c = tonumber(count) or 0
-		local total = #pos * (c >= 1 and c or 1)
+	if limit then
+		local pos, count = a.pos, a.count
+		local n = type(pos) == "table" and debug_getmetatable(pos) == nil and #pos or 1
+		local c = (type(count) == "number" or type(count) == "cdata") and tonumber(count) or 0 -- cdata: a 64-bit number
+		local total = n * (c >= 1 and c or 1)
 		if total > limit then
-			-- FORMAT: particle limit from the config (same text as Packets.java)
+			-- FORMAT: particle limit from the config
 			error("particle{}: " .. I.number_text(total) .. " particles (positions x count) is over the config's "
 				.. "particle_limit of " .. I.number_text(limit), 2)
 		end
@@ -419,7 +413,7 @@ function lib.particle(a)
 		players = receivers(a, "particle"), particle = a.particle, pos = a.pos, dist = a.dist,
 		max_speed = a.max_speed, count = a.count, override_limiter = a.override_limiter, always_show = a.always_show,
 		randomization_type = a.randomization_type,
-	}), type(limit) == "number" and limit or 0)
+	}))
 end
 
 --[[doc
@@ -431,7 +425,7 @@ syntax: sound{ player = player | players = { player, ... }, sound = text | { sou
 lead: Plays a sound to one player or a list of players.
 arg: player / players | player · list of player | Who hears it. Exactly one of the two.
 arg: sound | text · table | A sound id like "entity.player.levelup", or { sound_id, range }.
-arg: source | text | Needed. master, music, record, weather, block, hostile, neutral, player, ambient, voice, ui.
+arg: source | text | Needed. Which volume slider plays it: one of vanilla's sound sources, as in /playsound ("master", "music", "ambient", ...). A wrong name gets an error that lists them all.
 arg: pos / entity | vec3 · player | Needed, one of the two: where it plays; entity follows that player.
 arg: volume? | number | Default 1.
 arg: pitch? | number | Default 1.

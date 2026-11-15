@@ -1,4 +1,4 @@
--- Lullaby library, file 1 of 9: shared setup, error reports, config and the script sandbox.
+-- Lullaby library: shared setup, error reports, config and the script sandbox.
 --
 -- Every library file is run once per Lua state (each start and each reload) by LuaRuntime.java and gets three tables:
 --   J   raw Java functions (JavaFunctions.java). Private: scripts never see J.
@@ -99,7 +99,7 @@ function I.protected(origin, f, ...)
 end
 
 -- ---------------------------------------------------------------------------------------------------------------
--- Kinds, slots and type_of (see types.lua)
+-- Kinds, slots and type_of (design: tools/docs/design/types.lua)
 -- ---------------------------------------------------------------------------------------------------------------
 
 -- Lullaby's own things -> their type name ("player", "event", "task", "location", ...). Weak keys: an entry goes when
@@ -146,6 +146,13 @@ function I.release(object)
 	local slot = slot_of[object]
 	slot_of[object] = nil
 	J.free_slots(tostring(slot))
+end
+
+-- Frees a slot that no object holds any more (an event nobody waited on): handed to Java with the next tick's list,
+-- so it costs no Java call and no garbage collection.
+function I.free_slot(slot)
+	freed_n = freed_n + 1
+	freed[freed_n] = slot
 end
 
 -- LuaJIT's built-in 64-bit whole numbers (cdata, written 5LL) count as numbers. Their tostring is "5LL"/"5ULL".
@@ -229,10 +236,9 @@ end
 local DEFAULTS = {
 	unlock = { io = false, os = false, ffi = false, debug = false, modules = false },
 	long_wait_warning = true,
-	file_safety = true,
-	file_whitelist = { "plugins/lullaby" },
 	error_repeat_seconds = 10,
 	particle_limit = 100000,
+	script_time_limit = 5,
 }
 
 -- Reads config.lua (a Lua file that returns a table) with nothing in reach, fills in defaults for missing keys.
@@ -266,11 +272,19 @@ local function read_config()
 		limit = tonumber(limit)
 		if not limit or limit < 1 or limit ~= math.floor(limit) then
 			-- FORMAT: bad particle_limit in the config
-			J.report("warning", "plugins/lullaby/config.lua", -1, "", "loading the config",
+			J.report("warning", "plugins/lullaby/config.lua", -1, "loading the config",
 				"particle_limit must be false or a whole number of 1 or more (using " .. DEFAULTS.particle_limit .. ")")
 			limit = DEFAULTS.particle_limit
 		end
 		config.particle_limit = limit
+	end
+	-- script_time_limit: false (off) or a number of seconds above 0; anything else warns and uses the default.
+	local time = config.script_time_limit
+	if time ~= false and (type(time) ~= "number" or not (time > 0) or time == math.huge) then
+		-- FORMAT: bad script_time_limit in the config
+		J.report("warning", "plugins/lullaby/config.lua", -1, "loading the config",
+			"script_time_limit must be false or a number of seconds above 0 (using " .. DEFAULTS.script_time_limit .. ")")
+		config.script_time_limit = DEFAULTS.script_time_limit
 	end
 	if type(config.unlock) ~= "table" then config.unlock = {} end
 	for key, value in pairs(DEFAULTS.unlock) do
@@ -279,24 +293,57 @@ local function read_config()
 	return config
 end
 
--- Wraps load/loadstring so code loaded by a script runs with that script's globals, not the library's _G.
-local function loader_for(original)
-	return function(chunk, name)
-		local f, err = original(chunk, name)
-		if f then setfenv(f, getfenv(2)) end
-		return f, err
+-- load and loadstring for scripts (one function serves both: LuaJIT's load also takes text). Text only: LuaJIT
+-- bytecode is not checked when it loads, so hand-made bytecode could break out of the sandbox. The loaded code runs
+-- with the calling script's globals, not the library's _G.
+local raw_load, setfenv_, getfenv_ = load, setfenv, getfenv
+local function script_load(chunk, name)
+	local f, err = raw_load(chunk, name, "t")
+	if f then setfenv_(f, getfenv_(2)) end
+	return f, err
+end
+
+-- Standard tables every script file gets as its OWN copy (loader.lua calls this per file): a script that adds
+-- string.trim or replaces math.floor changes only its own copy, never other scripts or the library. Method calls on
+-- strings (s:upper()) always use the original string functions.
+local STD = { string = string, table = table, math = math, coroutine = coroutine, bit = bit }
+function I.std_copies(env)
+	for name, original in pairs(STD) do
+		local copy = {}
+		for key, value in pairs(original) do copy[key] = value end
+		env[name] = copy
 	end
+	env.coroutine.resume = script_resume
 end
 
 -- Builds `lib` (what scripts see) from the safe standard functions plus unlocked libraries, then removes the
--- dangerous ones from the real _G too, so getfenv(0) and similar tricks reach nothing locked.
+-- dangerous ones from the real _G too.
 -- The `java` table LuaJava adds can reach any Java class: it is removed always (raw doors come later as x.raw).
+-- unlock.debug also brings the functions that reach into the Lua state shared by every script: getfenv/setfenv
+-- (other functions' globals, also the library's), collectgarbage/gcinfo (stopping the garbage collector), newproxy,
+-- and jit (turning LuaJIT's compiler off for everyone).
+-- pcall, xpcall and coroutine.resume for scripts: like Lua's, but a stop (stop{} of the running task, or the
+-- script_time_limit) is passed on instead of caught, so a script can't swallow its own stop by accident.
+local raw_pcall, raw_xpcall, raw_resume = pcall, xpcall, coroutine.resume
+local function pass_stops(ok, ...)
+	if not ok then
+		local message = ...
+		if message == I.TIME_UP or message == I.STOP then error(message, 0) end
+	end
+	return ok, ...
+end
+local function script_pcall(f, ...) return pass_stops(raw_pcall(f, ...)) end
+local function script_xpcall(f, handler, ...) return pass_stops(raw_xpcall(f, handler, ...)) end
+local function script_resume(co, ...) return pass_stops(raw_resume(co, ...)) end
+
 local function build_sandbox(unlock)
-	for _, name in ipairs({ "assert", "error", "ipairs", "pcall", "xpcall", "select", "tonumber",
-		"type", "unpack", "rawequal", "rawget", "rawset", "getmetatable", "setmetatable", "getfenv",
-		"setfenv", "collectgarbage", "gcinfo", "newproxy", "_VERSION" }) do
+	lib.pcall, lib.xpcall = script_pcall, script_xpcall
+	for _, name in ipairs({ "assert", "error", "ipairs", "select", "tonumber",
+		"type", "unpack", "rawequal", "rawget", "rawset", "getmetatable", "setmetatable", "_VERSION" }) do
 		lib[name] = _G[name]
 	end
+	-- getmetatable("") would hand out the string table every string shares (and every script with it)
+	debug_getmetatable("").__metatable = false
 --[[doc
 id: pairs
 name: pairs( ) and next( )
@@ -320,9 +367,21 @@ arg: ... | any | Anything.
 returns: nothing
 status: unconfirmed
 ]]
+--[[doc
+id: pcall
+name: pcall( ) and xpcall( )
+kind: reading
+group: Values
+words: try catch error protected
+syntax: local ok, result = pcall( f, ... )
+lead: Lua's pcall and xpcall: run f and catch its errors. A stop is never caught: stop{ } of the running task and the config's script_time_limit still end the task (coroutine.resume passes them on too).
+arg: f | function | What to run.
+arg: ... | any | Its arguments (xpcall: the error handler first).
+returns: true and f's results · false and the error
+status: unconfirmed
+]]
 	lib.pairs, lib.next = I.pairs, I.next -- Lullaby's own (lazy.lua): they load lazy values first
-	lib.string, lib.table, lib.math, lib.coroutine, lib.bit, lib.jit = string, table, math, coroutine, bit, jit
-	lib.load, lib.loadstring = loader_for(load), loader_for(loadstring)
+	lib.load, lib.loadstring = script_load, script_load
 	lib.print = function(...)
 		local parts = {}
 		for i = 1, select("#", ...) do parts[i] = lib.tostring((select(i, ...))) end
@@ -331,7 +390,10 @@ status: unconfirmed
 	if unlock.io then lib.io, lib.dofile, lib.loadfile = io, dofile, loadfile end
 	if unlock.os then lib.os = os end
 	if unlock.ffi then lib.ffi = require("ffi") end
-	if unlock.debug then lib.debug = debug end
+	if unlock.debug then
+		lib.debug, lib.jit, lib.getfenv, lib.setfenv = debug, jit, getfenv, setfenv
+		lib.collectgarbage, lib.gcinfo, lib.newproxy = collectgarbage, gcinfo, newproxy
+	end
 	if unlock.modules then lib.require, lib.module, lib.package = require, module, package end
 	for _, name in ipairs({ "io", "os", "debug", "require", "module", "package", "dofile", "loadfile", "java" }) do
 		_G[name] = nil
@@ -340,7 +402,10 @@ end
 
 -- Called by Java once all library files have run, before the scripts load.
 function I.setup()
+	I.check_kinds()
 	I.config = read_config()
+	-- The exact error text of a script stopped by the time limit (Watchdog.java), so the pcall guards know it.
+	I.TIME_UP = J.set_time_limit(I.config.script_time_limit or 0)
 	J.set_error_window(tonumber(I.config.error_repeat_seconds) or 10)
 	build_sandbox(I.config.unlock)
 end

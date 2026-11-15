@@ -1,4 +1,4 @@
--- Lullaby library, file 9 of 9: loading script files and import.
+-- Lullaby library: loading script files and import.
 --
 -- Every .lua file under plugins/lullaby/scripts loads once, in alphabetical path order, except files and folders
 -- whose name starts with "--" (standby). Each file has its own globals: a name it sets without `local` is visible in
@@ -60,6 +60,7 @@ function load_file(path)
 	end
 	local env = setmetatable({}, { __index = lib, __metatable = false })
 	env._G = env
+	I.std_copies(env) -- its own string, table, math, coroutine and bit (core.lua)
 	env.import = function(p) return import_from(path, p) end
 	setfenv(chunk, env)
 	local ok, result = I.protected("loading", chunk)

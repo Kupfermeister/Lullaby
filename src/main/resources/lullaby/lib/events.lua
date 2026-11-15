@@ -67,7 +67,7 @@ arg: order | number | Lower runs first; ties by load order. Default 0.
 arg: stage | text | Place among other plugins: lowest, low, normal, high, highest. Default normal.
 returns: nothing
 note: Each handler runs as its own task and may wait; after its first wait the event is over and changes only give a warning.
-status: unconfirmed
+status: confirmed
 ]]
 function lib.on(a) register("on", a) end
 --[[doc
@@ -76,12 +76,12 @@ kind: event
 group: Events
 words: listen hook monitor
 syntax: after{ "EventName", function(e) ... end, order = number }
-lead: Runs the function once the event happened and was not cancelled; e is read only.
+lead: Runs the function once the event happened and was not cancelled; e is read only. Events so far: PlayerJoinEvent, PlayerQuitEvent, BlockBreakEvent, reload.
 arg: 1 | text | The event name, or "reload".
 arg: 2 | function | Gets the event e.
 arg: order | number | Lower runs first. Default 0.
 returns: nothing
-status: unconfirmed
+status: confirmed
 ]]
 function lib.after(a) register("after", a) end
 

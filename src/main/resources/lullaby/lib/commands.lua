@@ -1,4 +1,4 @@
--- Lullaby library, file 7 of 8: script commands (Kupfermeister 2026-11-14).
+-- Lullaby library, file 8 of 9: script commands (Kupfermeister 2026-11-14).
 --
 --   command{ "name", function(c) ... end, args = { ... }, branches = { ... }, permission = "x", show = function(p),
 --            aliases = { "n" } }

@@ -1,4 +1,4 @@
--- Lullaby library, file 2 of 8: the type list (Kupfermeister 2026-11-15).
+-- Lullaby library, file 2 of 9: the type list (Kupfermeister 2026-11-15).
 -- The agreed description of every type and every conversion. It is data: the library reads it (type_of, and later
 -- argument checks, error texts, event fields, packet fields, command arguments, saving, docs), so it stays the one
 -- place a type is described. Most types here are not built yet (see `later` and the build order in Kupfermeister's notes).
@@ -229,8 +229,10 @@ T.item_stack = {
 	accepts = "item_stack, { id = , count = , components = }, text \"diamond_sword[damage=5]\"",
 	codec = "ItemStack.CODEC (OPTIONAL_CODEC where empty is allowed)", stream = "ItemStack.OPTIONAL_STREAM_CODEC",
 	text = "ItemParser.parse", arg = "ItemArgument", fix = "ITEM_STACK", save = "codec",
-	note = "the empty stack (air, count 0) is nil. Replaces material for items. Live item stacks are rejected: vanilla swaps stack "
-		.. "objects, so a live one would silently stop tracking.",
+	note = "the empty stack (air, count 0) is nil. Replaces material for items. As vanilla as possible: no "
+		.. "checks of Lullaby's own (Kupfermeister 2026-11-15); a new id keeps the patch (vanilla's transmuteCopy); tostring "
+		.. "has no count, like vanilla's item text; == is vanilla's ItemStack.matches. Live item stacks are "
+		.. "rejected: vanilla swaps stack objects, so a live one would silently stop tracking.",
 }
 T.components = {
 	kind = "value", impl = "lazy", vanilla = "net.minecraft.core.component.DataComponentPatch",
@@ -238,11 +240,10 @@ T.components = {
 	accepts = "components, table of component id = value",
 	codec = "DataComponentPatch.CODEC", stream = "DataComponentPatch.STREAM_CODEC",
 	text = "inside ItemParser's [ ]", fix = "DATA_COMPONENTS", save = "codec",
-	note = "Vanilla stores only the CHANGES against the item type's defaults (the patch). Lullaby shows the FULL "
-		.. "result (defaults + changes), because that is what the item really has; on the way back Java turns "
-		.. "it into a patch again by comparing with the type's defaults. Setting a component to nil REMOVES it "
-		.. "(vanilla writes \"!food\"); going back to the default needs its own function (later). Loads whole on "
-		.. "first touch.",
+	note = "EXACTLY vanilla's patch, nothing added (Kupfermeister 2026-11-15): only the changes against the item type's "
+		.. "defaults, keys as vanilla writes them (\"minecraft:custom_name\"); short keys are looked up too. A "
+		.. "removed default is vanilla's \"!minecraft:food\" = {}; setting an entry to nil takes it out of the patch "
+		.. "(back to the default). Reading defaults would be its own function (later). Loads whole on first touch.",
 }
 T.component = {
 	kind = "value", impl = "lazy", vanilla = "net.minecraft.network.chat.Component (text)",

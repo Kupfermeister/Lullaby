@@ -2,7 +2,9 @@ package io.github.kupfermeister.lullaby.lua;
 
 import io.github.kupfermeister.lullaby.Engine;
 import io.github.kupfermeister.lullaby.event.EventBridge;
+import io.github.kupfermeister.lullaby.nms.Codecs;
 import io.github.kupfermeister.lullaby.nms.Nms;
+import java.util.function.IntFunction;
 import io.github.kupfermeister.lullaby.nms.ScriptCommands;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -177,6 +179,77 @@ final class JavaFunctions {
 
         add(lua, "message", L -> {
             L.push(Nms.sendMessage(slots.get(slot(L, 1)), MiniMessage.miniMessage().deserialize(string(L, 2))));
+            return 1;
+        });
+        add(lua, "message_component", L -> {
+            L.push(Nms.sendMessage(slots.get(slot(L, 1)), Codecs.adventure(slots.get(slot(L, 2)))));
+            return 1;
+        });
+
+        // Codec values (build step 3a, see lazy.lua and nms/Codecs.java). Tables cross as wire bytes (Wire.java);
+        // each value lives in a slot as an unchangeable Java copy (ItemStack, vanilla Component).
+        IntFunction<Object> slotLookup = slots::get;
+        add(lua, "slot_copy", L -> {
+            L.push(slots.add(slots.get(slot(L, 1))));
+            return 1;
+        });
+        add(lua, "item_parse", L -> {
+            L.push(slots.add(Codecs.itemParse(string(L, 1))));
+            return 1;
+        });
+        add(lua, "item_from_table", L -> {
+            L.push(slots.add(Codecs.itemFromTable(Wire.read(L.toBuffer(1)), slotLookup)));
+            return 1;
+        });
+        // Arguments: base slot, then wire bytes of { id = , count = , components = } holding only the changed parts.
+        add(lua, "item_build", L -> {
+            Wire.Table parts = (Wire.Table) Wire.read(L.toBuffer(2));
+            L.push(slots.add(Codecs.itemBuild(slots.get(slot(L, 1)), parts.hash.get("id"), parts.hash.get("count"),
+                    parts.hash.get("components"), slotLookup)));
+            return 1;
+        });
+        add(lua, "item_id", L -> {
+            push(L, Codecs.itemId(slots.get(slot(L, 1))));
+            return 1;
+        });
+        add(lua, "item_count", L -> {
+            L.push(Codecs.itemCount(slots.get(slot(L, 1))));
+            return 1;
+        });
+        add(lua, "item_empty", L -> {
+            L.push(Codecs.itemEmpty(slots.get(slot(L, 1))));
+            return 1;
+        });
+        add(lua, "item_components", L -> {
+            L.push(Codecs.itemComponents(slots.get(slot(L, 1))));
+            return 1;
+        });
+        add(lua, "item_text", L -> {
+            push(L, Codecs.itemText(slots.get(slot(L, 1))));
+            return 1;
+        });
+        add(lua, "item_matches", L -> {
+            L.push(Codecs.itemMatches(slots.get(slot(L, 1)), slots.get(slot(L, 2))));
+            return 1;
+        });
+        add(lua, "component_mini", L -> {
+            L.push(slots.add(Codecs.componentMini(string(L, 1))));
+            return 1;
+        });
+        add(lua, "component_from_table", L -> {
+            L.push(slots.add(Codecs.componentFromTable(Wire.read(L.toBuffer(1)), slotLookup)));
+            return 1;
+        });
+        add(lua, "component_text", L -> {
+            push(L, Codecs.componentText(slots.get(slot(L, 1))));
+            return 1;
+        });
+        add(lua, "component_equals", L -> {
+            L.push(slots.get(slot(L, 1)).equals(slots.get(slot(L, 2))));
+            return 1;
+        });
+        add(lua, "from_json", L -> {
+            L.push(slots.add(Codecs.fromJson(string(L, 1), string(L, 2))));
             return 1;
         });
     }

@@ -1,4 +1,4 @@
--- Lullaby library, file 6 of 8: game objects, block states, and the first action.
+-- Lullaby library, file 6 of 9: game objects, block states, and the first action.
 --
 -- Objects (player, world, block) are hand-made: each one exists once (cached), so == works and they can be table
 -- keys. Their identity (a UUID, an id, a position) is kept in private tables, never on the object, and every field
@@ -8,14 +8,15 @@
 --   block (a PLACE: world + position)    b.state (block_state, nil if the chunk is not loaded)  b.pos  b.world
 --   block_state("oak_stairs[facing=north]") -> block_state (exists once per state, so == is free)
 --                                        s.type (id)  s.<property> (s.facing)  s:with{ facing = "south" }
---   message{ player = p, text = "<red>Hi" }   chat message (MiniMessage text) -> true, false if p is offline
+--   message{ player = p, text = "<red>Hi" }   chat message (MiniMessage text or a component) -> true, false if p is offline
 local J, lib, I = ...
 
 local type, error, setmetatable, tostring = type, error, setmetatable, tostring
 
 local WEAK_KEYS = { __mode = "k" }
 local WEAK_VALUES = { __mode = "v" }
-local kind_of = I.kind_of -- object -> "player", "world", "block" (core.lua)
+local kind_of = I.kind_of
+I.object_meta = {} -- kind -> metatable of player, world, block objects (the wire tags them, see lazy.lua) -- object -> "player", "world", "block" (core.lua)
 local slot_of = I.slot_of -- object -> its number in Java (Slots.java)
 
 -- "player", "world", "block" for Lullaby objects, nil for anything else.
@@ -46,6 +47,7 @@ local PLAYER_META = {
 	__tostring = function(p) return "player " .. (J.player_name(slot_of[p]) or player_uuid[p]) end, -- FORMAT
 	__metatable = false,
 }
+I.object_meta.player = PLAYER_META
 
 function I.player_by_uuid(uuid)
 	local p = players[uuid]
@@ -80,6 +82,7 @@ local function id_objects(kind, find, make_slot)
 		__tostring = function(o) return id_of[o] end,
 		__metatable = false,
 	}
+	I.object_meta[kind] = meta
 	local function by(id)
 		local o = by_id[id]
 		if not o then
@@ -219,6 +222,7 @@ local BLOCK_META = {
 	__tostring = function(b) local p = block_pos[b] return "block " .. p[2] .. " " .. p[3] .. " " .. p[4] .. " in " .. p[1] end, -- FORMAT
 	__metatable = false,
 }
+I.object_meta.block = BLOCK_META
 
 -- world: the world's full id; x, y, z: whole numbers in int range (checked by the caller).
 function I.block_at(world, x, y, z)
@@ -240,6 +244,7 @@ end
 function lib.message(a)
 	if type(a) ~= "table" then error("message needs { }: message{ player = p, text = \"...\" }", 2) end
 	if kind_of[a.player] ~= "player" then error("message: player must be a player, got " .. I.type_name(a.player), 2) end
-	if type(a.text) ~= "string" then error("message: text must be text, got " .. I.type_name(a.text), 2) end
+	if I.type_name(a.text) == "component" then return J.message_component(slot_of[a.player], slot_of[a.text]) end
+	if type(a.text) ~= "string" then error("message: text must be text or a component, got " .. I.type_name(a.text), 2) end
 	return J.message(slot_of[a.player], a.text)
 end

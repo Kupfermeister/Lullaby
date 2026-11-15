@@ -1,4 +1,4 @@
--- Lullaby library, file 8 of 8: loading script files and import.
+-- Lullaby library, file 9 of 9: loading script files and import.
 --
 -- Every .lua file under plugins/lullaby/scripts loads once, in alphabetical path order, except files and folders
 -- whose name starts with "--" (standby). Each file has its own globals: a name it sets without `local` is visible in

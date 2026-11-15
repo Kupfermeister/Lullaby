@@ -1,4 +1,4 @@
--- Lullaby library, file 3 of 8: small values (Kupfermeister 2026-11-15, see types.lua).
+-- Lullaby library, file 3 of 9: small values (Kupfermeister 2026-11-15, see types.lua).
 --
 -- Positions and rotations are plain Lua tables with a shared metatable. All math is plain Lua: nothing here calls
 -- Java, so thousands of points per tick stay cheap. Values are COPIES and can't be changed: v.x = 5 is an error,

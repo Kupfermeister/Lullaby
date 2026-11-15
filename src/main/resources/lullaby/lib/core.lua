@@ -1,4 +1,4 @@
--- Lullaby library, file 1 of 8: shared setup, error reports, config and the script sandbox.
+-- Lullaby library, file 1 of 9: shared setup, error reports, config and the script sandbox.
 --
 -- Every library file is run once per Lua state (each start and each reload) by LuaRuntime.java and gets three tables:
 --   J   raw Java functions (JavaFunctions.java). Private: scripts never see J.
@@ -127,11 +127,26 @@ function I.give_slot(object, slot)
 	anchors[object] = proxy
 end
 
+-- The new list is made BEFORE the swap: making a table can run a garbage collection step, and a __gc that runs
+-- then must add to the list that is still current, or its slot would be lost until reload.
 function I.flush_slots()
 	if freed_n == 0 then return end
-	local list = concat(freed, "\n", 1, freed_n)
-	freed, freed_n = {}, 0
-	J.free_slots(list)
+	local fresh = {}
+	local old, n = freed, freed_n
+	freed, freed_n = fresh, 0
+	J.free_slots(concat(old, "\n", 1, n))
+end
+
+-- Frees an object's slot NOW (for short-lived helper objects the library makes and drops at once), instead of
+-- waiting for the garbage collector and the next tick.
+function I.release(object)
+	local proxy = anchors[object]
+	if not proxy then return end
+	getmetatable(proxy).__gc = nil
+	anchors[object] = nil
+	local slot = slot_of[object]
+	slot_of[object] = nil
+	J.free_slots(tostring(slot))
 end
 
 -- LuaJIT's built-in 64-bit whole numbers (cdata, written 5LL) count as numbers. Their tostring is "5LL"/"5ULL".
@@ -243,11 +258,12 @@ end
 -- dangerous ones from the real _G too, so getfenv(0) and similar tricks reach nothing locked.
 -- The `java` table LuaJava adds can reach any Java class: it is removed always (raw doors come later as x.raw).
 local function build_sandbox(unlock)
-	for _, name in ipairs({ "assert", "error", "ipairs", "next", "pairs", "pcall", "xpcall", "select", "tonumber",
+	for _, name in ipairs({ "assert", "error", "ipairs", "pcall", "xpcall", "select", "tonumber",
 		"type", "unpack", "rawequal", "rawget", "rawset", "getmetatable", "setmetatable", "getfenv",
 		"setfenv", "collectgarbage", "gcinfo", "newproxy", "_VERSION" }) do
 		lib[name] = _G[name]
 	end
+	lib.pairs, lib.next = I.pairs, I.next -- Lullaby's own (lazy.lua): they load lazy values first
 	lib.string, lib.table, lib.math, lib.coroutine, lib.bit, lib.jit = string, table, math, coroutine, bit, jit
 	lib.load, lib.loadstring = loader_for(load), loader_for(loadstring)
 	lib.print = function(...)

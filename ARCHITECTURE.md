@@ -42,7 +42,8 @@ Java, under `src/main/java/io/github/kupfermeister/lullaby/`:
 | [lua/LuaText.java](src/main/java/io/github/kupfermeister/lullaby/lua/LuaText.java) | Text as real UTF-8 (LuaJava's own string conversion breaks emoji). |
 | [lua/JavaDoor.java](src/main/java/io/github/kupfermeister/lullaby/lua/JavaDoor.java) | The raw Java door (`unlock.java`): loads classes, picks the method that fits the arguments, turns Java values into Lua ones. Made only when unlocked. |
 | [lua/Watchdog.java](src/main/java/io/github/kupfermeister/lullaby/lua/Watchdog.java) | `script_time_limit`: stops scripts that run too long. Runs a thread (see Threads). |
-| [event/EventBridge.java](src/main/java/io/github/kupfermeister/lullaby/event/EventBridge.java) | The hand-picked Paper events and their fields (the one list, `EVENTS`). |
+| [event/EventBridge.java](src/main/java/io/github/kupfermeister/lullaby/event/EventBridge.java) | Every Paper event: reads the generated list (`events.txt`, see Other files), looks an event's class and methods up the first time a script uses it, reads and sets its fields, keeps other threads away from Lua. |
+| [lua/ToLua.java](src/main/java/io/github/kupfermeister/lullaby/lua/ToLua.java) | The one place that turns a Java object (player, world, block, location, item stack) into a Lullaby object for Lua; event fields and `java.wrap( )` use it. Its Lua half is `I.from_java` in objects.lua. |
 | [error/ErrorReporter.java](src/main/java/io/github/kupfermeister/lullaby/error/ErrorReporter.java) | Error and warning format, repeat collapsing, console and ops. |
 | [nms/](src/main/java/io/github/kupfermeister/lullaby/nms/package-info.java) | Everything that touches Minecraft's own code, see below. |
 
@@ -82,8 +83,13 @@ Other files:
   the first start.
 - [paper-plugin.yml](src/main/resources/paper-plugin.yml): the plugin descriptor (Paper's newer kind; its bootstrap
   step before worlds load is kept free for registry content later).
+- [events.txt](src/main/resources/lullaby/events.txt): every Paper event scripts can listen to, with its fields,
+  their kinds and setters. GENERATED at build by [EventList.java](tools/events/EventList.java) from Paper's API jar
+  (Gradle task `events`), which owns the rules (what an event and a field is, the naming rule, the kinds); the format
+  is in the file's header. It is in the repo because the docs site reads it too. Never edited by hand.
 - [tools/docs/](tools/docs/Docs.java): the docs site builder (`Docs.java`, `site.html`, the Lua pages in
-  [lua.txt](tools/docs/lua.txt)). Not part of the plugin.
+  [lua.txt](tools/docs/lua.txt)). Not part of the plugin. It makes one page per event from `events.txt` and the hand
+  marks in [event-marks.txt](tools/docs/event-marks.txt) (tested, busy, thread), which give the status dot.
 - [types.lua](tools/docs/design/types.lua): the agreed list of every value type, a design page, not loaded.
 - [build.gradle.kts](build.gradle.kts) and [gradle.properties](gradle.properties): the build; `minecraftVersion`
   there is the single place for the version.
@@ -144,7 +150,8 @@ wire, through [Fields.java](src/main/java/io/github/kupfermeister/lullaby/nms/Fi
 what it needs and what it got: `count must be a whole number, got 2.5`.
 
 **One owner per list.** Java owns the game's facts (wire kinds, events and their fields, event stages, sound
-sources); the library reads them once at startup. Doc blocks own what a script function takes. When Java's list and
+sources); the library reads them once at startup. The events come from Paper itself: EventList.java writes them into
+`events.txt` at build, and EventBridge.java and the docs read that file. Doc blocks own what a script function takes. When Java's list and
 Lua's disagree, loading stops with a message starting `Lullaby bug:`. Nothing looks things up by a position number.
 
 **The engine.**
@@ -175,6 +182,8 @@ docs site, VS Code autocomplete and the Markdown copy; uses and used-by are foun
 - `gradlew runServer` builds, downloads the Paper jar named in `gradle.properties` once (SHA-256 checked) and starts a
   test server in `run/` (not in the repo): port 25566, 4 GB. Minecraft's EULA must be accepted in `run/eula.txt`
   first. Type `stop` to end it.
+- `gradlew events` writes `src/main/resources/lullaby/events.txt` (also part of every build; it only runs again
+  when the Paper version or EventList.java changes).
 - `gradlew docs` builds the docs site into `build/docs`. GitHub runs the same on every push to `main` and publishes
   it ([docs.yml](.github/workflows/docs.yml)).
 
@@ -203,20 +212,32 @@ Follows by itself: scripts see `lib.NAME` as a global; the docs site page, autoc
 from the doc block; "uses" and the grayed page for `J.name` are found from the code. A `function lib.NAME(` without a
 doc block stops the docs build with its file and line.
 
-### Add an event
+### Events
 
-1. In [EventBridge.java](src/main/java/io/github/kupfermeister/lullaby/event/EventBridge.java), import the Paper
-   event class and add one line to `EVENTS`: the event's class name, its class, and its fields in snake_case by the
-   naming rule (`getCommand()` → `command`, `isCancelled()` → `cancelled`).
-2. If a field's Java type is new (known today: player, block, location, text component, enum, true/false, number,
-   string), add it to `get` (and `set`, if writable) in the same file and to `from_java` in
-   [events.lua](src/main/resources/lullaby/lib/events.lua). Without this the field reads as nil.
-3. In [events.lua](src/main/resources/lullaby/lib/events.lua), add the event and its fields to the doc block
-   `id: events` (the docs builder can't read Java yet, so this list is still written by hand).
+Every Paper event is there already: a new one in Paper appears by itself with the next build (commit the changed
+`events.txt` so the docs site shows it too). Fields whose Java type Lullaby can't handle yet give a clear red error
+when read (`e.entity can't be read yet: Lullaby has no Entity for scripts yet`).
 
-Follows by itself: the library learns the event and its fields at startup; the "unknown event" error lists it; a
-field name Paper doesn't have stops loading with `Lullaby bug: <event> has no getter for <field>`; until a script
-uses the event, no listener exists.
+To let fields of a new Java type through (for example entities):
+
+1. In [EventList.java](tools/events/EventList.java), give the type a kind word in `readKind` (and `writeKind` if
+   scripts may set it), and name the word in the header line `KINDS:`.
+2. In [EventBridge.java](src/main/java/io/github/kupfermeister/lullaby/event/EventBridge.java), add the word to
+   `Kind` and handle it in `get` (and `set`, or a `set...` method with its J function in
+   [JavaFunctions.java](src/main/java/io/github/kupfermeister/lullaby/lua/JavaFunctions.java) for objects). A new
+   Lullaby object goes into [ToLua.java](src/main/java/io/github/kupfermeister/lullaby/lua/ToLua.java) and
+   `I.from_java` in [objects.lua](src/main/resources/lullaby/lib/objects.lua).
+3. In [Docs.java](tools/docs/Docs.java), `fieldRow` shows the kind on the event pages (type and text).
+4. `gradlew build`: the list is generated again with the new kind.
+
+To mark an event (tested and measured: the dot gets its color; busy; may come off the main thread), add a line to
+[event-marks.txt](tools/docs/event-marks.txt).
+
+Follows by itself: the library asks for an event's fields the first time a script uses it; the "unknown event" error
+names close events; events Paper always fires off the main thread (`Async...`) are refused with a clear error, and any
+other event that comes off the main thread is skipped (said once in the console); a word in `events.txt` that
+EventBridge.java doesn't know, or a method this Paper doesn't have, stops with `Lullaby bug: ...`; until a script uses
+an event, no listener exists and its class isn't even loaded.
 
 ### Add a packet action
 
@@ -237,7 +258,8 @@ when there is more than one packet, building each packet once for all receivers,
 
 1. In [gradle.properties](gradle.properties) set `minecraftVersion`, `paperBuild` and `paperJarSha256` (the Paper
    build and its SHA-256 are on Paper's downloads page).
-2. `gradlew build`. The first build sets up the new Minecraft sources (a few minutes).
+2. `gradlew build`. The first build sets up the new Minecraft sources (a few minutes). It also writes `events.txt`
+   again from the new Paper: commit it, so the docs site lists the new version's events.
 3. Fix what no longer compiles. It should all be in `nms`; anything outside is a change in Paper's own API.
 4. `gradlew runServer`. The startup checks stop loading with `Lullaby bug: ...` if vanilla renamed something Lullaby
    reads (event getters and setters, wire kinds). Fix those in `nms` or `EventBridge`.
@@ -252,6 +274,7 @@ server and say which build is needed.
 
 ## Plans (not built)
 
-Marked so nobody mistakes them for features: events generated from Paper's own methods instead of the hand-picked list; script data that lives in Java and
+Marked so nobody mistakes them for features: event fields Lullaby can't read yet (entities, lists, inventories,
+block states, vectors, ...) and events Paper fires off the main thread (chat, pre-login); script data that lives in Java and
 survives reloads; a generated packet system (`on_packet`, `send_packet`) on the same send core; entities and
 inventories; worker threads for big block edits; mixins as an optional add-on.

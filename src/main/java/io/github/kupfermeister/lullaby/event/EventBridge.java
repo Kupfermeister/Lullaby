@@ -2,104 +2,118 @@ package io.github.kupfermeister.lullaby.event;
 
 import io.github.kupfermeister.lullaby.Engine;
 import io.github.kupfermeister.lullaby.lua.LuaText;
+import io.github.kupfermeister.lullaby.lua.ToLua;
 import io.github.kupfermeister.lullaby.nms.Codecs;
 import io.github.kupfermeister.lullaby.nms.Fields;
+import io.github.kupfermeister.lullaby.nms.Nms;
+import java.io.IOException;
+import java.io.InputStream;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
-import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.StringJoiner;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.ToIntFunction;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
-import org.bukkit.block.Block;
-import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
-import org.bukkit.event.block.BlockBreakEvent;
-import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.event.player.PlayerMoveEvent;
-import org.bukkit.event.player.PlayerQuitEvent;
 import party.iroiro.luajava.Lua;
 
 /**
- * Connects Paper events to script handlers. Events are hand-picked: each one, and each of its fields, is agreed with
- * Kupfermeister ({@link #EVENTS}, the ONE list: the library reads it at startup through {@link #info}). Field names
- * come from Paper's own methods by one rule: {@code getPlayer()} -> {@code player}, {@code isCancelled()}/
- * {@code setCancelled()} -> {@code cancelled}, {@code joinMessage()} -> {@code join_message} (snake_case);
- * deprecated methods are skipped. Main thread only.
+ * Connects Paper events to script handlers. The events and their fields are every Paper event, listed in
+ * {@code lullaby/events.txt}, which tools/events/EventList.java generates from Paper's own classes at build (that
+ * program owns the naming rule and the kinds; the format is in the file's header). This class only reads the list.
+ * Main thread only, except the one check in {@link #listen} that keeps other threads away from Lua.
  *
- * <p>Speed (an event can fire many times per tick): every field gets a number once, when this class loads, with its
- * getter and setter found then as method handles. A field read from Lua sends only the event's slot and the field's
- * number: no names as text, no lookups by name. A field the naming rule can't find is a Lullaby bug and stops the
- * plugin from loading. Each registered listener has a number too, so a dispatch sends Lua two whole numbers.
+ * <p>Cost: at startup only the list is read (names and method names, no classes). An event's class and methods are
+ * looked up the first time a script uses it ({@link #fields}); its fields get numbers then, and keep them until the
+ * server stops, so a reload finds them ready. A field read from Lua sends only the event's slot and the field's
+ * number: no names as text, no lookups by name. Each registered listener has a number too, so a dispatch sends Lua two
+ * whole numbers. A Bukkit listener is registered only for the events, kinds and stages scripts actually use, so
+ * without scripts nothing listens.
  *
- * <p>A Bukkit listener is registered only for the events, kinds and stages scripts actually use, so without scripts
- * nothing listens. {@code on} handlers run at their stage and also for events another plugin cancelled (they see
+ * <p>{@code on} handlers run at their stage and also for events another plugin cancelled (they see
  * {@code e.cancelled}); {@code after} handlers run at MONITOR and only for events that were not cancelled.
  */
 public final class EventBridge implements Listener {
 
-    /** One agreed field of one event: its getter and setter (null if Paper has none) as method handles. */
-    private record Field(String event, String name, MethodHandle getter, MethodHandle setter, Class<?> setType) {
+    /** What Lullaby makes of a field's Java type: the kind words of events.txt (a word not here is a Lullaby bug). */
+    private enum Kind { PLAYER, WORLD, BLOCK, LOCATION, ITEM_STACK, COMPONENT, TEXT, ENUM, KEY, UUID, BOOLEAN, INTEGER, NUMBER }
+
+    /**
+     * One field of one event. {@code read}/{@code write} are null when Lullaby can't handle the type yet; then
+     * {@code unread}/{@code unwritten} name it for the error. {@code setter} is null if Paper has none.
+     */
+    private record Field(String event, String name, MethodHandle getter, Kind read, String unread, MethodHandle setter,
+                         Class<?> setType, Kind write, String unwritten) {
     }
 
-    private record EventType(Class<? extends Event> type, List<String> fields) {
+    /** One event as events.txt lists it: its class name, whether Paper fires it off the main thread, its field lines. */
+    private record Listed(String javaClass, boolean async, List<String[]> fields) {
     }
 
-    // The agreed events and fields (order = their numbers). Adding one here is all it takes: Lua, error texts and
-    // the startup check follow; the docs page lists them in events.lua's doc block.
-    private static final Map<String, EventType> EVENTS = new LinkedHashMap<>();
-
-    static {
-        EVENTS.put("PlayerJoinEvent", new EventType(PlayerJoinEvent.class, List.of("player", "join_message")));
-        EVENTS.put("PlayerQuitEvent", new EventType(PlayerQuitEvent.class, List.of("player", "quit_message", "reason")));
-        EVENTS.put("BlockBreakEvent", new EventType(BlockBreakEvent.class,
-                List.of("player", "block", "exp_to_drop", "drop_items", "cancelled")));
-        EVENTS.put("PlayerMoveEvent", new EventType(PlayerMoveEvent.class, List.of("player", "from", "to", "cancelled")));
+    /** An event whose class and methods were looked up: its class and "field=number ..." for Lua. */
+    private record Resolved(Class<? extends Event> type, String info) {
     }
 
-    /** Every field of every event, by its number (see {@link #info}). */
-    private static final Field[] FIELDS = resolveFields();
+    private static final Map<String, Listed> LISTED = readList();
+    private static final Map<String, Resolved> RESOLVED = new HashMap<>();
+    private static final List<Field> FIELDS = new ArrayList<>(); // field number -> field
+    private static final Set<String> WARNED_THREAD = ConcurrentHashMap.newKeySet();
 
     private final Engine engine;
-    private final List<String> listeners = new ArrayList<>(); // listener number - 1 -> "Name|kind|stage" (for errors)
+    private final List<String> listeners = new ArrayList<>(); // listener number - 1 -> "Name (kind)" (for errors)
     private ToIntFunction<Object> addSlot;
 
     public EventBridge(Engine engine) {
         this.engine = engine;
     }
 
-    /**
-     * For the library, once at startup: the first line lists the stages (Bukkit's priorities without MONITOR, in
-     * order), then one line per event: {@code Name<TAB>field=number field=number ...}.
-     */
+    /** For the library, once at startup: the stages (Bukkit's priorities without MONITOR, in order). */
     public static String info() {
-        StringBuilder out = new StringBuilder();
-        List<String> stages = new ArrayList<>();
+        StringJoiner stages = new StringJoiner(" ");
         for (EventPriority priority : EventPriority.values()) {
             if (priority != EventPriority.MONITOR) stages.add(priority.name().toLowerCase(Locale.ROOT));
         }
-        out.append(String.join(" ", stages));
-        int number = 0;
-        for (Map.Entry<String, EventType> event : EVENTS.entrySet()) {
-            out.append('\n').append(event.getKey()).append('\t');
-            String gap = ""; // an event may have no fields at all
-            for (String field : event.getValue().fields()) {
-                out.append(gap).append(field).append('=').append(number++);
-                gap = " ";
-            }
-        }
-        return out.toString();
+        return stages.toString();
+    }
+
+    /**
+     * Why a script can't listen to this event, or null if it can: not in the list (with close names), or fired off
+     * the main thread. The library puts "on: " or "after: " in front.
+     */
+    public static String refusal(String name) {
+        Listed listed = LISTED.get(name);
+        // FORMAT: an event Paper fires off the main thread
+        if (listed != null && listed.async()) return name + " runs off the main thread (Paper fires it there), and "
+                + "scripts only run on the main thread: it can't be used yet";
+        if (listed != null || name.equals("reload")) return null;
+        List<String> close = closeNames(name);
+        // FORMAT: unknown event, with close names from the list
+        return "unknown event \"" + name + "\"" + (close.isEmpty() ? " (the docs site lists every event)"
+                : " (did you mean " + String.join(", ", close) + "?)");
+    }
+
+    /**
+     * The event's fields for Lua as "name=number name=number ..." (empty if it has none). The first call per event
+     * looks up its class and methods; a method events.txt names that Paper doesn't have is a Lullaby bug.
+     */
+    public static String fields(String name) {
+        return resolve(name).info();
     }
 
     /**
@@ -107,14 +121,22 @@ public final class EventBridge implements Listener {
      * returns the listener's number, which {@link Engine#dispatch} hands back to Lua with each event.
      */
     public int listen(String name, String kind, String stage) {
-        EventType event = EVENTS.get(name);
+        Class<? extends Event> type = resolve(name).type();
         boolean after = kind.equals("after");
         EventPriority priority = after ? EventPriority.MONITOR : EventPriority.valueOf(stage.toUpperCase(Locale.ROOT));
         listeners.add(name + " (" + kind + ")");
         int number = listeners.size();
-        Class<? extends Event> type = event.type();
         Bukkit.getPluginManager().registerEvent(type, this, priority, (listener, e) -> {
-            if (type.isInstance(e)) engine.dispatch(number, e);
+            if (!type.isInstance(e)) return; // Bukkit also hands over events of a parent's handler list
+            // Lua may only run on the main thread. events.txt leaves out events Paper always fires elsewhere, but some
+            // fire on another thread only sometimes: those are skipped (said once in the console), never run.
+            if (!Bukkit.isPrimaryThread()) {
+                // FORMAT: an event that arrived off the main thread (console, once per event)
+                if (WARNED_THREAD.add(name)) engine.plugin().getLogger().warning(name + " came off the main thread: "
+                        + "Lullaby skips its script handlers then (scripts only run on the main thread)");
+                return;
+            }
+            engine.dispatch(number, e);
         }, engine.plugin(), after);
         return number;
     }
@@ -130,97 +152,131 @@ public final class EventBridge implements Listener {
         listeners.clear();
     }
 
-    /** Pushes a field's value for Lua as a kind word plus values (see from_java in events.lua); returns the count. */
-    public int get(Lua L, Object event, int field) {
-        MethodHandle getter = FIELDS[field].getter();
-        if (getter == null) return 0;
+    /** Pushes a field's value for Lua as a kind word plus values (see I.from_java in objects.lua); returns the count. */
+    public int get(Lua L, Object event, int number) {
+        Field field = FIELDS.get(number);
+        // FORMAT: an event field whose type Lullaby can't hand to scripts yet
+        if (field.read() == null) throw new IllegalArgumentException("e." + field.name() + " can't be read yet: "
+                + "Lullaby has no " + field.unread() + " for scripts yet");
         Object value;
         try {
-            value = getter.invokeExact(event);
+            value = field.getter().invokeExact(event);
         } catch (Throwable t) {
             throw failure(t);
         }
         if (value == null) return 0;
-        if (value instanceof Player player) {
-            L.push("player");
-            L.push(player.getUniqueId().toString());
-            return 2;
+        switch (field.read()) {
+            case PLAYER, WORLD, BLOCK, LOCATION, ITEM_STACK -> {
+                return ToLua.object(L, value, addSlot); // a HumanEntity that is no player gives nil
+            }
+            case COMPONENT -> {
+                // a component table: wire bytes plus the count of item slots in show_item hovers
+                Object[] out = Codecs.componentOut(Codecs.vanilla((Component) value), addSlot);
+                L.push("c");
+                L.push((ByteBuffer) out[0]);
+                L.push((int) out[1]);
+                return 3;
+            }
+            default -> {
+                L.push("v");
+                switch (field.read()) {
+                    case TEXT -> LuaText.push(L, (String) value);
+                    case ENUM -> L.push(((Enum<?>) value).name().toLowerCase(Locale.ROOT));
+                    case KEY -> LuaText.push(L, keyText(value));
+                    case UUID -> L.push(value.toString());
+                    case BOOLEAN -> L.push((Boolean) value);
+                    default -> L.push((Number) value); // INTEGER, NUMBER
+                }
+                return 2;
+            }
         }
-        if (value instanceof Block block) {
-            L.push("block");
-            L.push(block.getWorld().getKey().toString());
-            L.push((long) block.getX());
-            L.push((long) block.getY());
-            L.push((long) block.getZ());
-            return 5;
-        }
-        if (value instanceof Location location) {
-            World world = location.getWorld();
-            if (world == null) return 0;
-            L.push("location");
-            L.push(world.getKey().toString());
-            L.push(location.getX());
-            L.push(location.getY());
-            L.push(location.getZ());
-            L.push(location.getYaw());
-            L.push(location.getPitch());
-            return 7;
-        }
-        if (value instanceof Component text) {
-            // a component table: wire bytes plus the count of item slots in show_item hovers
-            Object[] out = Codecs.componentOut(Codecs.vanilla(text), addSlot);
-            L.push("c");
-            L.push((ByteBuffer) out[0]);
-            L.push((int) out[1]);
-            return 3;
-        }
-        L.push("v");
-        if (value instanceof Enum<?> constant) {
-            L.push(constant.name().toLowerCase(Locale.ROOT));
-        } else if (value instanceof Boolean bool) {
-            L.push(bool);
-        } else if (value instanceof Number number) {
-            L.push(number);
-        } else if (value instanceof String text) {
-            LuaText.push(L, text);
-        } else {
-            return 0;
-        }
-        return 2;
     }
 
     /** Sets a field from the Lua value at {@code index}; throws (a red error in Lua) if it can't be set. */
     public void set(Lua L, Object event, int number, int index) {
-        Field field = FIELDS[number];
-        if (field.setter() == null) throw cantChange(field);
+        Field field = writable(number);
         Class<?> type = field.setType();
         Object value;
         if (L.isNil(index)) {
-            if (type.isPrimitive()) throw wrong(field, type == boolean.class ? "true or false" : "a number", L, index);
+            if (type.isPrimitive()) throw wrong(field, L, index);
             value = null;
-        } else if (type == boolean.class || type == Boolean.class) {
-            if (!L.isBoolean(index)) throw wrong(field, "true or false", L, index);
-            value = L.toBoolean(index);
-        } else if (type == int.class || type == Integer.class) {
-            if (!L.isNumber(index)) throw wrong(field, "a whole number", L, index);
-            double d = L.toNumber(index);
-            if (d != Math.rint(d) || d < Integer.MIN_VALUE || d > Integer.MAX_VALUE) {
-                throw wrong(field, "a whole number", L, index);
-            }
-            value = (int) d;
-        } else if (type == double.class || type == Double.class) {
-            if (!L.isNumber(index)) throw wrong(field, "a number", L, index);
-            value = L.toNumber(index);
-        } else if (Component.class.isAssignableFrom(type)) {
-            // a plain string is literal text, as /tellraw "text"; component tables go through setComponent
-            if (!L.isString(index)) throw wrong(field, "text or a component", L, index);
-            value = Component.text(LuaText.string(L, index));
-        } else if (type == String.class) {
-            if (!L.isString(index)) throw wrong(field, "text", L, index);
-            value = LuaText.string(L, index);
         } else {
-            throw cantChange(field);
+            value = switch (field.write()) {
+                case BOOLEAN -> {
+                    if (!L.isBoolean(index)) throw wrong(field, L, index);
+                    yield L.toBoolean(index);
+                }
+                case INTEGER -> {
+                    if (!L.isNumber(index)) throw wrong(field, L, index);
+                    yield whole(field, L.toNumber(index), L, index);
+                }
+                case NUMBER -> {
+                    if (!L.isNumber(index)) throw wrong(field, L, index);
+                    double d = L.toNumber(index);
+                    yield type == float.class || type == Float.class ? (Object) (float) d : (Object) d;
+                }
+                case TEXT -> {
+                    if (!isText(L, index)) throw wrong(field, L, index);
+                    yield LuaText.string(L, index);
+                }
+                // a plain string is literal text, as /tellraw "text"; component tables go through setComponent
+                case COMPONENT -> {
+                    if (!isText(L, index)) throw wrong(field, L, index);
+                    yield Component.text(LuaText.string(L, index));
+                }
+                case ENUM -> {
+                    if (!isText(L, index)) throw wrong(field, L, index);
+                    yield constant(field, LuaText.string(L, index));
+                }
+                default -> throw wrong(field, L, index); // ITEM_STACK, LOCATION: setItem, setLocation
+            };
         }
+        invokeSetter(field, event, value);
+    }
+
+    /** Sets a text field from a component table (already turned into a component by Codecs). */
+    public void setComponent(Object event, int number, Component text) {
+        Field field = writable(number);
+        if (field.write() != Kind.COMPONENT) throw Fields.wrong("", "e." + field.name(), need(field), "a component");
+        invokeSetter(field, event, text);
+    }
+
+    /** Sets an item_stack field from an item slot's vanilla stack (a copy goes into the event). */
+    public void setItem(Object event, int number, Object vanillaStack) {
+        Field field = writable(number);
+        if (field.write() != Kind.ITEM_STACK) throw Fields.wrong("", "e." + field.name(), need(field), "an item_stack");
+        invokeSetter(field, event, Nms.bukkitItem(vanillaStack));
+    }
+
+    /** Sets a location field; {@code worldKey} is a world slot's vanilla key. */
+    public void setLocation(Object event, int number, Object worldKey, double x, double y, double z, float yaw,
+                            float pitch) {
+        Field field = writable(number);
+        if (field.write() != Kind.LOCATION) throw Fields.wrong("", "e." + field.name(), need(field), "a location");
+        World world = Nms.bukkitWorld(worldKey);
+        // FORMAT: a location in a world that isn't loaded
+        if (world == null) throw new IllegalArgumentException("e." + field.name() + ": the location's world isn't loaded");
+        invokeSetter(field, event, new Location(world, x, y, z, yaw, pitch));
+    }
+
+    /** Gives event fields their item slots (item stacks, show_item hovers); set by JavaFunctions. */
+    public void slots(ToIntFunction<Object> addSlot) {
+        this.addSlot = addSlot;
+    }
+
+    // ---- setting -----------------------------------------------------------------------------------------------
+
+    private static Field writable(int number) {
+        Field field = FIELDS.get(number);
+        // FORMAT: an event field that can't be written
+        if (field.setter() == null) throw new IllegalArgumentException("e." + field.name() + " can't be changed");
+        // FORMAT: an event field Paper lets change, but with a type Lullaby can't make yet
+        if (field.write() == null) throw new IllegalArgumentException("e." + field.name() + " can't be changed yet: "
+                + "Lullaby can't make a " + field.unwritten() + " yet");
+        return field;
+    }
+
+    private static void invokeSetter(Field field, Object event, Object value) {
         try {
             field.setter().invoke(event, value);
         } catch (Throwable t) {
@@ -228,32 +284,58 @@ public final class EventBridge implements Listener {
         }
     }
 
-    /** Sets a text field from a component table (already turned into a component by Codecs). */
-    public void setComponent(Object event, int number, Component text) {
-        Field field = FIELDS[number];
-        if (field.setter() == null || !Component.class.isAssignableFrom(field.setType())) {
-            throw Fields.wrong("", "e." + field.name(), field.setter() == null ? "left alone (it can't be changed)"
-                    : "true or false, a number or text", "a component");
-        }
+    /** A Lua number as the setter's whole-number type, checked against that type's range. */
+    private static Object whole(Field field, double d, Lua L, int index) {
+        Class<?> t = field.setType();
+        boolean isLong = t == long.class || t == Long.class, isShort = t == short.class || t == Short.class,
+                isByte = t == byte.class || t == Byte.class;
+        double min = isLong ? -9007199254740992.0 : isShort ? Short.MIN_VALUE : isByte ? Byte.MIN_VALUE : Integer.MIN_VALUE;
+        double max = isLong ? 9007199254740992.0 : isShort ? Short.MAX_VALUE : isByte ? Byte.MAX_VALUE : Integer.MAX_VALUE;
+        if (d != Math.rint(d) || d < min || d > max) throw wrong(field, L, index);
+        if (isLong) return (long) d;
+        if (isShort) return (short) d;
+        if (isByte) return (byte) d;
+        return (int) d;
+    }
+
+    /** "deny" -> Result.DENY for an enum field. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static Object constant(Field field, String word) {
         try {
-            field.setter().invoke(event, text);
-        } catch (Throwable t) {
-            throw failure(t);
+            return Enum.valueOf((Class<? extends Enum>) field.setType(), word.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw Fields.wrong("", "e." + field.name(), need(field), "\"" + word + "\"");
         }
     }
 
-    /** Gives event text fields their item slots (show_item hovers); set by JavaFunctions. */
-    public void slots(ToIntFunction<Object> addSlot) {
-        this.addSlot = addSlot;
+    /** What a field needs, for "e.x must be <need>, got ...". */
+    private static String need(Field field) {
+        return switch (field.write()) {
+            case BOOLEAN -> "true or false";
+            case INTEGER -> "a whole number";
+            case NUMBER -> "a number";
+            case TEXT -> "text";
+            case COMPONENT -> "text or a component";
+            case ITEM_STACK -> "an item_stack";
+            case LOCATION -> "a location";
+            case ENUM -> {
+                Object[] all = field.setType().getEnumConstants();
+                if (all.length > 16) yield "a " + field.setType().getSimpleName() + " name";
+                StringJoiner j = new StringJoiner(", ");
+                for (Object k : all) j.add("\"" + ((Enum<?>) k).name().toLowerCase(Locale.ROOT) + "\"");
+                yield "one of " + j;
+            }
+            default -> "left alone";
+        };
     }
 
-    private static IllegalArgumentException cantChange(Field field) {
-        // FORMAT: an event field that can't be written
-        return new IllegalArgumentException("e." + field.name() + " can't be changed");
+    private static IllegalArgumentException wrong(Field field, Lua L, int index) {
+        return Fields.wrong("", "e." + field.name(), need(field), got(L, index));
     }
 
-    private static IllegalArgumentException wrong(Field field, String need, Lua L, int index) {
-        return Fields.wrong("", "e." + field.name(), need, got(L, index));
+    /** Real text only: Lua's own isString is also true for numbers, which would turn 5 into the text "5". */
+    private static boolean isText(Lua L, int index) {
+        return L.type(index) == Lua.LuaType.STRING;
     }
 
     /** A Lua value as short text for "got ...", like Fields.got for wire values. */
@@ -268,56 +350,136 @@ public final class EventBridge implements Listener {
         return "a " + L.type(index).toString().toLowerCase(Locale.ROOT);
     }
 
+    /** A key or keyed thing as its id text: "minecraft:stone". */
+    private static String keyText(Object value) {
+        if (value instanceof net.kyori.adventure.key.Key key) return key.asString();
+        if (value instanceof net.kyori.adventure.key.Keyed keyed) return keyed.key().asString();
+        return ((org.bukkit.Keyed) value).getKey().toString();
+    }
+
     /** An exception inside Paper's getter or setter becomes the script's error, with Paper's own message. */
     private static RuntimeException failure(Throwable t) {
         if (t instanceof Error e) throw e;
         return new IllegalArgumentException(t.getMessage() != null ? t.getMessage() : t.toString());
     }
 
-    // ---- resolved once, when the class loads ----
+    // ---- the list (read once) and looking up an event (once per event) -------------------------------------------
 
-    private static Field[] resolveFields() {
-        List<Field> fields = new ArrayList<>();
+    private static Map<String, Listed> readList() {
+        Map<String, Listed> out = new LinkedHashMap<>();
+        String text;
+        try (InputStream in = EventBridge.class.getResourceAsStream("/lullaby/events.txt")) {
+            if (in == null) throw new IllegalStateException("Lullaby bug: lullaby/events.txt is missing from the jar");
+            text = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new IllegalStateException("Lullaby bug: can't read lullaby/events.txt", e);
+        }
+        List<String[]> fields = null;
+        for (String line : text.split("\n")) {
+            if (line.isEmpty() || line.startsWith("#") || line.startsWith("paper-api\t")) continue;
+            String[] parts = line.split("\t", -1);
+            if (line.startsWith("\t")) {
+                fields.add(parts);
+            } else {
+                fields = new ArrayList<>();
+                out.put(parts[0], new Listed(parts[1], parts[3].contains("async"), fields));
+            }
+        }
+        return out;
+    }
+
+    private static Resolved resolve(String name) {
+        Resolved done = RESOLVED.get(name);
+        if (done != null) return done;
+        Listed listed = LISTED.get(name);
+        if (listed == null) throw new IllegalArgumentException("Lullaby bug: " + name + " is not in events.txt");
         MethodHandles.Lookup lookup = MethodHandles.publicLookup();
-        for (Map.Entry<String, EventType> event : EVENTS.entrySet()) {
-            Class<?> type = event.getValue().type();
-            for (String name : event.getValue().fields()) {
-                String camel = camel(name);
-                String plain = Character.toLowerCase(camel.charAt(0)) + camel.substring(1);
-                Method getter = first(type, 0, "get" + camel, "is" + camel, plain);
-                Method setter = first(type, 1, "set" + camel, plain);
-                // FORMAT: an agreed event field that Paper doesn't have (a Lullaby bug, found at startup)
-                if (getter == null) throw new IllegalStateException("Lullaby bug: " + event.getKey() + " has no getter for " + name);
-                try {
-                    MethodHandle get = lookup.unreflect(getter).asType(MethodType.methodType(Object.class, Object.class));
-                    MethodHandle set = setter == null ? null : lookup.unreflect(setter);
-                    fields.add(new Field(event.getKey(), name, get, set, setter == null ? null : setter.getParameterTypes()[0]));
-                } catch (IllegalAccessException e) {
-                    throw new IllegalStateException("Lullaby bug: can't reach " + event.getKey() + "." + name, e);
+        StringJoiner info = new StringJoiner(" ");
+        Class<? extends Event> type;
+        try {
+            type = Class.forName(listed.javaClass(), false, EventBridge.class.getClassLoader()).asSubclass(Event.class);
+            for (String[] f : listed.fields()) {
+                // f: "", name, getter, read kind, setter, setter's parameter class, write kind, values
+                MethodHandle get = lookup.unreflect(type.getMethod(f[2])).asType(MethodType.methodType(Object.class, Object.class));
+                MethodHandle set = null;
+                Class<?> setType = null;
+                if (!f[4].equals("-")) {
+                    setType = parameterClass(f[5]);
+                    set = lookup.unreflect(type.getMethod(f[4], setType));
                 }
+                FIELDS.add(new Field(name, f[1], get, kind(f[3]), f[3].substring(1), set, setType,
+                        f[6].equals("-") ? null : kind(f[6]), f[6].substring(1)));
+                info.add(f[1] + "=" + (FIELDS.size() - 1));
             }
+        } catch (ReflectiveOperationException | LinkageError e) {
+            // FORMAT: events.txt names a class or method this Paper doesn't have (a Lullaby bug)
+            throw new IllegalStateException("Lullaby bug: events.txt doesn't match this Paper (" + name + ": " + e
+                    + "); rebuild Lullaby so `gradlew events` lists Paper's events again", e);
         }
-        return fields.toArray(Field[]::new);
+        Resolved resolved = new Resolved(type, info.toString());
+        RESOLVED.put(name, resolved);
+        return resolved;
     }
 
-    private static Method first(Class<?> type, int parameters, String... names) {
-        for (String name : names) {
-            for (Method method : type.getMethods()) {
-                if (method.getName().equals(name) && method.getParameterCount() == parameters
-                        && !method.isAnnotationPresent(Deprecated.class)) {
-                    return method;
-                }
-            }
+    /** A kind word from events.txt; "?Type" (Lullaby can't handle it yet) gives null. */
+    private static Kind kind(String word) {
+        if (word.startsWith("?")) return null;
+        try {
+            return Kind.valueOf(word.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            // FORMAT: a kind word the generator wrote that this class doesn't know (a Lullaby bug)
+            throw new IllegalStateException("Lullaby bug: events.txt has the kind \"" + word + "\", EventBridge.java doesn't know it");
         }
-        return null;
     }
 
-    /** "join_message" -> "JoinMessage" */
-    private static String camel(String field) {
-        StringBuilder out = new StringBuilder();
-        for (String part : field.split("_")) {
-            out.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1));
+    private static Class<?> parameterClass(String name) throws ClassNotFoundException {
+        return switch (name) {
+            case "boolean" -> boolean.class;
+            case "int" -> int.class;
+            case "long" -> long.class;
+            case "short" -> short.class;
+            case "byte" -> byte.class;
+            case "float" -> float.class;
+            case "double" -> double.class;
+            case "char" -> char.class;
+            default -> Class.forName(name, false, EventBridge.class.getClassLoader());
+        };
+    }
+
+    /** Up to three listed names close to a wrong one: same letters in another case, containing it, or a typo away. */
+    private static List<String> closeNames(String wrong) {
+        String w = wrong.toLowerCase(Locale.ROOT);
+        List<String> out = new ArrayList<>();
+        for (String name : LISTED.keySet()) if (name.equalsIgnoreCase(wrong)) return List.of(name);
+        if (w.length() >= 4) {
+            for (String name : LISTED.keySet()) {
+                if (out.size() < 3 && name.toLowerCase(Locale.ROOT).contains(w)) out.add(name);
+            }
+            if (!out.isEmpty()) return out;
         }
-        return out.toString();
+        int limit = Math.max(2, w.length() / 6);
+        List<Map.Entry<Integer, String>> near = new ArrayList<>();
+        for (String name : LISTED.keySet()) {
+            int d = distance(w, name.toLowerCase(Locale.ROOT));
+            if (d <= limit) near.add(Map.entry(d, name));
+        }
+        near.sort(Map.Entry.comparingByKey());
+        for (int i = 0; i < near.size() && i < 3; i++) out.add(near.get(i).getValue());
+        return out;
+    }
+
+    private static int distance(String a, String b) {
+        int[] row = new int[b.length() + 1];
+        for (int j = 0; j <= b.length(); j++) row[j] = j;
+        for (int i = 1; i <= a.length(); i++) {
+            int prev = row[0];
+            row[0] = i;
+            for (int j = 1; j <= b.length(); j++) {
+                int t = row[j];
+                row[j] = Math.min(Math.min(row[j] + 1, row[j - 1] + 1), prev + (a.charAt(i - 1) == b.charAt(j - 1) ? 0 : 1));
+                prev = t;
+            }
+        }
+        return row[b.length()];
     }
 }

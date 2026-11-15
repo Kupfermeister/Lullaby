@@ -19,10 +19,7 @@ import java.util.Map;
 import java.util.StringJoiner;
 import java.util.UUID;
 import org.bukkit.Bukkit;
-import org.bukkit.Location;
-import org.bukkit.OfflinePlayer;
 import org.bukkit.World;
-import org.bukkit.block.Block;
 import org.bukkit.plugin.Plugin;
 import party.iroiro.luajava.Lua;
 
@@ -592,47 +589,8 @@ final class JavaDoor {
         };
     }
 
-    /**
-     * A Java object as a Lullaby object, where Lullaby has one: pushes a kind word and its values (java.lua makes the
-     * object), nothing if there is none.
-     */
+    /** A Java object as a Lullaby object, where Lullaby has one (ToLua.java, shared with event fields). */
     private int wrap(Lua L, Object o) {
-        switch (o) {
-            case OfflinePlayer p -> {
-                L.push("player");
-                L.push(p.getUniqueId().toString());
-                return 2;
-            }
-            case World w -> {
-                L.push("world");
-                L.push(Nms.worldIdOf(w));
-                return 2;
-            }
-            case Block b -> {
-                L.push("block");
-                L.push(Nms.worldIdOf(b.getWorld()));
-                L.push(b.getX());
-                L.push(b.getY());
-                L.push(b.getZ());
-                return 5;
-            }
-            case Location l when l.getWorld() != null -> {
-                L.push("location");
-                L.push(Nms.worldIdOf(l.getWorld()));
-                L.push((Number) l.getX());
-                L.push((Number) l.getY());
-                L.push((Number) l.getZ());
-                L.push((Number) (double) l.getYaw());
-                L.push((Number) (double) l.getPitch());
-                return 7;
-            }
-            default -> {
-                Object item = Nms.vanillaItem(o);
-                if (item == null) return 0;
-                L.push("item_stack");
-                L.push(slots.add(item));
-                return 2;
-            }
-        }
+        return ToLua.object(L, o, slots::add);
     }
 }

@@ -83,10 +83,22 @@ final class JavaFunctions {
             push(L, Codecs.kindList());
             return 1;
         });
-        // Events: names cross once (event_info at startup, listen per handler kind); every event and field read
-        // after that is whole numbers only (listener number, event slot, field number). See EventBridge.java.
+        // Events: names cross once (event_info at startup, event_fields and listen per event and handler kind); every
+        // event and field read after that is whole numbers only (listener number, event slot, field number).
+        // See EventBridge.java.
         addFree(lua, "event_info", L -> {
             push(L, EventBridge.info());
+            return 1;
+        });
+        // The event's fields as "name=number ...", or nil and why it can't be used (unknown, off the main thread).
+        add(lua, "event_fields", L -> {
+            String name = string(L, 1), why = EventBridge.refusal(name);
+            if (why != null) {
+                L.pushNil();
+                LuaText.push(L, why);
+                return 2;
+            }
+            push(L, EventBridge.fields(name));
             return 1;
         });
         add(lua, "listen", L -> {
@@ -101,6 +113,16 @@ final class JavaFunctions {
         add(lua, "event_set_component", L -> {
             events.setComponent(slots.get(slot(L, 1)), (int) L.toInteger(2),
                     Codecs.adventure(Codecs.componentFromTable(Wire.read(L.toBuffer(3)), slots::get)));
+            return 0;
+        });
+        add(lua, "event_set_item", L -> {
+            events.setItem(slots.get(slot(L, 1)), (int) L.toInteger(2), slots.get(slot(L, 3)));
+            return 0;
+        });
+        // event slot, field number, world slot, x, y, z, yaw, pitch
+        add(lua, "event_set_location", L -> {
+            events.setLocation(slots.get(slot(L, 1)), (int) L.toInteger(2), slots.get(slot(L, 3)), L.toNumber(4),
+                    L.toNumber(5), L.toNumber(6), (float) L.toNumber(7), (float) L.toNumber(8));
             return 0;
         });
         // Slots (see Slots.java): objects are created in Lua, Java keeps what each number stands for.

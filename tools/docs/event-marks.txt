@@ -1,0 +1,67 @@
+# Hand marks for events: Kupfermeister's verdicts, which the generated list (src/main/resources/lullaby/events.txt)
+# can't know. Read by tools/docs/Docs.java; a name that isn't in events.txt stops the docs build.
+# One event per line: the name, then its marks (space-separated); "#" starts a comment.
+#   tested  stress tested and measured: its dot gets its color (copper: on{ } can change something, teal: read only).
+#           Until then every event has a gray dot ("there, not tested yet").
+#   busy    fires very often (many times per tick on a busy server): every handler runs on each one, so keep it short
+#   thread  Paper may fire it off the main thread: Lullaby skips it then (the console says so once). Events Paper
+#           always fires off the main thread (Async...) can't be used at all; events.txt marks those itself.
+
+# ---- busy ----
+BeaconEffectEvent busy
+BlockFadeEvent busy
+BlockFormEvent busy
+BlockFromToEvent busy
+BlockGrowEvent busy
+BlockPhysicsEvent busy
+BlockRedstoneEvent busy
+BlockSpreadEvent busy
+ChunkLoadEvent busy
+ChunkUnloadEvent busy
+ClientTickEndEvent busy
+CreatureSpawnEvent busy
+EntitiesLoadEvent busy
+EntitiesUnloadEvent busy
+EntityAddToWorldEvent busy
+EntityAirChangeEvent busy
+EntityExhaustionEvent busy
+EntityInsideBlockEvent busy
+EntityMoveEvent busy
+EntityPathfindEvent busy
+EntityRemoveFromWorldEvent busy
+EntitySpawnEvent busy
+EntityTargetEvent busy
+EntityTargetLivingEntityEvent busy
+FluidLevelChangeEvent busy
+GenericGameEvent busy
+HopperInventorySearchEvent busy
+InventoryMoveItemEvent busy
+LeavesDecayEvent busy
+PlayerChunkLoadEvent busy
+PlayerChunkUnloadEvent busy
+PlayerMoveEvent busy
+PlayerNaturallySpawnCreaturesEvent busy
+PlayerStatisticIncrementEvent busy
+PlayerTrackEntityEvent busy
+PlayerUntrackEntityEvent busy
+PreCreatureSpawnEvent busy
+ServerTickEndEvent busy
+ServerTickStartEvent busy
+VehicleMoveEvent busy
+VehicleUpdateEvent busy
+
+# ---- thread (may come off the main thread; the check in EventBridge.java catches any not listed here) ----
+BroadcastMessageEvent thread
+FillProfileEvent thread
+GS4QueryEvent thread
+LookupProfileEvent thread
+PaperServerListPingEvent thread
+PlayerConnectionInitialConfigureEvent thread
+PlayerConnectionReconfigureEvent thread
+PlayerConnectionValidateLoginEvent thread
+PreFillProfileEvent thread
+PreLookupProfileEvent thread
+ProfileWhitelistVerifyEvent thread
+ServerExceptionEvent thread
+ServerListPingEvent thread
+TabCompleteEvent thread

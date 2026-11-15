@@ -536,3 +536,17 @@ function lib.stop_sound(a)
 	action_table(a, "stop_sound")
 	J.stop_sound(I.wire({ players = receivers(a, "stop_sound"), sound = a.sound, source = a.source }))
 end
+
+-- Java hands a value over as a kind word plus values (ToLua.java for objects; EventBridge.java adds "v", a plain
+-- value, and "c", a component); this is the one place that turns them into Lua values. Used by event fields and
+-- java.wrap( ). An unknown kind gives nil.
+function I.from_java(kind, a, b, c, d, f, g)
+	if kind == "v" then return a end
+	if kind == "player" then return I.player_by_uuid(a) end
+	if kind == "world" then return I.world_by_id(a) end
+	if kind == "block" then return I.block_at(a, b, c, d) end
+	if kind == "location" then return I.new_location(I.world_by_id(a), I.new_vec3(b, c, d), I.new_yaw_pitch(f, g)) end
+	if kind == "item_stack" then return I.new_item(a) end
+	if kind == "c" then return I.new_component(a, b) end
+	return nil
+end

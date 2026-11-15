@@ -14,27 +14,14 @@ local J, lib, I = ...
 
 local type, error, setmetatable, tostring, tonumber = type, error, setmetatable, tostring, tonumber
 local sort, concat = table.sort, table.concat
-local gmatch, match = string.gmatch, string.match
+local gmatch = string.gmatch
 
--- Java owns the events, their fields and the stages (EventBridge.java): read once here. The first line lists the
--- stages, then one line per event: "Name<TAB>field=number field=number".
+-- Java owns the events, their fields and the stages (EventBridge.java, from the generated list events.txt). The
+-- stages are read once here; an event's fields ("name=number ...") the first time a script uses that event, so the
+-- ~400 events nobody uses cost nothing.
 local STAGES, STAGE_LIST = {}, {}
-local EVENT_FIELDS, EVENT_NAMES = {}, {} -- event name -> { field name -> field number }; names in Java's order
-do
-	local first = true
-	for line in gmatch(J.event_info(), "[^\n]+") do
-		if first then
-			for stage in gmatch(line, "%S+") do STAGES[stage] = true; STAGE_LIST[#STAGE_LIST + 1] = stage end
-			first = false
-		else
-			local name, rest = match(line, "^([^\t]+)\t(.*)$")
-			local fields = {}
-			for field, number in gmatch(rest, "([%w_]+)=(%d+)") do fields[field] = tonumber(number) end
-			EVENT_FIELDS[name] = fields
-			EVENT_NAMES[#EVENT_NAMES + 1] = name
-		end
-	end
-end
+for stage in gmatch(J.event_info(), "%S+") do STAGES[stage] = true; STAGE_LIST[#STAGE_LIST + 1] = stage end
+local EVENT_FIELDS = {} -- event name -> { field name -> field number }, filled per event on first use
 
 -- '"a", "b" or "c"'
 local function quoted(list)
@@ -54,8 +41,12 @@ local function register(kind, a)
 	if type(name) ~= "string" then error(kind .. ": the first value must be the event name, got " .. I.type_name(name), 3) end
 	if type(fn) ~= "function" then error(kind .. ": the second value must be a function, got " .. I.type_name(fn), 3) end
 	if name ~= "reload" and not EVENT_FIELDS[name] then
-		-- FORMAT: unknown event (the list comes from EventBridge.java)
-		error(kind .. ": unknown event \"" .. name .. "\" (events so far: " .. concat(EVENT_NAMES, ", ") .. ", reload)", 3)
+		-- why (unknown, with close names; or off the main thread) is worded in EventBridge.java
+		local info, why = J.event_fields(name)
+		if not info then error(kind .. ": " .. why, 3) end
+		local fields = {}
+		for field, number in gmatch(info, "([%w_]+)=(%d+)") do fields[field] = tonumber(number) end
+		EVENT_FIELDS[name] = fields
 	end
 	if order == nil then order = 0 end
 	if type(order) ~= "number" then error(kind .. ": order must be a number, got " .. I.type_name(order), 3) end
@@ -94,7 +85,7 @@ group: Events
 words: listen hook before cancel
 syntax: on{ "EventName", function(e) ... end, order = number, stage = text }
 lead: Runs the function before the event happens; it may change e (e.cancelled = true, ...).
-arg: 1 | text | The event name, like "PlayerJoinEvent" (all of them: event fields), or "reload".
+arg: 1 | text | The event name, like "PlayerJoinEvent" (every Paper event: the Events list), or "reload".
 arg: 2 | function | Gets the event e.
 arg: order? | number | Lower runs first; ties by load order. Default 0.
 arg: stage? | text | Place among other plugins: lowest, low, normal, high, highest. Default normal.
@@ -102,8 +93,8 @@ returns: nothing
 note: Each handler runs as its own task and may wait; after its first wait the event is over and changes only give a warning. Keep values, not e: once every handler has ended without waiting, e can't be read any more.
 expert: Thread | main thread, like every script
 expert: Cost | unused events cost zero; one event with a handler reading two fields: goal ~10 µs, guess 5–30 µs (not measured); registering: 5–50 µs once (guess, not measured)
-expert: Under the hood | EventBridge.java: one Bukkit listener per event, kind and stage, made only when a script uses it; fields go by number, never by name; the event is freed at once when no handler waited
-expert: Can fail | at load: unknown event (the error lists them), bad order or stage; while running: an unknown field written, a wrong value type, e used after its handlers ended
+expert: Under the hood | EventBridge.java: the event's class and methods are looked up the first time a script uses it; one Bukkit listener per event, kind and stage, made only when a script uses it; fields go by number, never by name; the event is freed at once when no handler waited; an event that comes off the main thread is skipped (said once in the console)
+expert: Can fail | at load: unknown event (the error names close ones), an event Paper fires off the main thread, bad order or stage; while running: an unknown field written, a field Lullaby can't read or set yet, a wrong value type, e used after its handlers ended
 expert: Reload | every listener is removed; scripts register again while loading
 expert: Time limit | each handler is its own task with its own clock; checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
@@ -115,7 +106,7 @@ kind: event
 group: Events
 words: listen hook monitor
 syntax: after{ "EventName", function(e) ... end, order = number }
-lead: Runs the function once the event happened and was not cancelled; e is read only. All events: event fields.
+lead: Runs the function once the event happened and was not cancelled; e is read only. Every Paper event: the Events list.
 arg: 1 | text | The event name, or "reload".
 arg: 2 | function | Gets the event e.
 arg: order? | number | Lower runs first; ties by load order. Default 0.
@@ -138,18 +129,6 @@ local live = setmetatable({}, { __mode = "k" }) -- event object -> its listener 
 local over = setmetatable({}, { __mode = "k" }) -- event object -> true once a handler waited past it
 local slot_of = I.slot_of
 
--- Java answers a field read with a kind word plus values; turn that into a Lua value.
-local function from_java(kind, a, b, c, d, f, g)
-	if kind == "v" then return a end
-	if kind == "player" then return I.player_by_uuid(a) end
-	if kind == "block" then return I.block_at(a, b, c, d) end
-	if kind == "location" then
-		local world = I.world_by_id(a)
-		return I.new_location(world, I.new_vec3(b, c, d), I.new_yaw_pitch(f, g))
-	end
-	if kind == "c" then return I.new_component(a, b) end
-	return nil
-end
 
 local function ended(e, field)
 	-- FORMAT: an event read or changed after its handlers ended
@@ -163,7 +142,7 @@ local EVENT_META = {
 		if not slot then ended(e, field) end
 		local number = live[e].fields[field]
 		if not number then return nil end
-		return from_java(J.event_get(slot, number))
+		return I.from_java(J.event_get(slot, number))
 	end,
 	__newindex = function(e, field, value)
 		local l, slot = live[e], slot_of[e]
@@ -176,9 +155,21 @@ local EVENT_META = {
 		local number = l.fields[field]
 		-- FORMAT: a field the event doesn't have
 		if not number then error(l.name .. " has no field e." .. tostring(field), 2) end
-		local t = type(value)
-		if t == "table" and (I.type_name(value) == "component" or I.debug_getmetatable(value) == nil) then
+		local t, kind = type(value), I.type_name(value)
+		if t == "table" and (kind == "component" or I.debug_getmetatable(value) == nil) then
 			J.event_set_component(slot, number, I.wire(value)) -- a text field set to a component table
+			return
+		end
+		if kind == "item_stack" then
+			local item, helper = I.item_java(value)
+			local ok, err = pcall(J.event_set_item, slot, number, item)
+			if helper then I.release(helper) end
+			if not ok then error(err, 0) end
+			return
+		end
+		if kind == "location" then
+			local pos, rot = value[2], value[3]
+			J.event_set_location(slot, number, slot_of[value[1]], pos[1], pos[2], pos[3], rot[1], rot[2])
 			return
 		end
 		if t ~= "boolean" and t ~= "number" and t ~= "string" and value ~= nil then
@@ -234,16 +225,16 @@ id: events
 name: event fields
 kind: event
 group: Events
-words: fields e player cancelled join quit break message
-lead: The e an event handler gets. Fields are writable in on{ }, read only in after{ }. PlayerJoinEvent: e.player, e.join_message. PlayerQuitEvent: e.player, e.quit_message, e.reason. BlockBreakEvent: e.player, e.block, e.exp_to_drop, e.drop_items, e.cancelled. PlayerMoveEvent: e.player, e.from, e.to (locations, read only for now), e.cancelled.
+words: fields e player cancelled
+lead: The e an event handler gets. Its fields are the event's Paper getters by one rule: getJoinMessage() is e.join_message, isCancelled() is e.cancelled. Each event's page lists its fields, what they hold and whether they can be changed; fields are writable in on{ }, read only in after{ }. Fields Lullaby can't hand to scripts yet (entities, lists, inventories, ...) give a red error instead of nil. Enum fields are lowercase words ("right_click_block"), keys are ids ("minecraft:stone").
 example:
   on{ "BlockBreakEvent", function(e)
     if e.player.name == "Notch" then e.cancelled = true end
   end }
 expert: Thread | main thread, like every script
-expert: Cost | one field read or write: 0.5–3 µs, one Java call (guess, not measured); a player or block field reuses its object
-expert: Under the hood | fields by number (the list comes from EventBridge.java at startup), read from the live Paper event on each access, never copied
-expert: Can fail | an unknown field reads nil but errors when written; a value the field can't take; any use after the handlers ended
+expert: Cost | one field read or write: 0.5–3 µs, one Java call (guess, not measured); a player or block field reuses its object; an item_stack field is copied each read: 10–50 µs (guess, not measured)
+expert: Under the hood | fields by number (from events.txt, which tools/events/EventList.java generates from Paper's classes), read from the live Paper event on each access, never copied (items are)
+expert: Can fail | an unknown field reads nil but errors when written; a field Lullaby can't read or set yet; a value the field can't take; any use after the handlers ended
 expert: Reload | events are never kept across a reload
 expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed

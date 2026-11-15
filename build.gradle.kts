@@ -75,7 +75,24 @@ val downloadSounds = tasks.register<DownloadSounds>("downloadSounds") {
     target = layout.buildDirectory.file("generated/sounds/lullaby/sounds.json")
 }
 
+// `gradlew events`: writes src/main/resources/lullaby/events.txt, every Paper event and its fields, from Paper's API
+// jar (tools/events/EventList.java). Part of every build, so the list always matches the Paper version above; it runs
+// again only when that version or EventList.java changes. The file is in the repo because the docs site reads it too.
+val eventsFile = layout.projectDirectory.file("src/main/resources/lullaby/events.txt")
+val paperApiJar = configurations.compileClasspath.map { c -> c.filter { it.name.startsWith("paper-api-") } }
+val eventList = tasks.register<JavaExec>("events") {
+    classpath = configurations.compileClasspath.get() // Paper's API and its libraries (adventure, ...)
+    mainClass = file("tools/events/EventList.java").path // one file: Java runs it straight from the source
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+    workingDir = temporaryDir // loading Paper's classes starts its logging, which would make a logs/ folder here
+    inputs.file("tools/events/EventList.java")
+    inputs.files(paperApiJar)
+    outputs.file(eventsFile)
+    args(listOf(eventsFile.asFile.path) + paperApiJar.get().files.map { it.path })
+}
+
 tasks.processResources {
+    dependsOn(eventList)
     val props = mapOf("version" to project.version, "minecraftVersion" to minecraftVersion)
     inputs.properties(props)
     filesMatching("paper-plugin.yml") { expand(props) }
@@ -152,6 +169,7 @@ tasks.register<JavaExec>("runServer") {
 // `gradlew docs`: builds the docs site into build/docs (tools/docs/Docs.java).
 // The GitHub job .github/workflows/docs.yml runs the same program on every push and publishes the site.
 tasks.register<JavaExec>("docs") {
+    dependsOn(eventList) // the event pages come from events.txt
     classpath = files() // Docs.java is one file: Java runs it straight from the source
     mainClass = "tools/docs/Docs.java"
     javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }

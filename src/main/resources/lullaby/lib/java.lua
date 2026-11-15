@@ -272,15 +272,7 @@ status: unconfirmed
 		if o == nil then return nil end
 		-- FORMAT: java.wrap( ) of something that isn't a raw Java object
 		if not class_of[o] then error("java.wrap needs a raw Java object, got " .. I.type_name(o), 2) end
-		local kind, a, b, c, d, f, g = D.wrap(slot_of[o])
-		if kind == "player" then return I.player_by_uuid(a) end
-		if kind == "world" then return I.world_by_id(a) end
-		if kind == "block" then return I.block_at(a, b, c, d) end
-		if kind == "location" then
-			return I.new_location(I.world_by_id(a), I.new_vec3(b, c, d), I.new_yaw_pitch(f, g))
-		end
-		if kind == "item_stack" then return I.new_item(a) end
-		return nil
+		return I.from_java(D.wrap(slot_of[o]))
 	end
 
 	return setmetatable(java, {

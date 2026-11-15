@@ -22,6 +22,8 @@
   --field: #8fb8de;    /* pale blue: argument / field names */
   --warn: #d4a84a;     /* gold: warnings (in the docs; in-game they are yellow) */
   --error: #ff5555;    /* vanilla red: errors */
+  /* event status dots: gray until tested and measured, then copper (on{ } can change it) or teal (read only) */
+  --dot-untested: #6b7076; --dot-changeable: var(--doing); --dot-readonly: var(--reading);
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--text); }
@@ -54,8 +56,9 @@ main { padding: 40px 48px 80px; max-width: 980px; width: 100%; }
 .head { padding: 24px 28px 22px; }
 .top { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
 .kind { color: var(--dim); font-size: 13px; }
-/* Fraktur only in small letters: its capitals have a double stroke. Raw Java pages keep their case (code font). */
-h1.java { text-transform: none; font-family: "JetBrains Mono", monospace; font-size: 34px; }
+/* Fraktur only in small letters: its capitals have a double stroke. Raw Java pages and generated event pages
+   (PlayerJoinEvent) keep their case (code font). */
+h1.java, h1.name { text-transform: none; font-family: "JetBrains Mono", monospace; font-size: 34px; }
 h1 { text-transform: lowercase; font-family: "Grenze Gotisch", serif; font-weight: 500; font-size: 52px; line-height: 1.05; margin: 4px 0 18px; }
 .syntax { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--c, var(--doing));
   border-radius: 6px; padding: 16px 18px; font-size: 15px; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -88,6 +91,16 @@ summary { cursor: pointer; color: var(--dim); font-size: 13px; font-weight: 600;
 .c-event { color: var(--event); } .c-field { color: var(--field); } .c-dim { color: var(--dim); }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--dim); }
 .empty { color: var(--dim); padding: 4px 8px; }
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 8px; vertical-align: 1px;
+  background: var(--dot-untested); flex: none; }
+.dot.changeable { background: var(--dot-changeable); } .dot.readonly { background: var(--dot-readonly); }
+.dot.unusable { background: transparent; box-shadow: inset 0 0 0 1.5px var(--dot-untested); }
+.subgroup { border-top: 0; margin: 0 0 0 4px; }
+.subgroup > summary { padding: 6px 0 4px; }
+/* long event names (PlayerAdvancementCriterionGrantEvent) wrap anywhere, the dot stays in front of the first line */
+.subgroup .item { display: flex; align-items: baseline; font-size: 12.5px; overflow-wrap: anywhere; }
+.subgroup .item .dot { transform: translateY(-1px); }
+.status { color: var(--dim); font-size: 13px; margin: -8px 0 14px; }
 @media (max-width: 760px) {
   .layout { grid-template-columns: 1fr; }
   aside { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 20px 16px; }
@@ -108,6 +121,7 @@ summary { cursor: pointer; color: var(--dim); font-size: 13px; font-weight: 600;
       <b class="c-lua">lua</b><span class="c-doing">doing { }</span><span class="c-reading">reading ( ) . :</span>
       <span class="c-type">type</span><span class="c-event">event</span><span class="c-field">field</span>
     </div>
+    <div class="legend" id="dots"></div>
   </aside>
   <main id="page"></main>
 </div>
@@ -125,6 +139,11 @@ const TYPES = new Set(["text","number","boolean","function","table","nil","nothi
 const esc = s => String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
   .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
 document.getElementById("sub").textContent = "Docs · Minecraft " + DATA.minecraft;
+// Event status dots (Docs.java sets e.dot on generated event pages).
+const DOTS = { untested: "not tested yet", changeable: "tested, on{ } can change it", readonly: "tested, read only",
+  unusable: "can't be used yet" };
+const dot = e => e.dot ? `<span class="dot ${e.dot}" title="${DOTS[e.dot]}"></span>` : "";
+document.getElementById("dots").innerHTML = Object.entries(DOTS).map(([k, t]) => `<span><span class="dot ${k}"></span>${t}</span>`).join("");
 
 // Lua's keywords: bold, in the normal text color (kind "lua"); a keyword with its own page links to it.
 const KEYWORDS = new Set(["and","break","do","else","elseif","end","false","for","function","goto","if","in","local",
@@ -159,14 +178,17 @@ function show(id) {
   document.querySelectorAll(".item").forEach(a => a.classList.toggle("on", a.dataset.id === e.id));
   const [file, line] = e.src.split(":");
   document.getElementById("page").innerHTML = `
-    <div class="card"><div class="head"><div class="top"><div class="kind">${esc(e.group)}</div><div class="src">↗ <a href="${REPO}${esc(file)}${line ? "#L" + line : ""}" target="_blank" rel="noopener">${esc(file.split("/").pop())}${line ? ":" + line : ""}</a></div></div>
-    <h1 class="${e.kind}" style="color:var(${COLOR[e.kind]})">${esc(e.name)}</h1>
+    <div class="card"><div class="head"><div class="top"><div class="kind">${esc(e.group)}</div><div class="src">${e.paper ? `↗ <a href="${esc(e.paper)}" target="_blank" rel="noopener">Paper</a> · ` : ""}↗ <a href="${REPO}${esc(file)}${line ? "#L" + line : ""}" target="_blank" rel="noopener">${esc(file.split("/").pop())}${line ? ":" + line : ""}</a></div></div>
+    <h1 class="${e.kind}${e.sub ? " name" : ""}" style="color:var(${COLOR[e.kind]})">${esc(e.name)}</h1>
+    ${e.dot ? `<div class="status">${dot(e)}${esc(DOTS[e.dot])}</div>` : ""}
     ${e.syntax ? `<div class="syntax mono" style="--c:var(${COLOR[e.kind]})">${paint(e.syntax)}</div>` : ""}
     ${e.status === "unconfirmed" ? `<div class="note"><b>⚠</b> Not reviewed by a human yet: this text was written by an AI and may be wrong.</div>` : ""}
     ${e.lead ? `<p class="lead">${esc(e.lead)}</p>` : ""}
     ${e.note ? `<div class="note"><b>⚠</b> ${esc(e.note)}</div>` : ""}</div>
     ${e.args.length ? `<section><h2>Arguments</h2><table>${e.args.map(([n, t, d]) =>
       `<tr><td class="mono c-field">${esc(n.replace(/\?$/, ""))}${n.endsWith("?") ? ' <span class="opt">optional</span>' : ""}</td><td>${typed(t)}</td><td>${esc(d)}</td></tr>`).join("")}</table></section>` : ""}
+    ${e.fields?.length ? `<section><h2>Fields</h2><table>${e.fields.map(([n, t, d]) =>
+      `<tr><td class="mono c-field">e.${esc(n)}</td><td>${BY[t] || TYPES.has(t) ? typed(t) : `<span class="c-dim mono">${esc(t)}</span>`}</td><td>${esc(d)}</td></tr>`).join("")}</table></section>` : ""}
     ${e.returns ? `<section><h2>Returns</h2><div>${typed(e.returns)}</div></section>` : ""}
     ${e.example ? `<section><h2>Example</h2><div class="syntax mono" style="--c:var(--line)">${paint(e.example)}</div></section>` : ""}
     ${e.uses.length || e.usedBy.length ? `<section><h2>Connections</h2>
@@ -193,7 +215,9 @@ function dist(a, b) {
   return m[b.length];
 }
 function score(e, q) {
-  const terms = (e.id + " " + (e.words || "")).toLowerCase().split(/[\s_.]+/).filter(Boolean);
+  // CamelCase names are split too: "join" finds PlayerJoinEvent
+  const terms = (e.id.replace(/([a-z0-9])([A-Z])/g, "$1 $2") + " " + e.id + " " + (e.words || "")).toLowerCase()
+    .split(/[\s_.]+/).filter(Boolean);
   if (e.id.toLowerCase().startsWith(q)) return 0;
   let best = 99;
   for (const t of terms) {
@@ -214,17 +238,31 @@ function nav() {
   const groups = [...new Set(list.map(e => e.group))];
   // Groups fold open and shut; while searching every group with a hit is open. Which groups are shut is remembered
   // in this browser only (and forgotten without error where storage is blocked).
-  document.getElementById("nav").innerHTML = list.length ? groups.map(g =>
-    `<details class="group" data-g="${esc(g)}"${q || !shut.has(g) ? " open" : ""}><summary>${esc(g)}</summary>` +
-    list.filter(e => e.group === g).map(e =>
-      `<a class="item mono go" href="#${esc(e.id)}" data-id="${esc(e.id)}" style="color:var(${COLOR[e.kind]})">${esc(e.name)}</a>`).join("") + "</details>").join("")
+  // A group's pages with a sub group (the generated events: Player, Block, ...) fold into sub groups, shut until
+  // opened (remembered like groups) or searched.
+  const item = e => `<a class="item mono go" href="#${esc(e.id)}" data-id="${esc(e.id)}" style="color:var(${COLOR[e.kind]})">${dot(e)}<span>${esc(e.name).replace(/([a-z])([A-Z])/g, "$1<wbr>$2")}</span></a>`;
+  document.getElementById("nav").innerHTML = list.length ? groups.map(g => {
+    const inside = list.filter(e => e.group === g);
+    const subs = [...new Set(inside.filter(e => e.sub).map(e => e.sub))].sort();
+    return `<details class="group" data-g="${esc(g)}"${q || !shut.has(g) ? " open" : ""}><summary>${esc(g)}</summary>` +
+      inside.filter(e => !e.sub).map(item).join("") +
+      subs.map(sub => { const key = g + "/" + sub, here = inside.filter(e => e.sub === sub);
+        return `<details class="group subgroup" data-s="${esc(key)}"${q || opened.has(key) ? " open" : ""}><summary>${esc(sub)} <span class="c-dim">${here.length}</span></summary>` +
+          here.map(item).join("") + "</details>"; }).join("") + "</details>"; }).join("")
     : '<div class="empty">nothing found</div>';
   document.querySelectorAll(".item").forEach(a => a.classList.toggle("on", a.dataset.id === current));
 }
-let shut = new Set();
+let shut = new Set(), opened = new Set(); // groups start open, sub groups start shut
 try { shut = new Set(JSON.parse(localStorage.getItem("lullaby-shut") || "[]")); } catch {}
+try { opened = new Set(JSON.parse(localStorage.getItem("lullaby-open") || "[]")); } catch {}
 document.getElementById("nav").addEventListener("toggle", ev => {
   if (document.getElementById("q").value.trim()) return; // opening for a search is not the reader's choice
+  const s = ev.target.dataset.s;
+  if (s) {
+    ev.target.open ? opened.add(s) : opened.delete(s);
+    try { localStorage.setItem("lullaby-open", JSON.stringify([...opened])); } catch {}
+    return;
+  }
   const g = ev.target.dataset.g; ev.target.open ? shut.delete(g) : shut.add(g);
   try { localStorage.setItem("lullaby-shut", JSON.stringify([...shut])); } catch {}
 }, true);

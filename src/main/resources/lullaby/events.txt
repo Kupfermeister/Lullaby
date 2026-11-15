@@ -6,7 +6,8 @@
 # Field line: <TAB> name <TAB> getter <TAB> read kind <TAB> setter <TAB> setter's parameter class <TAB> write kind
 #   <TAB> enum: its class's simple name, ":" and its words when 16 or fewer (Result:deny,default,allow);
 #   - where there is none
-# KINDS: player world block location item_stack component text enum key uuid boolean integer number;
+# KINDS: player entity world block chunk location vec3 block_pos aabb block_state damage item_stack component
+#   text enum key uuid boolean integer number;
 #   ?Type: Lullaby can't read (or set) a Type yet
 paper-api	26.3.build.249-stable
 AnvilDamagedEvent	com.destroystokyo.paper.event.block.AnvilDamagedEvent	Block	cancellable
@@ -19,11 +20,11 @@ AnvilDamagedEvent	com.destroystokyo.paper.event.block.AnvilDamagedEvent	Block	ca
 AreaEffectCloudApplyEvent	org.bukkit.event.entity.AreaEffectCloudApplyEvent	Entity	cancellable
 	affected_entities	getAffectedEntities	?List	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?AreaEffectCloud	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 ArrowBodyCountChangeEvent	org.bukkit.event.entity.ArrowBodyCountChangeEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?LivingEntity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	new_amount	getNewAmount	integer	setNewAmount	int	integer	-
 	old_amount	getOldAmount	integer	-	-	-	-
@@ -75,12 +76,12 @@ AsyncPlayerSpawnLocationEvent	io.papermc.paper.event.player.AsyncPlayerSpawnLoca
 	spawn_location	getSpawnLocation	location	setSpawnLocation	org.bukkit.Location	location	-
 AsyncServerDataFixerRemoveBlockEntityEvent	io.papermc.paper.event.server.AsyncServerDataFixerRemoveBlockEntityEvent	Server	async
 	block_entity_type	getBlockEntityType	key	-	-	-	-
-	block_position	getBlockPosition	?BlockPosition	-	-	-	-
+	block_position	getBlockPosition	block_pos	-	-	-	-
 	persistent_data_container_view	getPersistentDataContainerView	?PersistentDataContainerView	-	-	-	-
 	world_key	getWorldKey	key	-	-	-	-
 AsyncStructureGenerateEvent	org.bukkit.event.world.AsyncStructureGenerateEvent	World	async
 	block_transformers	getBlockTransformers	?Map	-	-	-	-
-	bounding_box	getBoundingBox	?BoundingBox	-	-	-	-
+	bounding_box	getBoundingBox	aabb	-	-	-	-
 	cause	getCause	enum	-	-	-	Cause:command,world_generation,custom
 	chunk_x	getChunkX	integer	-	-	-	-
 	chunk_z	getChunkZ	integer	-	-	-	-
@@ -88,7 +89,7 @@ AsyncStructureGenerateEvent	org.bukkit.event.world.AsyncStructureGenerateEvent	W
 	structure	getStructure	key	-	-	-	-
 	world	getWorld	world	-	-	-	-
 AsyncStructureSpawnEvent	org.bukkit.event.world.AsyncStructureSpawnEvent	World	cancellable,async
-	bounding_box	getBoundingBox	?BoundingBox	-	-	-	-
+	bounding_box	getBoundingBox	aabb	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	chunk_x	getChunkX	integer	-	-	-	-
 	chunk_z	getChunkZ	integer	-	-	-	-
@@ -105,7 +106,7 @@ AsyncTabCompleteEvent	com.destroystokyo.paper.event.server.AsyncTabCompleteEvent
 BatToggleSleepEvent	org.bukkit.event.entity.BatToggleSleepEvent	Entity	cancellable
 	awake	isAwake	boolean	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 BeaconActivatedEvent	io.papermc.paper.event.block.BeaconActivatedEvent	Block	-
 	beacon	getBeacon	?Beacon	-	-	-	-
@@ -126,7 +127,7 @@ BellRingEvent	org.bukkit.event.block.BellRingEvent	Block	cancellable
 	block	getBlock	block	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	direction	getDirection	enum	-	-	-	BlockFace:
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 BlockBreakBlockEvent	io.papermc.paper.event.block.BlockBreakBlockEvent	Block	-
 	block	getBlock	block	-	-	-	-
 	drops	getDrops	?List	-	-	-	-
@@ -140,7 +141,7 @@ BlockBreakEvent	org.bukkit.event.block.BlockBreakEvent	Block	cancellable
 	player	getPlayer	player	-	-	-	-
 BlockBreakProgressUpdateEvent	io.papermc.paper.event.block.BlockBreakProgressUpdateEvent	Block	-
 	block	getBlock	block	-	-	-	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	progress	getProgress	number	-	-	-	-
 BlockBurnEvent	org.bukkit.event.block.BlockBurnEvent	Block	cancellable
 	block	getBlock	block	-	-	-	-
@@ -148,7 +149,7 @@ BlockBurnEvent	org.bukkit.event.block.BlockBurnEvent	Block	cancellable
 	igniting_block	getIgnitingBlock	block	-	-	-	-
 BlockCanBuildEvent	org.bukkit.event.block.BlockCanBuildEvent	Block	-
 	block	getBlock	block	-	-	-	-
-	block_data	getBlockData	?BlockData	-	-	-	-
+	block_data	getBlockData	block_state	-	-	-	-
 	buildable	isBuildable	boolean	setBuildable	boolean	boolean	-
 	hand	getHand	enum	-	-	-	EquipmentSlot:hand,off_hand,feet,legs,chest,head,body,saddle
 	material	getMaterial	enum	-	-	-	Material:
@@ -173,22 +174,22 @@ BlockDamageEvent	org.bukkit.event.block.BlockDamageEvent	Block	cancellable
 BlockDestroyEvent	com.destroystokyo.paper.event.block.BlockDestroyEvent	Block	cancellable
 	block	getBlock	block	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	effect_block	getEffectBlock	?BlockData	setEffectBlock	org.bukkit.block.data.BlockData	?BlockData	-
+	effect_block	getEffectBlock	block_state	setEffectBlock	org.bukkit.block.data.BlockData	block_state	-
 	exp_to_drop	getExpToDrop	integer	setExpToDrop	int	integer	-
-	new_state	getNewState	?BlockData	-	-	-	-
+	new_state	getNewState	block_state	-	-	-	-
 	play_effect	playEffect	boolean	setPlayEffect	boolean	boolean	-
 	will_drop	willDrop	boolean	setWillDrop	boolean	boolean	-
 BlockDispenseArmorEvent	org.bukkit.event.block.BlockDispenseArmorEvent	Block	cancellable
 	block	getBlock	block	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	item	getItem	item_stack	setItem	org.bukkit.inventory.ItemStack	item_stack	-
-	target_entity	getTargetEntity	?LivingEntity	-	-	-	-
-	velocity	getVelocity	?Vector	setVelocity	org.bukkit.util.Vector	?Vector	-
+	target_entity	getTargetEntity	entity	-	-	-	-
+	velocity	getVelocity	vec3	setVelocity	org.bukkit.util.Vector	vec3	-
 BlockDispenseEvent	org.bukkit.event.block.BlockDispenseEvent	Block	cancellable
 	block	getBlock	block	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	item	getItem	item_stack	setItem	org.bukkit.inventory.ItemStack	item_stack	-
-	velocity	getVelocity	?Vector	setVelocity	org.bukkit.util.Vector	?Vector	-
+	velocity	getVelocity	vec3	setVelocity	org.bukkit.util.Vector	vec3	-
 BlockDispenseLootEvent	org.bukkit.event.block.BlockDispenseLootEvent	Block	cancellable
 	block	getBlock	block	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
@@ -241,7 +242,7 @@ BlockIgniteEvent	org.bukkit.event.block.BlockIgniteEvent	Block	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	cause	getCause	enum	-	-	-	IgniteCause:lava,flint_and_steel,spread,lightning,fireball,ender_crystal,explosion,arrow
 	igniting_block	getIgnitingBlock	block	-	-	-	-
-	igniting_entity	getIgnitingEntity	?Entity	-	-	-	-
+	igniting_entity	getIgnitingEntity	entity	-	-	-	-
 	player	getPlayer	player	-	-	-	-
 BlockLockCheckEvent	io.papermc.paper.event.block.BlockLockCheckEvent	Block	-
 	block	getBlock	block	-	-	-	-
@@ -266,7 +267,7 @@ BlockMultiPlaceEvent	org.bukkit.event.block.BlockMultiPlaceEvent	Block	cancellab
 BlockPhysicsEvent	org.bukkit.event.block.BlockPhysicsEvent	Block	cancellable
 	block	getBlock	block	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	changed_block_data	getChangedBlockData	?BlockData	-	-	-	-
+	changed_block_data	getChangedBlockData	block_state	-	-	-	-
 	changed_type	getChangedType	enum	-	-	-	Material:
 	source_block	getSourceBlock	block	-	-	-	-
 BlockPistonExtendEvent	org.bukkit.event.block.BlockPistonExtendEvent	Block	cancellable
@@ -299,7 +300,7 @@ BlockPreDispenseEvent	io.papermc.paper.event.block.BlockPreDispenseEvent	Block	c
 BlockReceiveGameEvent	org.bukkit.event.block.BlockReceiveGameEvent	Block	cancellable
 	block	getBlock	block	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	event	getEvent	key	-	-	-	-
 BlockRedstoneEvent	org.bukkit.event.block.BlockRedstoneEvent	Block	-
 	block	getBlock	block	-	-	-	-
@@ -309,7 +310,7 @@ BlockShearEntityEvent	org.bukkit.event.block.BlockShearEntityEvent	Block	cancell
 	block	getBlock	block	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	drops	getDrops	?List	setDrops	java.util.List	?List	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	tool	getTool	item_stack	-	-	-	-
 BlockSpreadEvent	org.bukkit.event.block.BlockSpreadEvent	Block	cancellable
 	block	getBlock	block	-	-	-	-
@@ -364,18 +365,18 @@ CartographyItemEvent	io.papermc.paper.event.player.CartographyItemEvent	Player	c
 CauldronLevelChangeEvent	org.bukkit.event.block.CauldronLevelChangeEvent	Block	cancellable
 	block	getBlock	block	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	new_state	getNewState	?BlockState	-	-	-	-
 	reason	getReason	enum	-	-	-	ChangeReason:bucket_fill,bucket_empty,bottle_fill,bottle_empty,banner_wash,armor_wash,shulker_wash,extinguish,evaporate,natural_fill,unknown
 ChunkLoadEvent	org.bukkit.event.world.ChunkLoadEvent	World	-
-	chunk	getChunk	?Chunk	-	-	-	-
+	chunk	getChunk	chunk	-	-	-	-
 	new_chunk	isNewChunk	boolean	-	-	-	-
 	world	getWorld	world	-	-	-	-
 ChunkPopulateEvent	org.bukkit.event.world.ChunkPopulateEvent	World	-
-	chunk	getChunk	?Chunk	-	-	-	-
+	chunk	getChunk	chunk	-	-	-	-
 	world	getWorld	world	-	-	-	-
 ChunkUnloadEvent	org.bukkit.event.world.ChunkUnloadEvent	World	-
-	chunk	getChunk	?Chunk	-	-	-	-
+	chunk	getChunk	chunk	-	-	-	-
 	save_chunk	isSaveChunk	boolean	setSaveChunk	boolean	boolean	-
 	world	getWorld	world	-	-	-	-
 ClientTickEndEvent	io.papermc.paper.event.packet.ClientTickEndEvent	Packet	-
@@ -416,22 +417,22 @@ CrafterCraftEvent	org.bukkit.event.block.CrafterCraftEvent	Block	cancellable
 	result	getResult	item_stack	setResult	org.bukkit.inventory.ItemStack	item_stack	-
 CreatureSpawnEvent	org.bukkit.event.entity.CreatureSpawnEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?LivingEntity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	location	getLocation	location	-	-	-	-
 	spawn_reason	getSpawnReason	enum	-	-	-	SpawnReason:
 CreeperIgniteEvent	com.destroystokyo.paper.event.entity.CreeperIgniteEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Creeper	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	fuse_time	getFuseTime	integer	setFuseTime	int	integer	-
 	ignited	isIgnited	boolean	setIgnited	boolean	boolean	-
 CreeperPowerEvent	org.bukkit.event.entity.CreeperPowerEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	cause	getCause	enum	-	-	-	PowerCause:lightning,set_on,set_off
-	entity	getEntity	?Creeper	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
-	lightning	getLightning	?LightningStrike	-	-	-	-
+	lightning	getLightning	entity	-	-	-	-
 DragonEggFormEvent	io.papermc.paper.event.block.DragonEggFormEvent	Block	cancellable
 	block	getBlock	block	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
@@ -440,7 +441,7 @@ DragonEggFormEvent	io.papermc.paper.event.block.DragonEggFormEvent	Block	cancell
 ElderGuardianAppearanceEvent	io.papermc.paper.event.entity.ElderGuardianAppearanceEvent	Entity	cancellable
 	affected_player	getAffectedPlayer	player	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?ElderGuardian	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 EnchantItemEvent	org.bukkit.event.enchantment.EnchantItemEvent	Enchantment	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
@@ -458,102 +459,102 @@ EnchantItemEvent	org.bukkit.event.enchantment.EnchantItemEvent	Enchantment	cance
 EnderDragonChangePhaseEvent	org.bukkit.event.entity.EnderDragonChangePhaseEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	current_phase	getCurrentPhase	enum	-	-	-	Phase:circling,strafing,fly_to_portal,land_on_portal,leave_portal,breath_attack,search_for_breath_attack_target,roar_before_attack,charge_player,dying,hover
-	entity	getEntity	?EnderDragon	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	new_phase	getNewPhase	enum	setNewPhase	org.bukkit.entity.EnderDragon$Phase	enum	Phase:circling,strafing,fly_to_portal,land_on_portal,leave_portal,breath_attack,search_for_breath_attack_target,roar_before_attack,charge_player,dying,hover
 EnderDragonFireballHitEvent	com.destroystokyo.paper.event.entity.EnderDragonFireballHitEvent	Entity	cancellable
-	area_effect_cloud	getAreaEffectCloud	?AreaEffectCloud	-	-	-	-
+	area_effect_cloud	getAreaEffectCloud	entity	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?DragonFireball	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	targets	getTargets	?Collection	-	-	-	-
 EnderDragonFlameEvent	com.destroystokyo.paper.event.entity.EnderDragonFlameEvent	Entity	cancellable
-	area_effect_cloud	getAreaEffectCloud	?AreaEffectCloud	-	-	-	-
+	area_effect_cloud	getAreaEffectCloud	entity	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?EnderDragon	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 EnderDragonShootFireballEvent	com.destroystokyo.paper.event.entity.EnderDragonShootFireballEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?EnderDragon	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
-	fireball	getFireball	?DragonFireball	-	-	-	-
+	fireball	getFireball	entity	-	-	-	-
 EndermanAttackPlayerEvent	com.destroystokyo.paper.event.entity.EndermanAttackPlayerEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Enderman	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	player	getPlayer	player	-	-	-	-
 EndermanEscapeEvent	com.destroystokyo.paper.event.entity.EndermanEscapeEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Enderman	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	reason	getReason	enum	-	-	-	Reason:runaway,indirect,critical_hit,stare,drown
 EntitiesLoadEvent	org.bukkit.event.world.EntitiesLoadEvent	World	-
-	chunk	getChunk	?Chunk	-	-	-	-
+	chunk	getChunk	chunk	-	-	-	-
 	entities	getEntities	?List	-	-	-	-
 	world	getWorld	world	-	-	-	-
 EntitiesUnloadEvent	org.bukkit.event.world.EntitiesUnloadEvent	World	-
-	chunk	getChunk	?Chunk	-	-	-	-
+	chunk	getChunk	chunk	-	-	-	-
 	entities	getEntities	?List	-	-	-	-
 	world	getWorld	world	-	-	-	-
 EntityAddToWorldEvent	com.destroystokyo.paper.event.entity.EntityAddToWorldEvent	Entity	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	world	getWorld	world	-	-	-	-
 EntityAirChangeEvent	org.bukkit.event.entity.EntityAirChangeEvent	Entity	cancellable
 	amount	getAmount	integer	setAmount	int	integer	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 EntityAttemptSmashAttackEvent	io.papermc.paper.event.entity.EntityAttemptSmashAttackEvent	Entity	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	original_result	getOriginalResult	boolean	-	-	-	-
 	result	getResult	enum	setResult	org.bukkit.event.Event$Result	enum	Result:deny,default,allow
-	target	getTarget	?LivingEntity	-	-	-	-
+	target	getTarget	entity	-	-	-	-
 	weapon	getWeapon	item_stack	-	-	-	-
 EntityAttemptSpinAttackEvent	io.papermc.paper.event.entity.EntityAttemptSpinAttackEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?LivingEntity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
-	target	getTarget	?LivingEntity	-	-	-	-
+	target	getTarget	entity	-	-	-	-
 EntityBlockFormEvent	org.bukkit.event.block.EntityBlockFormEvent	Block	cancellable
 	block	getBlock	block	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	new_state	getNewState	?BlockState	-	-	-	-
 EntityBreakByEntityEvent	io.papermc.paper.event.entity.EntityBreakByEntityEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	cause	getCause	enum	-	-	-	RemoveCause:entity,explosion,obstruction,physics,default
-	damage_source	getDamageSource	?DamageSource	-	-	-	-
-	entity	getEntity	?Entity	-	-	-	-
+	damage_source	getDamageSource	damage	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
-	remover	getRemover	?Entity	-	-	-	-
+	remover	getRemover	entity	-	-	-	-
 EntityBreakDoorEvent	org.bukkit.event.entity.EntityBreakDoorEvent	Entity	cancellable
 	block	getBlock	block	-	-	-	-
-	block_data	getBlockData	?BlockData	-	-	-	-
+	block_data	getBlockData	block_state	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?LivingEntity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	to	getTo	enum	-	-	-	Material:
 EntityBreakEvent	io.papermc.paper.event.entity.EntityBreakEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	cause	getCause	enum	-	-	-	RemoveCause:entity,explosion,obstruction,physics,default
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 EntityBreedEvent	org.bukkit.event.entity.EntityBreedEvent	Entity	cancellable
 	bred_with	getBredWith	item_stack	-	-	-	-
-	breeder	getBreeder	?LivingEntity	-	-	-	-
+	breeder	getBreeder	entity	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?LivingEntity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	experience	getExperience	integer	setExperience	int	integer	-
-	father	getFather	?LivingEntity	-	-	-	-
-	mother	getMother	?LivingEntity	-	-	-	-
+	father	getFather	entity	-	-	-	-
+	mother	getMother	entity	-	-	-	-
 EntityChangeBlockEvent	org.bukkit.event.entity.EntityChangeBlockEvent	Entity	cancellable
 	block	getBlock	block	-	-	-	-
-	block_data	getBlockData	?BlockData	-	-	-	-
+	block_data	getBlockData	block_state	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	to	getTo	enum	-	-	-	Material:
 EntityCollideWithEntityEvent	io.papermc.paper.event.entity.EntityCollideWithEntityEvent	Entity	cancellable
@@ -563,39 +564,39 @@ EntityCombustByBlockEvent	org.bukkit.event.entity.EntityCombustByBlockEvent	Enti
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	combuster	getCombuster	block	-	-	-	-
 	duration	getDuration	number	setDuration	float	number	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 EntityCombustByEntityEvent	org.bukkit.event.entity.EntityCombustByEntityEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	combuster	getCombuster	?Entity	-	-	-	-
+	combuster	getCombuster	entity	-	-	-	-
 	duration	getDuration	number	setDuration	float	number	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 EntityCombustEvent	org.bukkit.event.entity.EntityCombustEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	duration	getDuration	number	setDuration	float	number	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 EntityCompostItemEvent	io.papermc.paper.event.entity.EntityCompostItemEvent	Entity	cancellable
 	block	getBlock	block	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	item	getItem	item_stack	-	-	-	-
 	levels_to_raise	getLevelsToRaise	integer	setLevelsToRaise	int	integer	-
 	will_raise_level	willRaiseLevel	boolean	-	-	-	-
 EntityConstructEvent	io.papermc.paper.event.entity.EntityConstructEvent	Entity	cancellable
 	blocks	getBlocks	?List	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 EntityDamageByBlockEvent	org.bukkit.event.entity.EntityDamageByBlockEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	cause	getCause	enum	-	-	-	DamageCause:
 	damage	getDamage	number	setDamage	double	number	-
-	damage_source	getDamageSource	?DamageSource	-	-	-	-
+	damage_source	getDamageSource	damage	-	-	-	-
 	damager	getDamager	block	-	-	-	-
 	damager_block_state	getDamagerBlockState	?BlockState	-	-	-	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	final_damage	getFinalDamage	number	-	-	-	-
 EntityDamageByEntityEvent	org.bukkit.event.entity.EntityDamageByEntityEvent	Entity	cancellable
@@ -603,74 +604,74 @@ EntityDamageByEntityEvent	org.bukkit.event.entity.EntityDamageByEntityEvent	Enti
 	cause	getCause	enum	-	-	-	DamageCause:
 	critical	isCritical	boolean	-	-	-	-
 	damage	getDamage	number	setDamage	double	number	-
-	damage_source	getDamageSource	?DamageSource	-	-	-	-
-	damager	getDamager	?Entity	-	-	-	-
-	entity	getEntity	?Entity	-	-	-	-
+	damage_source	getDamageSource	damage	-	-	-	-
+	damager	getDamager	entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	final_damage	getFinalDamage	number	-	-	-	-
 EntityDamageEvent	org.bukkit.event.entity.EntityDamageEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	cause	getCause	enum	-	-	-	DamageCause:
 	damage	getDamage	number	setDamage	double	number	-
-	damage_source	getDamageSource	?DamageSource	-	-	-	-
-	entity	getEntity	?Entity	-	-	-	-
+	damage_source	getDamageSource	damage	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	final_damage	getFinalDamage	number	-	-	-	-
 EntityDamageItemEvent	io.papermc.paper.event.entity.EntityDamageItemEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	damage	getDamage	integer	setDamage	int	integer	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	item	getItem	item_stack	-	-	-	-
 EntityDeathEvent	org.bukkit.event.entity.EntityDeathEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	damage_source	getDamageSource	?DamageSource	-	-	-	-
+	damage_source	getDamageSource	damage	-	-	-	-
 	death_sound	getDeathSound	key	setDeathSound	org.bukkit.Sound	?Sound	-
 	death_sound_category	getDeathSoundCategory	enum	setDeathSoundCategory	org.bukkit.SoundCategory	enum	SoundCategory:master,music,records,weather,blocks,hostile,neutral,players,ambient,voice,ui
 	death_sound_pitch	getDeathSoundPitch	number	setDeathSoundPitch	float	number	-
 	death_sound_volume	getDeathSoundVolume	number	setDeathSoundVolume	float	number	-
 	dropped_exp	getDroppedExp	integer	setDroppedExp	int	integer	-
 	drops	getDrops	?List	-	-	-	-
-	entity	getEntity	?LivingEntity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	revive_health	getReviveHealth	number	setReviveHealth	double	number	-
 	should_play_death_sound	shouldPlayDeathSound	boolean	setShouldPlayDeathSound	boolean	boolean	-
 EntityDismountEvent	org.bukkit.event.entity.EntityDismountEvent	Entity	cancellable
 	cancellable	isCancellable	boolean	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	dismounted	getDismounted	?Entity	-	-	-	-
-	entity	getEntity	?Entity	-	-	-	-
+	dismounted	getDismounted	entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 EntityDropItemEvent	org.bukkit.event.entity.EntityDropItemEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
-	item_drop	getItemDrop	?Item	-	-	-	-
+	item_drop	getItemDrop	entity	-	-	-	-
 EntityDyeEvent	io.papermc.paper.event.entity.EntityDyeEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	color	getColor	enum	setColor	org.bukkit.DyeColor	enum	DyeColor:white,orange,magenta,light_blue,yellow,lime,pink,gray,light_gray,cyan,purple,blue,brown,green,red,black
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	player	getPlayer	player	-	-	-	-
 EntityEffectTickEvent	io.papermc.paper.event.entity.EntityEffectTickEvent	Entity	cancellable
 	amplifier	getAmplifier	integer	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?LivingEntity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	type	getType	key	-	-	-	-
 EntityEnterBlockEvent	org.bukkit.event.entity.EntityEnterBlockEvent	Entity	cancellable
 	block	getBlock	block	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 EntityEnterLoveModeEvent	org.bukkit.event.entity.EntityEnterLoveModeEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Animals	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	human_entity	getHumanEntity	player	-	-	-	-
 	ticks_in_love	getTicksInLove	integer	setTicksInLove	int	integer	-
 EntityEquipmentChangedEvent	io.papermc.paper.event.entity.EntityEquipmentChangedEvent	Entity	-
-	entity	getEntity	?LivingEntity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	equipment_changes	getEquipmentChanges	?Map	-	-	-	-
 EntityExhaustionEvent	org.bukkit.event.entity.EntityExhaustionEvent	Entity	cancellable
@@ -682,7 +683,7 @@ EntityExhaustionEvent	org.bukkit.event.entity.EntityExhaustionEvent	Entity	cance
 EntityExplodeEvent	org.bukkit.event.entity.EntityExplodeEvent	Entity	cancellable
 	block_list	blockList	?List	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	explosion_result	getExplosionResult	enum	-	-	-	ExplosionResult:keep,destroy,destroy_with_decay,trigger_block
 	location	getLocation	location	-	-	-	-
@@ -691,71 +692,71 @@ EntityFertilizeEggEvent	io.papermc.paper.event.entity.EntityFertilizeEggEvent	En
 	bred_with	getBredWith	item_stack	-	-	-	-
 	breeder	getBreeder	player	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?LivingEntity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	experience	getExperience	integer	setExperience	int	integer	-
-	father	getFather	?LivingEntity	-	-	-	-
-	mother	getMother	?LivingEntity	-	-	-	-
+	father	getFather	entity	-	-	-	-
+	mother	getMother	entity	-	-	-	-
 EntityIgniteEvent	io.papermc.paper.event.entity.EntityIgniteEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	fuse_time	getFuseTime	integer	setFuseTime	int	integer	-
 EntityInsideBlockEvent	io.papermc.paper.event.entity.EntityInsideBlockEvent	Entity	cancellable
 	block	getBlock	block	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 EntityInteractEvent	org.bukkit.event.entity.EntityInteractEvent	Entity	cancellable
 	block	getBlock	block	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 EntityJumpEvent	com.destroystokyo.paper.event.entity.EntityJumpEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?LivingEntity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 EntityKnockbackByEntityEvent	com.destroystokyo.paper.event.entity.EntityKnockbackByEntityEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	cause	getCause	enum	-	-	-	Cause:damage,entity_attack,explosion,shield_block,sweep_attack,push,unknown
-	entity	getEntity	?LivingEntity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
-	hit_by	getHitBy	?Entity	-	-	-	-
-	knockback	getKnockback	?Vector	setKnockback	org.bukkit.util.Vector	?Vector	-
+	hit_by	getHitBy	entity	-	-	-	-
+	knockback	getKnockback	vec3	setKnockback	org.bukkit.util.Vector	vec3	-
 	knockback_strength	getKnockbackStrength	number	-	-	-	-
-	pushed_by	getPushedBy	?Entity	-	-	-	-
+	pushed_by	getPushedBy	entity	-	-	-	-
 EntityKnockbackEvent	io.papermc.paper.event.entity.EntityKnockbackEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	cause	getCause	enum	-	-	-	Cause:damage,entity_attack,explosion,shield_block,sweep_attack,push,unknown
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
-	knockback	getKnockback	?Vector	setKnockback	org.bukkit.util.Vector	?Vector	-
+	knockback	getKnockback	vec3	setKnockback	org.bukkit.util.Vector	vec3	-
 EntityLandEvent	io.papermc.paper.event.entity.EntityLandEvent	Entity	cancellable
 	block	getBlock	block	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	fall_distance	getFallDistance	number	setFallDistance	double	number	-
 EntityLoadCrossbowEvent	io.papermc.paper.event.entity.EntityLoadCrossbowEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	crossbow	getCrossbow	item_stack	-	-	-	-
-	entity	getEntity	?LivingEntity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	hand	getHand	enum	-	-	-	EquipmentSlot:hand,off_hand,feet,legs,chest,head,body,saddle
 	should_consume_item	shouldConsumeItem	boolean	-	-	-	-
 EntityLungeEvent	io.papermc.paper.event.entity.EntityLungeEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	lunge_power	getLungePower	integer	setLungePower	int	integer	-
 EntityMountEvent	org.bukkit.event.entity.EntityMountEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
-	mount	getMount	?Entity	-	-	-	-
+	mount	getMount	entity	-	-	-	-
 EntityMoveEvent	io.papermc.paper.event.entity.EntityMoveEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?LivingEntity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	from	getFrom	location	setFrom	org.bukkit.Location	location	-
 	has_changed_block	hasChangedBlock	boolean	-	-	-	-
@@ -766,27 +767,27 @@ EntityMoveEvent	io.papermc.paper.event.entity.EntityMoveEvent	Entity	cancellable
 	to	getTo	location	setTo	org.bukkit.Location	location	-
 EntityPathfindEvent	com.destroystokyo.paper.event.entity.EntityPathfindEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	loc	getLoc	location	-	-	-	-
-	target_entity	getTargetEntity	?Entity	-	-	-	-
+	target_entity	getTargetEntity	entity	-	-	-	-
 EntityPickupItemEvent	org.bukkit.event.entity.EntityPickupItemEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?LivingEntity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
-	item	getItem	?Item	-	-	-	-
+	item	getItem	entity	-	-	-	-
 	remaining	getRemaining	integer	-	-	-	-
 EntityPlaceEvent	org.bukkit.event.entity.EntityPlaceEvent	Entity	cancellable
 	block	getBlock	block	-	-	-	-
 	block_face	getBlockFace	enum	-	-	-	BlockFace:
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	hand	getHand	enum	-	-	-	EquipmentSlot:hand,off_hand,feet,legs,chest,head,body,saddle
 	player	getPlayer	player	-	-	-	-
 EntityPortalEnterEvent	org.bukkit.event.entity.EntityPortalEnterEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	location	getLocation	location	-	-	-	-
 	portal_type	getPortalType	enum	-	-	-	PortalType:nether,ender,end_gateway,custom
@@ -794,179 +795,179 @@ EntityPortalEvent	org.bukkit.event.entity.EntityPortalEvent	Entity	cancellable
 	can_create_portal	getCanCreatePortal	boolean	setCanCreatePortal	boolean	boolean	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	creation_radius	getCreationRadius	integer	setCreationRadius	int	integer	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	from	getFrom	location	setFrom	org.bukkit.Location	location	-
 	portal_type	getPortalType	enum	-	-	-	PortalType:nether,ender,end_gateway,custom
 	search_radius	getSearchRadius	integer	setSearchRadius	int	integer	-
 	to	getTo	location	setTo	org.bukkit.Location	location	-
 EntityPortalExitEvent	org.bukkit.event.entity.EntityPortalExitEvent	Entity	cancellable
-	after	getAfter	?Vector	setAfter	org.bukkit.util.Vector	?Vector	-
-	before	getBefore	?Vector	-	-	-	-
+	after	getAfter	vec3	setAfter	org.bukkit.util.Vector	vec3	-
+	before	getBefore	vec3	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	from	getFrom	location	setFrom	org.bukkit.Location	location	-
 	to	getTo	location	setTo	org.bukkit.Location	location	-
 EntityPortalReadyEvent	io.papermc.paper.event.entity.EntityPortalReadyEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	portal_type	getPortalType	enum	-	-	-	PortalType:nether,ender,end_gateway,custom
 	target_world	getTargetWorld	world	setTargetWorld	org.bukkit.World	?World	-
 EntityPoseChangeEvent	org.bukkit.event.entity.EntityPoseChangeEvent	Entity	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	pose	getPose	enum	-	-	-	Pose:
 EntityPotentSulfurLaunchEvent	io.papermc.paper.event.entity.EntityPotentSulfurLaunchEvent	Entity	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
-	launch_velocity	getLaunchVelocity	?Vector	-	-	-	-
+	launch_velocity	getLaunchVelocity	vec3	-	-	-	-
 	source_location	getSourceLocation	location	-	-	-	-
 	sulfur_block	getSulfurBlock	block	-	-	-	-
 EntityPotionEffectEvent	org.bukkit.event.entity.EntityPotionEffectEvent	Entity	cancellable
 	action	getAction	enum	-	-	-	Action:added,changed,cleared,removed
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	cause	getCause	enum	-	-	-	Cause:
-	entity	getEntity	?LivingEntity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	modified_type	getModifiedType	key	-	-	-	-
 	new_effect	getNewEffect	?PotionEffect	-	-	-	-
 	old_effect	getOldEffect	?PotionEffect	-	-	-	-
 	override	isOverride	boolean	setOverride	boolean	boolean	-
-	source	getSource	?Entity	-	-	-	-
+	source	getSource	entity	-	-	-	-
 EntityPushedByEntityAttackEvent	io.papermc.paper.event.entity.EntityPushedByEntityAttackEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	cause	getCause	enum	-	-	-	Cause:damage,entity_attack,explosion,shield_block,sweep_attack,push,unknown
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
-	knockback	getKnockback	?Vector	setKnockback	org.bukkit.util.Vector	?Vector	-
-	pushed_by	getPushedBy	?Entity	-	-	-	-
+	knockback	getKnockback	vec3	setKnockback	org.bukkit.util.Vector	vec3	-
+	pushed_by	getPushedBy	entity	-	-	-	-
 EntityRegainHealthEvent	org.bukkit.event.entity.EntityRegainHealthEvent	Entity	cancellable
 	amount	getAmount	number	setAmount	double	number	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	fast_regen	isFastRegen	boolean	-	-	-	-
 	regain_reason	getRegainReason	enum	-	-	-	RegainReason:regen,satiated,eating,ender_crystal,magic,magic_regen,wither_spawn,wither,custom
 EntityRemoveEvent	org.bukkit.event.entity.EntityRemoveEvent	Entity	-
 	cause	getCause	enum	-	-	-	Cause:death,despawn,drop,enter_block,explode,hit,merge,out_of_world,pickup,player_quit,plugin,transformation,unload,discard
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 EntityRemoveFromWorldEvent	com.destroystokyo.paper.event.entity.EntityRemoveFromWorldEvent	Entity	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	world	getWorld	world	-	-	-	-
 EntityResurrectEvent	org.bukkit.event.entity.EntityResurrectEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?LivingEntity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	hand	getHand	enum	-	-	-	EquipmentSlot:hand,off_hand,feet,legs,chest,head,body,saddle
 EntityShootBowEvent	org.bukkit.event.entity.EntityShootBowEvent	Entity	cancellable
 	bow	getBow	item_stack	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	consumable	getConsumable	item_stack	-	-	-	-
-	entity	getEntity	?LivingEntity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	force	getForce	number	-	-	-	-
 	hand	getHand	enum	-	-	-	EquipmentSlot:hand,off_hand,feet,legs,chest,head,body,saddle
-	projectile	getProjectile	?Entity	setProjectile	org.bukkit.entity.Entity	?Entity	-
+	projectile	getProjectile	entity	setProjectile	org.bukkit.entity.Entity	entity	-
 	should_consume_item	shouldConsumeItem	boolean	-	-	-	-
 EntitySpawnEvent	org.bukkit.event.entity.EntitySpawnEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	location	getLocation	location	-	-	-	-
 EntitySpellCastEvent	org.bukkit.event.entity.EntitySpellCastEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Spellcaster	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	spell	getSpell	enum	-	-	-	Spell:none,summon_vex,fangs,wololo,disappear,blindness
 EntityTameEvent	org.bukkit.event.entity.EntityTameEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?LivingEntity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	owner	getOwner	?AnimalTamer	-	-	-	-
 EntityTargetEvent	org.bukkit.event.entity.EntityTargetEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	reason	getReason	enum	-	-	-	TargetReason:
-	target	getTarget	?Entity	setTarget	org.bukkit.entity.Entity	?Entity	-
+	target	getTarget	entity	setTarget	org.bukkit.entity.Entity	entity	-
 EntityTargetLivingEntityEvent	org.bukkit.event.entity.EntityTargetLivingEntityEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	reason	getReason	enum	-	-	-	TargetReason:
-	target	getTarget	?LivingEntity	setTarget	org.bukkit.entity.Entity	?Entity	-
+	target	getTarget	entity	setTarget	org.bukkit.entity.Entity	entity	-
 EntityTeleportEndGatewayEvent	com.destroystokyo.paper.event.entity.EntityTeleportEndGatewayEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	from	getFrom	location	setFrom	org.bukkit.Location	location	-
 	gateway	getGateway	?EndGateway	-	-	-	-
 	to	getTo	location	setTo	org.bukkit.Location	location	-
 EntityTeleportEvent	org.bukkit.event.entity.EntityTeleportEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	from	getFrom	location	setFrom	org.bukkit.Location	location	-
 	to	getTo	location	setTo	org.bukkit.Location	location	-
 EntityToggleGlideEvent	org.bukkit.event.entity.EntityToggleGlideEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	gliding	isGliding	boolean	-	-	-	-
 EntityToggleSitEvent	io.papermc.paper.event.entity.EntityToggleSitEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	sitting_state	getSittingState	boolean	-	-	-	-
 EntityToggleSwimEvent	org.bukkit.event.entity.EntityToggleSwimEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	-	-	-	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	swimming	isSwimming	boolean	-	-	-	-
 EntityTransformEvent	org.bukkit.event.entity.EntityTransformEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	transform_reason	getTransformReason	enum	-	-	-	TransformReason:cured,frozen,infection,drowned,sheared,lightning,split,piglin_zombified,metamorphosis,unknown
 	transformed_entities	getTransformedEntities	?List	-	-	-	-
-	transformed_entity	getTransformedEntity	?Entity	-	-	-	-
+	transformed_entity	getTransformedEntity	entity	-	-	-	-
 EntityUnleashEvent	org.bukkit.event.entity.EntityUnleashEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	drop_leash	isDropLeash	boolean	setDropLeash	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	reason	getReason	enum	-	-	-	UnleashReason:holder_gone,player_unleash,distance,leashed_gone,unknown
 EntityZapEvent	com.destroystokyo.paper.event.entity.EntityZapEvent	Entity	cancellable
-	bolt	getBolt	?LightningStrike	-	-	-	-
+	bolt	getBolt	entity	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
-	replacement_entity	getReplacementEntity	?Entity	-	-	-	-
+	replacement_entity	getReplacementEntity	entity	-	-	-	-
 	transform_reason	getTransformReason	enum	-	-	-	TransformReason:cured,frozen,infection,drowned,sheared,lightning,split,piglin_zombified,metamorphosis,unknown
 	transformed_entities	getTransformedEntities	?List	-	-	-	-
-	transformed_entity	getTransformedEntity	?Entity	-	-	-	-
+	transformed_entity	getTransformedEntity	entity	-	-	-	-
 ExpBottleEvent	org.bukkit.event.entity.ExpBottleEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?ThrownExpBottle	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	experience	getExperience	integer	setExperience	int	integer	-
 	hit_block	getHitBlock	block	-	-	-	-
 	hit_block_face	getHitBlockFace	enum	-	-	-	BlockFace:
-	hit_entity	getHitEntity	?Entity	-	-	-	-
+	hit_entity	getHitEntity	entity	-	-	-	-
 	show_effect	getShowEffect	boolean	setShowEffect	boolean	boolean	-
 ExperienceOrbMergeEvent	com.destroystokyo.paper.event.entity.ExperienceOrbMergeEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
-	merge_source	getMergeSource	?ExperienceOrb	-	-	-	-
-	merge_target	getMergeTarget	?ExperienceOrb	-	-	-	-
+	merge_source	getMergeSource	entity	-	-	-	-
+	merge_target	getMergeTarget	entity	-	-	-	-
 ExplosionPrimeEvent	org.bukkit.event.entity.ExplosionPrimeEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	fire	getFire	boolean	setFire	boolean	boolean	-
 	radius	getRadius	number	setRadius	float	number	-
@@ -975,16 +976,16 @@ FillProfileEvent	com.destroystokyo.paper.event.profile.FillProfileEvent	Profile	
 	properties	getProperties	?Set	-	-	-	-
 FireworkExplodeEvent	org.bukkit.event.entity.FireworkExplodeEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Firework	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 FishHookStateChangeEvent	io.papermc.paper.event.entity.FishHookStateChangeEvent	Entity	-
-	entity	getEntity	?FishHook	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	new_hook_state	getNewHookState	enum	-	-	-	HookState:unhooked,hooked_entity,bobbing
 FluidLevelChangeEvent	org.bukkit.event.block.FluidLevelChangeEvent	Block	cancellable
 	block	getBlock	block	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	new_data	getNewData	?BlockData	setNewData	org.bukkit.block.data.BlockData	?BlockData	-
+	new_data	getNewData	block_state	setNewData	org.bukkit.block.data.BlockData	block_state	-
 FoodLevelChangeEvent	org.bukkit.event.entity.FoodLevelChangeEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	entity	getEntity	player	-	-	-	-
@@ -1022,7 +1023,7 @@ GS4QueryEvent	com.destroystokyo.paper.event.server.GS4QueryEvent	Server	-
 	response	getResponse	?QueryResponse	setResponse	com.destroystokyo.paper.event.server.GS4QueryEvent$QueryResponse	?QueryResponse	-
 GenericGameEvent	org.bukkit.event.world.GenericGameEvent	World	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	event	getEvent	key	-	-	-	-
 	location	getLocation	location	-	-	-	-
 	radius	getRadius	integer	setRadius	int	integer	-
@@ -1030,18 +1031,18 @@ GenericGameEvent	org.bukkit.event.world.GenericGameEvent	World	cancellable
 HangingBreakByEntityEvent	org.bukkit.event.hanging.HangingBreakByEntityEvent	Hanging	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	cause	getCause	enum	-	-	-	RemoveCause:entity,explosion,obstruction,physics,default
-	damage_source	getDamageSource	?DamageSource	-	-	-	-
-	entity	getEntity	?Hanging	-	-	-	-
-	remover	getRemover	?Entity	-	-	-	-
+	damage_source	getDamageSource	damage	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
+	remover	getRemover	entity	-	-	-	-
 HangingBreakEvent	org.bukkit.event.hanging.HangingBreakEvent	Hanging	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	cause	getCause	enum	-	-	-	RemoveCause:entity,explosion,obstruction,physics,default
-	entity	getEntity	?Hanging	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 HangingPlaceEvent	org.bukkit.event.hanging.HangingPlaceEvent	Hanging	cancellable
 	block	getBlock	block	-	-	-	-
 	block_face	getBlockFace	enum	-	-	-	BlockFace:
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Hanging	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	hand	getHand	enum	-	-	-	EquipmentSlot:hand,off_hand,feet,legs,chest,head,body,saddle
 	item_stack	getItemStack	item_stack	-	-	-	-
 	player	getPlayer	player	-	-	-	-
@@ -1052,7 +1053,7 @@ HopperInventorySearchEvent	org.bukkit.event.inventory.HopperInventorySearchEvent
 	search_block	getSearchBlock	block	-	-	-	-
 HorseJumpEvent	org.bukkit.event.entity.HorseJumpEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	-	-	-	-
-	entity	getEntity	?AbstractHorse	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	power	getPower	number	-	-	-	-
 InventoryBlockStartEvent	org.bukkit.event.block.InventoryBlockStartEvent	Block	-
@@ -1135,35 +1136,35 @@ InventoryOpenEvent	org.bukkit.event.inventory.InventoryOpenEvent	Inventory	cance
 InventoryPickupItemEvent	org.bukkit.event.inventory.InventoryPickupItemEvent	Inventory	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	inventory	getInventory	?Inventory	-	-	-	-
-	item	getItem	?Item	-	-	-	-
+	item	getItem	entity	-	-	-	-
 ItemCraftedEvent	io.papermc.paper.event.inventory.ItemCraftedEvent	Inventory	-
 	crafted_item	getCraftedItem	item_stack	-	-	-	-
 	player	getPlayer	player	-	-	-	-
 ItemDespawnEvent	org.bukkit.event.entity.ItemDespawnEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Item	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	location	getLocation	location	-	-	-	-
 ItemMergeEvent	org.bukkit.event.entity.ItemMergeEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Item	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
-	target	getTarget	?Item	-	-	-	-
+	target	getTarget	entity	-	-	-	-
 ItemSpawnEvent	org.bukkit.event.entity.ItemSpawnEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Item	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	location	getLocation	location	-	-	-	-
 ItemTransportingEntitySortEvent	io.papermc.paper.event.entity.ItemTransportingEntitySortEvent	Entity	-
 	container_inventory	getContainerInventory	?Inventory	-	-	-	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	item_stack	getItemStack	item_stack	-	-	-	-
 	result	getResult	enum	setResult	org.bukkit.event.Event$Result	enum	Result:deny,default,allow
 ItemTransportingEntityValidateTargetEvent	io.papermc.paper.event.entity.ItemTransportingEntityValidateTargetEvent	Entity	-
 	allowed	isAllowed	boolean	setAllowed	boolean	boolean	-
 	block	getBlock	block	-	-	-	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 LeavesDecayEvent	org.bukkit.event.block.LeavesDecayEvent	Block	cancellable
 	block	getBlock	block	-	-	-	-
@@ -1171,23 +1172,23 @@ LeavesDecayEvent	org.bukkit.event.block.LeavesDecayEvent	Block	cancellable
 LightningStrikeEvent	org.bukkit.event.weather.LightningStrikeEvent	Weather	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	cause	getCause	enum	-	-	-	Cause:command,custom,spawner,trident,trap,weather,enchantment,unknown
-	lightning	getLightning	?LightningStrike	-	-	-	-
+	lightning	getLightning	entity	-	-	-	-
 	world	getWorld	world	-	-	-	-
 LingeringPotionSplashEvent	org.bukkit.event.entity.LingeringPotionSplashEvent	Entity	cancellable
 	allows_empty_creation	allowsEmptyCreation	boolean	allowsEmptyCreation	boolean	boolean	-
-	area_effect_cloud	getAreaEffectCloud	?AreaEffectCloud	-	-	-	-
+	area_effect_cloud	getAreaEffectCloud	entity	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?ThrownPotion	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	hit_block	getHitBlock	block	-	-	-	-
 	hit_block_face	getHitBlockFace	enum	-	-	-	BlockFace:
-	hit_entity	getHitEntity	?Entity	-	-	-	-
+	hit_entity	getHitEntity	entity	-	-	-	-
 LookupProfileEvent	com.destroystokyo.paper.event.profile.LookupProfileEvent	Profile	-
 	id	getId	uuid	-	-	-	-
 	name	getName	text	-	-	-	-
 LootGenerateEvent	org.bukkit.event.world.LootGenerateEvent	World	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	inventory_holder	getInventoryHolder	?InventoryHolder	-	-	-	-
 	loot	getLoot	?List	setLoot	java.util.Collection	?Collection	-
 	loot_context	getLootContext	?LootContext	-	-	-	-
@@ -1228,17 +1229,17 @@ PhantomPreSpawnEvent	com.destroystokyo.paper.event.entity.PhantomPreSpawnEvent	E
 	reason	getReason	enum	-	-	-	SpawnReason:
 	should_abort_spawn	shouldAbortSpawn	boolean	setShouldAbortSpawn	boolean	boolean	-
 	spawn_location	getSpawnLocation	location	-	-	-	-
-	spawning_entity	getSpawningEntity	?Entity	-	-	-	-
+	spawning_entity	getSpawningEntity	entity	-	-	-	-
 	type	getType	enum	-	-	-	EntityType:
 PigZombieAngerEvent	org.bukkit.event.entity.PigZombieAngerEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?PigZombie	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	new_anger	getNewAnger	integer	setNewAnger	int	integer	-
-	target	getTarget	?Entity	-	-	-	-
+	target	getTarget	entity	-	-	-	-
 PiglinBarterEvent	org.bukkit.event.entity.PiglinBarterEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Piglin	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	input	getInput	item_stack	-	-	-	-
 	outcome	getOutcome	?List	-	-	-	-
@@ -1268,12 +1269,12 @@ PlayerArmorStandManipulateEvent	org.bukkit.event.player.PlayerArmorStandManipula
 	hand	getHand	enum	-	-	-	EquipmentSlot:hand,off_hand,feet,legs,chest,head,body,saddle
 	player	getPlayer	player	-	-	-	-
 	player_item	getPlayerItem	item_stack	-	-	-	-
-	right_clicked	getRightClicked	?ArmorStand	-	-	-	-
+	right_clicked	getRightClicked	entity	-	-	-	-
 	slot	getSlot	enum	-	-	-	EquipmentSlot:hand,off_hand,feet,legs,chest,head,body,saddle
 PlayerAttemptPickupItemEvent	org.bukkit.event.player.PlayerAttemptPickupItemEvent	Player	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	fly_at_player	getFlyAtPlayer	boolean	setFlyAtPlayer	boolean	boolean	-
-	item	getItem	?Item	-	-	-	-
+	item	getItem	entity	-	-	-	-
 	player	getPlayer	player	-	-	-	-
 	remaining	getRemaining	integer	-	-	-	-
 PlayerBedEnterEvent	org.bukkit.event.player.PlayerBedEnterEvent	Player	cancellable
@@ -1306,7 +1307,7 @@ PlayerBucketEmptyEvent	org.bukkit.event.player.PlayerBucketEmptyEvent	Player	can
 	player	getPlayer	player	-	-	-	-
 PlayerBucketEntityEvent	org.bukkit.event.player.PlayerBucketEntityEvent	Player	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_bucket	getEntityBucket	item_stack	-	-	-	-
 	hand	getHand	enum	-	-	-	EquipmentSlot:hand,off_hand,feet,legs,chest,head,body,saddle
 	original_bucket	getOriginalBucket	item_stack	-	-	-	-
@@ -1347,11 +1348,11 @@ PlayerChangedWorldEvent	org.bukkit.event.player.PlayerChangedWorldEvent	Player	-
 	from	getFrom	world	-	-	-	-
 	player	getPlayer	player	-	-	-	-
 PlayerChunkLoadEvent	io.papermc.paper.event.packet.PlayerChunkLoadEvent	Packet	-
-	chunk	getChunk	?Chunk	-	-	-	-
+	chunk	getChunk	chunk	-	-	-	-
 	player	getPlayer	player	-	-	-	-
 	world	getWorld	world	-	-	-	-
 PlayerChunkUnloadEvent	io.papermc.paper.event.packet.PlayerChunkUnloadEvent	Packet	-
-	chunk	getChunk	?Chunk	-	-	-	-
+	chunk	getChunk	chunk	-	-	-	-
 	player	getPlayer	player	-	-	-	-
 	world	getWorld	world	-	-	-	-
 PlayerClientLoadedWorldEvent	io.papermc.paper.event.player.PlayerClientLoadedWorldEvent	Player	-
@@ -1402,7 +1403,7 @@ PlayerConnectionValidateLoginEvent	io.papermc.paper.event.connection.PlayerConne
 	kick_message	getKickMessage	component	kickMessage	net.kyori.adventure.text.Component	component	-
 PlayerDeathEvent	org.bukkit.event.entity.PlayerDeathEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	damage_source	getDamageSource	?DamageSource	-	-	-	-
+	damage_source	getDamageSource	damage	-	-	-	-
 	death_message	deathMessage	component	deathMessage	net.kyori.adventure.text.Component	component	-
 	death_screen_message_override	deathScreenMessageOverride	component	deathScreenMessageOverride	net.kyori.adventure.text.Component	component	-
 	death_sound	getDeathSound	key	setDeathSound	org.bukkit.Sound	?Sound	-
@@ -1429,7 +1430,7 @@ PlayerDeepSleepEvent	io.papermc.paper.event.player.PlayerDeepSleepEvent	Player	c
 	player	getPlayer	player	-	-	-	-
 PlayerDropItemEvent	org.bukkit.event.player.PlayerDropItemEvent	Player	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	item_drop	getItemDrop	?Item	-	-	-	-
+	item_drop	getItemDrop	entity	-	-	-	-
 	player	getPlayer	player	-	-	-	-
 PlayerEditBookEvent	org.bukkit.event.player.PlayerEditBookEvent	Player	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
@@ -1438,14 +1439,14 @@ PlayerEditBookEvent	org.bukkit.event.player.PlayerEditBookEvent	Player	cancellab
 	previous_book_meta	getPreviousBookMeta	?BookMeta	-	-	-	-
 	signing	isSigning	boolean	setSigning	boolean	boolean	-
 PlayerEggThrowEvent	org.bukkit.event.player.PlayerEggThrowEvent	Player	-
-	egg	getEgg	?Egg	-	-	-	-
+	egg	getEgg	entity	-	-	-	-
 	hatching	isHatching	boolean	setHatching	boolean	boolean	-
 	hatching_type	getHatchingType	enum	setHatchingType	org.bukkit.entity.EntityType	enum	EntityType:
 	num_hatches	getNumHatches	integer	setNumHatches	byte	integer	-
 	player	getPlayer	player	-	-	-	-
 PlayerElytraBoostEvent	com.destroystokyo.paper.event.player.PlayerElytraBoostEvent	Player	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	firework	getFirework	?Firework	-	-	-	-
+	firework	getFirework	entity	-	-	-	-
 	hand	getHand	enum	-	-	-	EquipmentSlot:hand,off_hand,feet,legs,chest,head,body,saddle
 	item_stack	getItemStack	item_stack	-	-	-	-
 	player	getPlayer	player	-	-	-	-
@@ -1453,7 +1454,7 @@ PlayerElytraBoostEvent	com.destroystokyo.paper.event.player.PlayerElytraBoostEve
 PlayerExpChangeEvent	org.bukkit.event.player.PlayerExpChangeEvent	Player	-
 	amount	getAmount	integer	setAmount	int	integer	-
 	player	getPlayer	player	-	-	-	-
-	source	getSource	?Entity	-	-	-	-
+	source	getSource	entity	-	-	-	-
 PlayerExpCooldownChangeEvent	org.bukkit.event.player.PlayerExpCooldownChangeEvent	Player	-
 	new_cooldown	getNewCooldown	integer	setNewCooldown	int	integer	-
 	player	getPlayer	player	-	-	-	-
@@ -1467,10 +1468,10 @@ PlayerFailMoveEvent	io.papermc.paper.event.player.PlayerFailMoveEvent	Player	-
 	to	getTo	location	-	-	-	-
 PlayerFishEvent	org.bukkit.event.player.PlayerFishEvent	Player	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	caught	getCaught	?Entity	-	-	-	-
+	caught	getCaught	entity	-	-	-	-
 	exp_to_drop	getExpToDrop	integer	setExpToDrop	int	integer	-
 	hand	getHand	enum	-	-	-	EquipmentSlot:hand,off_hand,feet,legs,chest,head,body,saddle
-	hook	getHook	?FishHook	-	-	-	-
+	hook	getHook	entity	-	-	-	-
 	player	getPlayer	player	-	-	-	-
 	state	getState	enum	-	-	-	State:fishing,caught_fish,caught_entity,in_ground,failed_attempt,reel_in,bite,lured
 PlayerFlowerPotManipulateEvent	io.papermc.paper.event.player.PlayerFlowerPotManipulateEvent	Player	cancellable
@@ -1502,7 +1503,7 @@ PlayerHarvestBlockEvent	org.bukkit.event.player.PlayerHarvestBlockEvent	Player	c
 	items_harvested	getItemsHarvested	?List	-	-	-	-
 	player	getPlayer	player	-	-	-	-
 PlayerHideEntityEvent	org.bukkit.event.player.PlayerHideEntityEvent	Player	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	player	getPlayer	player	-	-	-	-
 PlayerInputEvent	org.bukkit.event.player.PlayerInputEvent	Player	-
 	input	getInput	?Input	-	-	-	-
@@ -1515,15 +1516,15 @@ PlayerInsertLecternBookEvent	io.papermc.paper.event.player.PlayerInsertLecternBo
 	player	getPlayer	player	-	-	-	-
 PlayerInteractAtEntityEvent	org.bukkit.event.player.PlayerInteractAtEntityEvent	Player	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	clicked_position	getClickedPosition	?Vector	-	-	-	-
+	clicked_position	getClickedPosition	vec3	-	-	-	-
 	hand	getHand	enum	-	-	-	EquipmentSlot:hand,off_hand,feet,legs,chest,head,body,saddle
 	player	getPlayer	player	-	-	-	-
-	right_clicked	getRightClicked	?Entity	-	-	-	-
+	right_clicked	getRightClicked	entity	-	-	-	-
 PlayerInteractEntityEvent	org.bukkit.event.player.PlayerInteractEntityEvent	Player	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	hand	getHand	enum	-	-	-	EquipmentSlot:hand,off_hand,feet,legs,chest,head,body,saddle
 	player	getPlayer	player	-	-	-	-
-	right_clicked	getRightClicked	?Entity	-	-	-	-
+	right_clicked	getRightClicked	entity	-	-	-	-
 PlayerInteractEvent	org.bukkit.event.player.PlayerInteractEvent	Player	cancellable
 	action	getAction	enum	-	-	-	Action:left_click_block,right_click_block,left_click_air,right_click_air,physical
 	block_face	getBlockFace	enum	-	-	-	BlockFace:
@@ -1569,7 +1570,7 @@ PlayerItemDamageEvent	org.bukkit.event.player.PlayerItemDamageEvent	Player	cance
 PlayerItemFrameChangeEvent	io.papermc.paper.event.player.PlayerItemFrameChangeEvent	Player	cancellable
 	action	getAction	enum	-	-	-	ItemFrameChangeAction:place,remove,rotate
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	item_frame	getItemFrame	?ItemFrame	-	-	-	-
+	item_frame	getItemFrame	entity	-	-	-	-
 	item_stack	getItemStack	item_stack	setItemStack	org.bukkit.inventory.ItemStack	item_stack	-
 	player	getPlayer	player	-	-	-	-
 PlayerItemGroupCooldownEvent	io.papermc.paper.event.player.PlayerItemGroupCooldownEvent	Player	cancellable
@@ -1585,7 +1586,7 @@ PlayerItemHeldEvent	org.bukkit.event.player.PlayerItemHeldEvent	Player	cancellab
 PlayerItemMendEvent	org.bukkit.event.player.PlayerItemMendEvent	Player	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	consumed_experience	getConsumedExperience	integer	-	-	-	-
-	experience_orb	getExperienceOrb	?ExperienceOrb	-	-	-	-
+	experience_orb	getExperienceOrb	entity	-	-	-	-
 	item	getItem	item_stack	-	-	-	-
 	player	getPlayer	player	-	-	-	-
 	repair_amount	getRepairAmount	integer	setRepairAmount	int	integer	-
@@ -1608,13 +1609,13 @@ PlayerLaunchProjectileEvent	com.destroystokyo.paper.event.player.PlayerLaunchPro
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	item_stack	getItemStack	item_stack	-	-	-	-
 	player	getPlayer	player	-	-	-	-
-	projectile	getProjectile	?Projectile	-	-	-	-
+	projectile	getProjectile	entity	-	-	-	-
 	should_consume	shouldConsume	boolean	setShouldConsume	boolean	boolean	-
 PlayerLeashEntityEvent	org.bukkit.event.entity.PlayerLeashEntityEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	hand	getHand	enum	-	-	-	EquipmentSlot:hand,off_hand,feet,legs,chest,head,body,saddle
-	leash_holder	getLeashHolder	?Entity	-	-	-	-
+	leash_holder	getLeashHolder	entity	-	-	-	-
 	player	getPlayer	player	-	-	-	-
 PlayerLecternPageChangeEvent	io.papermc.paper.event.player.PlayerLecternPageChangeEvent	Player	cancellable
 	book	getBook	item_stack	-	-	-	-
@@ -1656,7 +1657,7 @@ PlayerMoveEvent	org.bukkit.event.player.PlayerMoveEvent	Player	cancellable
 	to	getTo	location	setTo	org.bukkit.Location	location	-
 PlayerNameEntityEvent	io.papermc.paper.event.player.PlayerNameEntityEvent	Player	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?LivingEntity	setEntity	org.bukkit.entity.LivingEntity	?LivingEntity	-
+	entity	getEntity	entity	setEntity	org.bukkit.entity.LivingEntity	entity	-
 	name	getName	component	setName	net.kyori.adventure.text.Component	component	-
 	persistent	isPersistent	boolean	setPersistent	boolean	boolean	-
 	player	getPlayer	player	-	-	-	-
@@ -1680,22 +1681,22 @@ PlayerPickBlockEvent	io.papermc.paper.event.player.PlayerPickBlockEvent	Player	c
 	target_slot	getTargetSlot	integer	setTargetSlot	int	integer	-
 PlayerPickEntityEvent	io.papermc.paper.event.player.PlayerPickEntityEvent	Player	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	include_data	isIncludeData	boolean	-	-	-	-
 	item	getItem	item_stack	-	-	-	-
 	player	getPlayer	player	-	-	-	-
 	source_slot	getSourceSlot	integer	setSourceSlot	int	integer	-
 	target_slot	getTargetSlot	integer	setTargetSlot	int	integer	-
 PlayerPickupArrowEvent	org.bukkit.event.player.PlayerPickupArrowEvent	Player	cancellable
-	arrow	getArrow	?AbstractArrow	-	-	-	-
+	arrow	getArrow	entity	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	fly_at_player	getFlyAtPlayer	boolean	setFlyAtPlayer	boolean	boolean	-
-	item	getItem	?Item	-	-	-	-
+	item	getItem	entity	-	-	-	-
 	player	getPlayer	player	-	-	-	-
 	remaining	getRemaining	integer	-	-	-	-
 PlayerPickupExperienceEvent	com.destroystokyo.paper.event.player.PlayerPickupExperienceEvent	Player	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	experience_orb	getExperienceOrb	?ExperienceOrb	-	-	-	-
+	experience_orb	getExperienceOrb	entity	-	-	-	-
 	player	getPlayer	player	-	-	-	-
 PlayerPortalEvent	org.bukkit.event.player.PlayerPortalEvent	Player	cancellable
 	can_create_portal	getCanCreatePortal	boolean	setCanCreatePortal	boolean	boolean	-
@@ -1768,7 +1769,7 @@ PlayerRiptideEvent	org.bukkit.event.player.PlayerRiptideEvent	Player	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	item	getItem	item_stack	-	-	-	-
 	player	getPlayer	player	-	-	-	-
-	velocity	getVelocity	?Vector	-	-	-	-
+	velocity	getVelocity	vec3	-	-	-	-
 PlayerServerFullCheckEvent	io.papermc.paper.event.player.PlayerServerFullCheckEvent	Player	-
 	allowed	isAllowed	boolean	-	-	-	-
 	kick_message	kickMessage	component	-	-	-	-
@@ -1791,17 +1792,17 @@ PlayerShearBlockEvent	io.papermc.paper.event.block.PlayerShearBlockEvent	Block	c
 PlayerShearEntityEvent	org.bukkit.event.player.PlayerShearEntityEvent	Player	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	drops	getDrops	?List	setDrops	java.util.List	?List	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	hand	getHand	enum	-	-	-	EquipmentSlot:hand,off_hand,feet,legs,chest,head,body,saddle
 	item	getItem	item_stack	-	-	-	-
 	player	getPlayer	player	-	-	-	-
 PlayerShieldDisableEvent	io.papermc.paper.event.player.PlayerShieldDisableEvent	Player	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	cooldown	getCooldown	integer	setCooldown	int	integer	-
-	damager	getDamager	?Entity	-	-	-	-
+	damager	getDamager	entity	-	-	-	-
 	player	getPlayer	player	-	-	-	-
 PlayerShowEntityEvent	org.bukkit.event.player.PlayerShowEntityEvent	Player	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	player	getPlayer	player	-	-	-	-
 PlayerSignCommandPreprocessEvent	io.papermc.paper.event.player.PlayerSignCommandPreprocessEvent	Player	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
@@ -1811,8 +1812,8 @@ PlayerSignCommandPreprocessEvent	io.papermc.paper.event.player.PlayerSignCommand
 	sign	getSign	?Sign	-	-	-	-
 PlayerStartSpectatingEntityEvent	com.destroystokyo.paper.event.player.PlayerStartSpectatingEntityEvent	Player	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	current_spectator_target	getCurrentSpectatorTarget	?Entity	-	-	-	-
-	new_spectator_target	getNewSpectatorTarget	?Entity	-	-	-	-
+	current_spectator_target	getCurrentSpectatorTarget	entity	-	-	-	-
+	new_spectator_target	getNewSpectatorTarget	entity	-	-	-	-
 	player	getPlayer	player	-	-	-	-
 PlayerStatisticIncrementEvent	org.bukkit.event.player.PlayerStatisticIncrementEvent	Player	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
@@ -1830,7 +1831,7 @@ PlayerStonecutterRecipeSelectEvent	io.papermc.paper.event.player.PlayerStonecutt
 PlayerStopSpectatingEntityEvent	com.destroystokyo.paper.event.player.PlayerStopSpectatingEntityEvent	Player	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	player	getPlayer	player	-	-	-	-
-	spectator_target	getSpectatorTarget	?Entity	-	-	-	-
+	spectator_target	getSpectatorTarget	entity	-	-	-	-
 PlayerStopUsingItemEvent	io.papermc.paper.event.player.PlayerStopUsingItemEvent	Player	-
 	item	getItem	item_stack	-	-	-	-
 	player	getPlayer	player	-	-	-	-
@@ -1880,7 +1881,7 @@ PlayerTeleportEvent	org.bukkit.event.player.PlayerTeleportEvent	Player	cancellab
 PlayerToggleEntityAgeLockEvent	io.papermc.paper.event.player.PlayerToggleEntityAgeLockEvent	Player	cancellable
 	age_locked	isAgeLocked	boolean	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?LivingEntity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	hand	getHand	enum	-	-	-	EquipmentSlot:hand,off_hand,feet,legs,chest,head,body,saddle
 	item	getItem	item_stack	-	-	-	-
 	player	getPlayer	player	-	-	-	-
@@ -1898,20 +1899,20 @@ PlayerToggleSprintEvent	org.bukkit.event.player.PlayerToggleSprintEvent	Player	c
 	sprinting	isSprinting	boolean	-	-	-	-
 PlayerTrackEntityEvent	io.papermc.paper.event.player.PlayerTrackEntityEvent	Player	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	player	getPlayer	player	-	-	-	-
 PlayerTradeEvent	io.papermc.paper.event.player.PlayerTradeEvent	Player	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	merchant	getMerchant	?AbstractVillager	-	-	-	-
+	merchant	getMerchant	entity	-	-	-	-
 	player	getPlayer	player	-	-	-	-
 	rewarding_exp	isRewardingExp	boolean	-	-	-	-
 	trade	getTrade	?MerchantRecipe	setTrade	org.bukkit.inventory.MerchantRecipe	?MerchantRecipe	-
-	villager	getVillager	?AbstractVillager	-	-	-	-
+	villager	getVillager	entity	-	-	-	-
 	will_increase_trade_uses	willIncreaseTradeUses	boolean	-	-	-	-
 PlayerUnleashEntityEvent	org.bukkit.event.player.PlayerUnleashEntityEvent	Player	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	drop_leash	isDropLeash	boolean	setDropLeash	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	hand	getHand	enum	-	-	-	EquipmentSlot:hand,off_hand,feet,legs,chest,head,body,saddle
 	player	getPlayer	player	-	-	-	-
@@ -1920,18 +1921,18 @@ PlayerUnregisterChannelEvent	org.bukkit.event.player.PlayerUnregisterChannelEven
 	channel	getChannel	text	-	-	-	-
 	player	getPlayer	player	-	-	-	-
 PlayerUntrackEntityEvent	io.papermc.paper.event.player.PlayerUntrackEntityEvent	Player	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	player	getPlayer	player	-	-	-	-
 PlayerUseUnknownEntityEvent	com.destroystokyo.paper.event.player.PlayerUseUnknownEntityEvent	Player	-
 	attack	isAttack	boolean	-	-	-	-
-	clicked_relative_position	getClickedRelativePosition	?Vector	-	-	-	-
+	clicked_relative_position	getClickedRelativePosition	vec3	-	-	-	-
 	entity_id	getEntityId	integer	-	-	-	-
 	hand	getHand	enum	-	-	-	EquipmentSlot:hand,off_hand,feet,legs,chest,head,body,saddle
 	player	getPlayer	player	-	-	-	-
 PlayerVelocityEvent	org.bukkit.event.player.PlayerVelocityEvent	Player	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	player	getPlayer	player	-	-	-	-
-	velocity	getVelocity	?Vector	setVelocity	org.bukkit.util.Vector	?Vector	-
+	velocity	getVelocity	vec3	setVelocity	org.bukkit.util.Vector	vec3	-
 PluginDisableEvent	org.bukkit.event.server.PluginDisableEvent	Server	-
 	plugin	getPlugin	?Plugin	-	-	-	-
 PluginEnableEvent	org.bukkit.event.server.PluginEnableEvent	Server	-
@@ -1939,18 +1940,18 @@ PluginEnableEvent	org.bukkit.event.server.PluginEnableEvent	Server	-
 PortalCreateEvent	org.bukkit.event.world.PortalCreateEvent	World	cancellable
 	blocks	getBlocks	?List	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	reason	getReason	enum	-	-	-	CreateReason:fire,nether_pair,end_platform
 	world	getWorld	world	-	-	-	-
 PotionSplashEvent	org.bukkit.event.entity.PotionSplashEvent	Entity	cancellable
 	affected_entities	getAffectedEntities	?Collection	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?ThrownPotion	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	hit_block	getHitBlock	block	-	-	-	-
 	hit_block_face	getHitBlockFace	enum	-	-	-	BlockFace:
-	hit_entity	getHitEntity	?Entity	-	-	-	-
-	potion	getPotion	?ThrownPotion	-	-	-	-
+	hit_entity	getHitEntity	entity	-	-	-	-
+	potion	getPotion	entity	-	-	-	-
 PreCreatureSpawnEvent	com.destroystokyo.paper.event.entity.PreCreatureSpawnEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	reason	getReason	enum	-	-	-	SpawnReason:
@@ -1963,7 +1964,7 @@ PreLookupProfileEvent	com.destroystokyo.paper.event.profile.PreLookupProfileEven
 	name	getName	text	-	-	-	-
 	uuid	getUUID	uuid	setUUID	java.util.UUID	?UUID	-
 PrePlayerAttackEntityEvent	io.papermc.paper.event.player.PrePlayerAttackEntityEvent	Player	cancellable
-	attacked	getAttacked	?Entity	-	-	-	-
+	attacked	getAttacked	entity	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	player	getPlayer	player	-	-	-	-
 	will_attack	willAttack	boolean	-	-	-	-
@@ -2022,20 +2023,20 @@ ProfileWhitelistVerifyEvent	com.destroystokyo.paper.event.profile.ProfileWhiteli
 	whitelisted	isWhitelisted	boolean	setWhitelisted	boolean	boolean	-
 ProjectileHitEvent	org.bukkit.event.entity.ProjectileHitEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Projectile	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	hit_block	getHitBlock	block	-	-	-	-
 	hit_block_face	getHitBlockFace	enum	-	-	-	BlockFace:
-	hit_entity	getHitEntity	?Entity	-	-	-	-
+	hit_entity	getHitEntity	entity	-	-	-	-
 ProjectileLaunchEvent	org.bukkit.event.entity.ProjectileLaunchEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Projectile	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	location	getLocation	location	-	-	-	-
 PufferFishStateChangeEvent	io.papermc.paper.event.entity.PufferFishStateChangeEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	deflating	isDeflating	boolean	-	-	-	-
-	entity	getEntity	?PufferFish	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	inflating	isInflating	boolean	-	-	-	-
 	new_puff_state	getNewPuffState	integer	-	-	-	-
@@ -2044,7 +2045,7 @@ RaidFinishEvent	org.bukkit.event.raid.RaidFinishEvent	Raid	-
 	winners	getWinners	?List	-	-	-	-
 	world	getWorld	world	-	-	-	-
 RaidSpawnWaveEvent	org.bukkit.event.raid.RaidSpawnWaveEvent	Raid	-
-	patrol_leader	getPatrolLeader	?Raider	-	-	-	-
+	patrol_leader	getPatrolLeader	entity	-	-	-	-
 	raid	getRaid	?Raid	-	-	-	-
 	raiders	getRaiders	?List	-	-	-	-
 	world	getWorld	world	-	-	-	-
@@ -2096,18 +2097,18 @@ ServiceUnregisterEvent	org.bukkit.event.server.ServiceUnregisterEvent	Server	-
 SheepDyeWoolEvent	org.bukkit.event.entity.SheepDyeWoolEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	color	getColor	enum	setColor	org.bukkit.DyeColor	enum	DyeColor:white,orange,magenta,light_blue,yellow,lime,pink,gray,light_gray,cyan,purple,blue,brown,green,red,black
-	entity	getEntity	?Sheep	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	player	getPlayer	player	-	-	-	-
 SheepRegrowWoolEvent	org.bukkit.event.entity.SheepRegrowWoolEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Sheep	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 ShulkerDuplicateEvent	io.papermc.paper.event.entity.ShulkerDuplicateEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Shulker	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
-	parent	getParent	?Shulker	-	-	-	-
+	parent	getParent	entity	-	-	-	-
 SignChangeEvent	org.bukkit.event.block.SignChangeEvent	Block	cancellable
 	block	getBlock	block	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
@@ -2117,34 +2118,34 @@ SignChangeEvent	org.bukkit.event.block.SignChangeEvent	Block	cancellable
 SkeletonHorseTrapEvent	com.destroystokyo.paper.event.entity.SkeletonHorseTrapEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	eligible_humans	getEligibleHumans	?List	-	-	-	-
-	entity	getEntity	?SkeletonHorse	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 SlimeChangeDirectionEvent	com.destroystokyo.paper.event.entity.SlimeChangeDirectionEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?AbstractCubeMob	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	new_yaw	getNewYaw	number	setNewYaw	float	number	-
 SlimePathfindEvent	com.destroystokyo.paper.event.entity.SlimePathfindEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?AbstractCubeMob	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 SlimeSplitEvent	org.bukkit.event.entity.SlimeSplitEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	count	getCount	integer	setCount	int	integer	-
-	entity	getEntity	?AbstractCubeMob	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 SlimeSwimEvent	com.destroystokyo.paper.event.entity.SlimeSwimEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?AbstractCubeMob	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 SlimeTargetLivingEntityEvent	com.destroystokyo.paper.event.entity.SlimeTargetLivingEntityEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?AbstractCubeMob	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
-	target	getTarget	?LivingEntity	-	-	-	-
+	target	getTarget	entity	-	-	-	-
 SlimeWanderEvent	com.destroystokyo.paper.event.entity.SlimeWanderEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?AbstractCubeMob	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 SmithItemEvent	org.bukkit.event.inventory.SmithItemEvent	Inventory	cancellable
 	action	getAction	enum	-	-	-	InventoryAction:
@@ -2170,7 +2171,7 @@ SpawnChangeEvent	org.bukkit.event.world.SpawnChangeEvent	World	-
 	world	getWorld	world	-	-	-	-
 SpawnerSpawnEvent	org.bukkit.event.entity.SpawnerSpawnEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	location	getLocation	location	-	-	-	-
 	spawner	getSpawner	?CreatureSpawner	-	-	-	-
@@ -2180,7 +2181,7 @@ SpongeAbsorbEvent	org.bukkit.event.block.SpongeAbsorbEvent	Block	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 StriderTemperatureChangeEvent	org.bukkit.event.entity.StriderTemperatureChangeEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Strider	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	shivering	isShivering	boolean	-	-	-	-
 StructureGrowEvent	org.bukkit.event.world.StructureGrowEvent	World	cancellable
@@ -2201,7 +2202,7 @@ StructuresLocateEvent	io.papermc.paper.event.world.StructuresLocateEvent	World	c
 	world	getWorld	world	-	-	-	-
 SulfurCubeSwallowItemEvent	io.papermc.paper.event.entity.SulfurCubeSwallowItemEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?SulfurCube	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	new_item	getNewItem	item_stack	setNewItem	org.bukkit.inventory.ItemStack	item_stack	-
 	old_item	getOldItem	item_stack	-	-	-	-
@@ -2211,7 +2212,7 @@ TNTPrimeEvent	org.bukkit.event.block.TNTPrimeEvent	Block	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	cause	getCause	enum	-	-	-	PrimeCause:fire,redstone,player,explosion,projectile,block_break,dispenser
 	priming_block	getPrimingBlock	block	-	-	-	-
-	priming_entity	getPrimingEntity	?Entity	-	-	-	-
+	priming_entity	getPrimingEntity	entity	-	-	-	-
 TabCompleteEvent	org.bukkit.event.server.TabCompleteEvent	Server	cancellable
 	buffer	getBuffer	text	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
@@ -2222,18 +2223,18 @@ TabCompleteEvent	org.bukkit.event.server.TabCompleteEvent	Server	cancellable
 TameableDeathMessageEvent	io.papermc.paper.event.entity.TameableDeathMessageEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	death_message	deathMessage	component	deathMessage	net.kyori.adventure.text.Component	component	-
-	entity	getEntity	?Tameable	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 TargetHitEvent	io.papermc.paper.event.block.TargetHitEvent	Block	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Projectile	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	hit_block	getHitBlock	block	-	-	-	-
 	hit_block_face	getHitBlockFace	enum	-	-	-	BlockFace:
-	hit_entity	getHitEntity	?Entity	-	-	-	-
+	hit_entity	getHitEntity	entity	-	-	-	-
 	signal_strength	getSignalStrength	integer	setSignalStrength	int	integer	-
 ThrownEggHatchEvent	com.destroystokyo.paper.event.entity.ThrownEggHatchEvent	Entity	-
-	egg	getEgg	?Egg	-	-	-	-
+	egg	getEgg	entity	-	-	-	-
 	hatching	isHatching	boolean	setHatching	boolean	boolean	-
 	hatching_type	getHatchingType	enum	setHatchingType	org.bukkit.entity.EntityType	enum	EntityType:
 	num_hatches	getNumHatches	integer	setNumHatches	byte	integer	-
@@ -2258,28 +2259,28 @@ TradeSelectEvent	org.bukkit.event.inventory.TradeSelectEvent	Inventory	cancellab
 	who_clicked	getWhoClicked	player	-	-	-	-
 TrialSpawnerSpawnEvent	org.bukkit.event.entity.TrialSpawnerSpawnEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	location	getLocation	location	-	-	-	-
 	trial_spawner	getTrialSpawner	?TrialSpawner	-	-	-	-
 TurtleGoHomeEvent	com.destroystokyo.paper.event.entity.TurtleGoHomeEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Turtle	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 TurtleLayEggEvent	com.destroystokyo.paper.event.entity.TurtleLayEggEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	egg_count	getEggCount	integer	setEggCount	int	integer	-
-	entity	getEntity	?Turtle	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	location	getLocation	location	-	-	-	-
 TurtleStartDiggingEvent	com.destroystokyo.paper.event.entity.TurtleStartDiggingEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Turtle	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	location	getLocation	location	-	-	-	-
 UncheckedSignChangeEvent	io.papermc.paper.event.packet.UncheckedSignChangeEvent	Packet	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	edited_block_position	getEditedBlockPosition	?BlockPosition	-	-	-	-
+	edited_block_position	getEditedBlockPosition	block_pos	-	-	-	-
 	lines	lines	?List	-	-	-	-
 	player	getPlayer	player	-	-	-	-
 	side	getSide	enum	-	-	-	Side:front,back
@@ -2300,72 +2301,72 @@ VaultDisplayItemEvent	org.bukkit.event.block.VaultDisplayItemEvent	Block	cancell
 	display_item	getDisplayItem	item_stack	setDisplayItem	org.bukkit.inventory.ItemStack	item_stack	-
 VehicleBlockCollisionEvent	org.bukkit.event.vehicle.VehicleBlockCollisionEvent	Vehicle	-
 	block	getBlock	block	-	-	-	-
-	vehicle	getVehicle	?Vehicle	-	-	-	-
-	velocity	getVelocity	?Vector	-	-	-	-
+	vehicle	getVehicle	entity	-	-	-	-
+	velocity	getVelocity	vec3	-	-	-	-
 VehicleCreateEvent	org.bukkit.event.vehicle.VehicleCreateEvent	Vehicle	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	vehicle	getVehicle	?Vehicle	-	-	-	-
+	vehicle	getVehicle	entity	-	-	-	-
 VehicleDamageEvent	org.bukkit.event.vehicle.VehicleDamageEvent	Vehicle	cancellable
-	attacker	getAttacker	?Entity	-	-	-	-
+	attacker	getAttacker	entity	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	damage	getDamage	number	setDamage	double	number	-
-	damage_source	getDamageSource	?DamageSource	-	-	-	-
-	vehicle	getVehicle	?Vehicle	-	-	-	-
+	damage_source	getDamageSource	damage	-	-	-	-
+	vehicle	getVehicle	entity	-	-	-	-
 VehicleDestroyEvent	org.bukkit.event.vehicle.VehicleDestroyEvent	Vehicle	cancellable
-	attacker	getAttacker	?Entity	-	-	-	-
+	attacker	getAttacker	entity	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	damage_source	getDamageSource	?DamageSource	-	-	-	-
-	vehicle	getVehicle	?Vehicle	-	-	-	-
+	damage_source	getDamageSource	damage	-	-	-	-
+	vehicle	getVehicle	entity	-	-	-	-
 VehicleEnterEvent	org.bukkit.event.vehicle.VehicleEnterEvent	Vehicle	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entered	getEntered	?Entity	-	-	-	-
-	vehicle	getVehicle	?Vehicle	-	-	-	-
+	entered	getEntered	entity	-	-	-	-
+	vehicle	getVehicle	entity	-	-	-	-
 VehicleEntityCollisionEvent	org.bukkit.event.vehicle.VehicleEntityCollisionEvent	Vehicle	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Entity	-	-	-	-
-	vehicle	getVehicle	?Vehicle	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
+	vehicle	getVehicle	entity	-	-	-	-
 VehicleExitEvent	org.bukkit.event.vehicle.VehicleExitEvent	Vehicle	cancellable
 	cancellable	isCancellable	boolean	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	exited	getExited	?LivingEntity	-	-	-	-
-	vehicle	getVehicle	?Vehicle	-	-	-	-
+	exited	getExited	entity	-	-	-	-
+	vehicle	getVehicle	entity	-	-	-	-
 VehicleMoveEvent	org.bukkit.event.vehicle.VehicleMoveEvent	Vehicle	-
 	from	getFrom	location	-	-	-	-
 	to	getTo	location	-	-	-	-
-	vehicle	getVehicle	?Vehicle	-	-	-	-
+	vehicle	getVehicle	entity	-	-	-	-
 VehicleUpdateEvent	org.bukkit.event.vehicle.VehicleUpdateEvent	Vehicle	-
-	vehicle	getVehicle	?Vehicle	-	-	-	-
+	vehicle	getVehicle	entity	-	-	-	-
 VillagerAcquireTradeEvent	org.bukkit.event.entity.VillagerAcquireTradeEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?AbstractVillager	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	recipe	getRecipe	?MerchantRecipe	setRecipe	org.bukkit.inventory.MerchantRecipe	?MerchantRecipe	-
 VillagerCareerChangeEvent	org.bukkit.event.entity.VillagerCareerChangeEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Villager	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	profession	getProfession	key	setProfession	org.bukkit.entity.Villager$Profession	?Profession	-
 	reason	getReason	enum	-	-	-	ChangeReason:losing_job,employed
 VillagerReplenishTradeEvent	org.bukkit.event.entity.VillagerReplenishTradeEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?AbstractVillager	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	recipe	getRecipe	?MerchantRecipe	setRecipe	org.bukkit.inventory.MerchantRecipe	?MerchantRecipe	-
 WardenAngerChangeEvent	io.papermc.paper.event.entity.WardenAngerChangeEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Warden	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	new_anger	getNewAnger	integer	setNewAnger	int	integer	-
 	old_anger	getOldAnger	integer	-	-	-	-
-	target	getTarget	?Entity	-	-	-	-
+	target	getTarget	entity	-	-	-	-
 WaterBottleSplashEvent	io.papermc.paper.event.entity.WaterBottleSplashEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?ThrownPotion	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	hit_block	getHitBlock	block	-	-	-	-
 	hit_block_face	getHitBlockFace	enum	-	-	-	BlockFace:
-	hit_entity	getHitEntity	?Entity	-	-	-	-
-	potion	getPotion	?ThrownPotion	-	-	-	-
+	hit_entity	getHitEntity	entity	-	-	-	-
+	potion	getPotion	entity	-	-	-	-
 	to_damage	getToDamage	?Collection	-	-	-	-
 	to_extinguish	getToExtinguish	?Collection	-	-	-	-
 	to_rehydrate	getToRehydrate	?Collection	-	-	-	-
@@ -2376,27 +2377,27 @@ WeatherChangeEvent	org.bukkit.event.weather.WeatherChangeEvent	Weather	cancellab
 	world	getWorld	world	-	-	-	-
 WhitelistStateUpdateEvent	io.papermc.paper.event.server.WhitelistStateUpdateEvent	Server	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	player	getPlayer	?OfflinePlayer	-	-	-	-
+	player	getPlayer	player	-	-	-	-
 	player_profile	getPlayerProfile	?PlayerProfile	-	-	-	-
 	status	getStatus	enum	-	-	-	WhitelistStatus:added,removed
 WhitelistToggleEvent	com.destroystokyo.paper.event.server.WhitelistToggleEvent	Server	-
 	enabled	isEnabled	boolean	-	-	-	-
 WitchConsumePotionEvent	com.destroystokyo.paper.event.entity.WitchConsumePotionEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Witch	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	potion	getPotion	item_stack	setPotion	org.bukkit.inventory.ItemStack	item_stack	-
 WitchReadyPotionEvent	com.destroystokyo.paper.event.entity.WitchReadyPotionEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Witch	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	potion	getPotion	item_stack	setPotion	org.bukkit.inventory.ItemStack	item_stack	-
 WitchThrowPotionEvent	com.destroystokyo.paper.event.entity.WitchThrowPotionEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	entity	getEntity	?Witch	-	-	-	-
+	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	potion	getPotion	item_stack	setPotion	org.bukkit.inventory.ItemStack	item_stack	-
-	target	getTarget	?LivingEntity	-	-	-	-
+	target	getTarget	entity	-	-	-	-
 WorldBorderBoundsChangeEvent	io.papermc.paper.event.world.border.WorldBorderBoundsChangeEvent	World	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	duration_ticks	getDurationTicks	integer	setDurationTicks	long	integer	-

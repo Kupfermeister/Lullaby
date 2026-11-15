@@ -3,6 +3,7 @@ package io.github.kupfermeister.lullaby.lua;
 import io.github.kupfermeister.lullaby.Engine;
 import io.github.kupfermeister.lullaby.event.EventBridge;
 import io.github.kupfermeister.lullaby.nms.Codecs;
+import io.github.kupfermeister.lullaby.nms.Entities;
 import io.github.kupfermeister.lullaby.nms.Nms;
 import io.github.kupfermeister.lullaby.nms.Packets;
 import io.github.kupfermeister.lullaby.nms.ScriptCommands;
@@ -125,6 +126,21 @@ final class JavaFunctions {
                     L.toNumber(5), L.toNumber(6), (float) L.toNumber(7), (float) L.toNumber(8));
             return 0;
         });
+        // event slot, field number, x, y, z
+        add(lua, "event_set_vec3", L -> {
+            events.setVec3(slots.get(slot(L, 1)), (int) L.toInteger(2), L.toNumber(3), L.toNumber(4), L.toNumber(5));
+            return 0;
+        });
+        // event slot, field number, the entity's (or player's) slot
+        add(lua, "event_set_entity", L -> {
+            events.setEntity(slots.get(slot(L, 1)), (int) L.toInteger(2), slots.get(slot(L, 3)));
+            return 0;
+        });
+        // event slot, field number, vanilla's block state number
+        add(lua, "event_set_block_state", L -> {
+            events.setBlockState(slots.get(slot(L, 1)), (int) L.toInteger(2), (int) L.toInteger(3));
+            return 0;
+        });
         // Slots (see Slots.java): objects are created in Lua, Java keeps what each number stands for.
         addFree(lua, "free_slots", L -> {
             slots.free(string(L, 1));
@@ -139,6 +155,27 @@ final class JavaFunctions {
             return 1;
         });
 
+        // Entities (nms/Entities.java): an entity's slot holds an Entities.Ref, a player's its UUID; fields go by number.
+        addFree(lua, "entity_fields", L -> {
+            push(L, Entities.fieldList());
+            return 1;
+        });
+        add(lua, "entity_get", L -> ToLua.object(L, Entities.read(slots.get(slot(L, 1)), (int) L.toInteger(2)), slots::add));
+        add(lua, "entity_find", L -> ToLua.object(L, Entities.find(string(L, 1)), slots::add));
+        add(lua, "entity_set", L -> {
+            L.push(Entities.set(Wire.read(L.toBuffer(1)), slots::get));
+            return 1;
+        });
+        // Chunks: a world slot and the chunk's x, z (a chunk object has no slot of its own, like a block).
+        add(lua, "chunk_loaded", L -> {
+            L.push(Entities.chunkLoaded(slots.get(slot(L, 1)), (int) L.toInteger(2), (int) L.toInteger(3)));
+            return 1;
+        });
+        add(lua, "chunk_entities", L -> {
+            List<org.bukkit.entity.Entity> list = Entities.chunkEntities(slots.get(slot(L, 1)), (int) L.toInteger(2),
+                    (int) L.toInteger(3));
+            return list == null ? 0 : ToLua.entities(L, list, slots::add);
+        });
         add(lua, "player_name", L -> pushOrNil(L, Nms.playerName(slots.get(slot(L, 1)))));
         add(lua, "player_online", L -> {
             L.push(Nms.isOnline(slots.get(slot(L, 1))));

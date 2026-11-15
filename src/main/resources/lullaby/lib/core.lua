@@ -199,6 +199,15 @@ function lib.type_of(value)
 end
 I.type_name = lib.type_of -- readable type for error messages
 
+-- Reading a name a value, object or event doesn't have is an error, not nil: a typo (e.helth) would otherwise read
+-- nil and fail somewhere else. `has` lists what it has. level: 2 (objects, events: the script's line) or 0 (values:
+-- the report finds the line).
+function I.no_field(kind, key, has, level)
+	-- FORMAT: a field a value or object doesn't have
+	error(kind .. " has no field " .. (type(key) == "string" and key or "[" .. tostring(key) .. "]")
+		.. " (it has " .. has .. ")", level == 0 and 0 or level + 1)
+end
+
 -- Number -> text: the SHORTEST text that reads back as exactly the same number (Lua's own tostring and `..` use 14
 -- digits: 1297632424.123456 would become "1297632424.1235"). Whole numbers print without ".0" or exponent.
 local format, floor, huge = string.format, math.floor, math.huge

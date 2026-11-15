@@ -43,7 +43,7 @@ Java, under `src/main/java/io/github/kupfermeister/lullaby/`:
 | [lua/JavaDoor.java](src/main/java/io/github/kupfermeister/lullaby/lua/JavaDoor.java) | The raw Java door (`unlock.java`): loads classes, picks the method that fits the arguments, turns Java values into Lua ones. Made only when unlocked. |
 | [lua/Watchdog.java](src/main/java/io/github/kupfermeister/lullaby/lua/Watchdog.java) | `script_time_limit`: stops scripts that run too long. Runs a thread (see Threads). |
 | [event/EventBridge.java](src/main/java/io/github/kupfermeister/lullaby/event/EventBridge.java) | Every Paper event: reads the generated list (`events.txt`, see Other files), looks an event's class and methods up the first time a script uses it, reads and sets its fields, keeps other threads away from Lua. |
-| [lua/ToLua.java](src/main/java/io/github/kupfermeister/lullaby/lua/ToLua.java) | The one place that turns a Java object (player, world, block, location, item stack) into a Lullaby object for Lua; event fields and `java.wrap( )` use it. Its Lua half is `I.from_java` in objects.lua. |
+| [lua/ToLua.java](src/main/java/io/github/kupfermeister/lullaby/lua/ToLua.java) | The one place that turns a Java value (player, entity, world, block, chunk, location, vector, box, block data, damage source, item stack, text, plain values) into a Lullaby value for Lua; event fields, entity fields and `java.wrap( )` use it. Its Lua half is `I.from_java` in objects.lua. |
 | [error/ErrorReporter.java](src/main/java/io/github/kupfermeister/lullaby/error/ErrorReporter.java) | Error and warning format, repeat collapsing, console and ops. |
 | [nms/](src/main/java/io/github/kupfermeister/lullaby/nms/package-info.java) | Everything that touches Minecraft's own code, see below. |
 
@@ -60,6 +60,7 @@ never goes through it, so this rule stays true for Lullaby itself. Names are Moj
 | [LuaOps.java](src/main/java/io/github/kupfermeister/lullaby/nms/LuaOps.java) | Vanilla's `DynamicOps` over Lua data, so every vanilla codec reads Lua tables; refuses 2.5 where a whole number is needed. |
 | [ScriptCommands.java](src/main/java/io/github/kupfermeister/lullaby/nms/ScriptCommands.java) | Script commands on vanilla's Brigadier dispatcher, with per-player snapshots (see Threads). |
 | [SoundSeeds.java](src/main/java/io/github/kupfermeister/lullaby/nms/SoundSeeds.java) | `sound_seed()`: runs the game's own file pick over vanilla's `sounds.json` (downloaded at build) to find the seed for one exact file. |
+| [Entities.java](src/main/java/io/github/kupfermeister/lullaby/nms/Entities.java) | Entities: what an entity object's slot holds (its UUID and the vanilla entity last seen, found again by UUID after an unload or a world change), the entity field list (its owner), `set{}`, and the entities of a chunk. |
 | [Nms.java](src/main/java/io/github/kupfermeister/lullaby/nms/Nms.java) | Small vanilla reads and actions without a bigger class yet. |
 
 The library, in `src/main/resources/lullaby/lib/` (loaded in this order; each file starts with a comment saying
@@ -71,7 +72,7 @@ what it holds and gets three tables: `J` Java functions, `lib` what scripts see 
 | [values.lua](src/main/resources/lullaby/lib/values.lua) | Positions, rotations, boxes, location. Pure Lua, never calls Java. |
 | [tasks.lua](src/main/resources/lullaby/lib/tasks.lua) | `run`, `wait`, `stop` and the scheduler that resumes waiting tasks (coroutines) each tick. |
 | [events.lua](src/main/resources/lullaby/lib/events.lua) | `on`, `after`, event objects. |
-| [objects.lua](src/main/resources/lullaby/lib/objects.lua) | Player, world, block, block state; `message`, `particle{}`, `sound{}`, `stop_sound{}`. |
+| [objects.lua](src/main/resources/lullaby/lib/objects.lua) | Player, entity, world, block, chunk, block state, damage; `set{}`, `message`, `particle{}`, `sound{}`, `stop_sound{}`. |
 | [lazy.lua](src/main/resources/lullaby/lib/lazy.lua) | The wire, item stacks, components, `from_json`, Lullaby's own `pairs`/`next` (LuaJIT ignores `__pairs`). |
 | [commands.lua](src/main/resources/lullaby/lib/commands.lua) | `command{}`, `refresh_commands{}`, `online_players()`. |
 | [loader.lua](src/main/resources/lullaby/lib/loader.lua) | Loading script files, `import`. |
@@ -133,8 +134,12 @@ components; messages go out as vanilla's System Chat Message packet. As few depe
 - No hidden context: the player is always passed in (`message{ player = p, ... }`).
 - Strings are literal text, also strings inside tables, exactly as vanilla's codecs read them. A component is a
   plain table in codec shape.
-- Game objects (player, world, block, ...) exist once each, so `==` works. Reading functions turn text into objects
-  (`player("Notch")`, `world("overworld")`) and give nil if there is none.
+- Game objects (player, entity, world, block, chunk, ...) exist once each, so `==` works. Reading functions turn
+  text into objects (`player("Notch")`, `world("overworld")`) and give nil if there is none. A player is an entity
+  too: every entity field and `set{}` work on players.
+- Reading a name a value, object or event doesn't have is an error that lists what it has (`I.no_field` in
+  core.lua), never nil, so a typo can't hide. A field that exists but has nothing reads nil (an item's health).
+  Objects change only through actions: `set{ entity = e, velocity = v }` uses the same names as the fields read.
 - Event fields come from Paper's getters and setters by one rule (`getJoinMessage()` → `e.join_message`,
   `isCancelled()` → `e.cancelled`), writable in `on`, read only in `after`.
 
@@ -216,19 +221,23 @@ doc block stops the docs build with its file and line.
 
 Every Paper event is there already: a new one in Paper appears by itself with the next build (commit the changed
 `events.txt` so the docs site shows it too). Fields whose Java type Lullaby can't handle yet give a clear red error
-when read (`e.entity can't be read yet: Lullaby has no Entity for scripts yet`).
+when read (`e.inventory can't be read yet: Lullaby has no Inventory for scripts yet`).
 
-To let fields of a new Java type through (for example entities):
+To let fields of a new Java type through (for example inventories):
 
 1. In [EventList.java](tools/events/EventList.java), give the type a kind word in `readKind` (and `writeKind` if
    scripts may set it), and name the word in the header line `KINDS:`.
 2. In [EventBridge.java](src/main/java/io/github/kupfermeister/lullaby/event/EventBridge.java), add the word to
-   `Kind` and handle it in `get` (and `set`, or a `set...` method with its J function in
-   [JavaFunctions.java](src/main/java/io/github/kupfermeister/lullaby/lua/JavaFunctions.java) for objects). A new
-   Lullaby object goes into [ToLua.java](src/main/java/io/github/kupfermeister/lullaby/lua/ToLua.java) and
-   `I.from_java` in [objects.lua](src/main/resources/lullaby/lib/objects.lua).
-3. In [Docs.java](tools/docs/Docs.java), `fieldRow` shows the kind on the event pages (type and text).
-4. `gradlew build`: the list is generated again with the new kind.
+   `Kind`. Reading needs nothing more there: `get` hands every value to
+   [ToLua.java](src/main/java/io/github/kupfermeister/lullaby/lua/ToLua.java), which gets a `case` for the Java type,
+   and `I.from_java` in [objects.lua](src/main/resources/lullaby/lib/objects.lua) gets the kind word.
+3. Setting: plain values go through `set`; anything else gets a `set...` method in EventBridge, its J function in
+   [JavaFunctions.java](src/main/java/io/github/kupfermeister/lullaby/lua/JavaFunctions.java) and a branch in the
+   event object's `__newindex` in [events.lua](src/main/resources/lullaby/lib/events.lua) (Lua sends the value's
+   parts: a slot, numbers).
+4. In [Docs.java](tools/docs/Docs.java), `fieldRow` shows the kind on the event pages; a kind word that is the id of
+   a docs page (entity, vec3, ...) links there by itself.
+5. `gradlew build`: the list is generated again with the new kind.
 
 To mark an event (tested and measured: the dot gets its color; busy; may come off the main thread), add a line to
 [event-marks.txt](tools/docs/event-marks.txt).
@@ -274,7 +283,8 @@ server and say which build is needed.
 
 ## Plans (not built)
 
-Marked so nobody mistakes them for features: event fields Lullaby can't read yet (entities, lists, inventories,
-block states, vectors, ...) and events Paper fires off the main thread (chat, pre-login); script data that lives in Java and
-survives reloads; a generated packet system (`on_packet`, `send_packet`) on the same send core; entities and
-inventories; worker threads for big block edits; mixins as an optional add-on.
+Marked so nobody mistakes them for features: event fields Lullaby can't read yet (lists, inventories, Bukkit's
+block snapshots, profiles, ...) and events Paper fires off the main thread (chat, pre-login); script data that lives
+in Java and survives reloads; a generated packet system (`on_packet`, `send_packet`) on the same send core;
+inventories; more entity fields and actions (spawning, removing, equipment, effects); worker threads for big block
+edits; mixins as an optional add-on.

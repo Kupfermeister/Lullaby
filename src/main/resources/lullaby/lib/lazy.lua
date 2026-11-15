@@ -176,7 +176,7 @@ I.new_item = new_item
 
 ITEM.__index = function(it, key)
 	local load = PARTS[key]
-	if not load then return nil end
+	if not load then I.no_field("item_stack", key, "id, count, components", 2) end
 	local parts = loaded[it]
 	if parts[key] then return nil end -- set to nil by the script
 	local value = load(slot_of[it])

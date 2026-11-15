@@ -188,7 +188,7 @@ function show(id) {
     ${e.args.length ? `<section><h2>Arguments</h2><table>${e.args.map(([n, t, d]) =>
       `<tr><td class="mono c-field">${esc(n.replace(/\?$/, ""))}${n.endsWith("?") ? ' <span class="opt">optional</span>' : ""}</td><td>${typed(t)}</td><td>${esc(d)}</td></tr>`).join("")}</table></section>` : ""}
     ${e.fields?.length ? `<section><h2>Fields</h2><table>${e.fields.map(([n, t, d]) =>
-      `<tr><td class="mono c-field">e.${esc(n)}</td><td>${BY[t] || TYPES.has(t) ? typed(t) : `<span class="c-dim mono">${esc(t)}</span>`}</td><td>${esc(d)}</td></tr>`).join("")}</table></section>` : ""}
+      `<tr><td class="mono c-field">${e.kind === "event" ? "e." : "."}${esc(n)}</td><td>${BY[t] || TYPES.has(t) ? typed(t) : `<span class="c-dim mono">${esc(t)}</span>`}</td><td>${esc(d)}</td></tr>`).join("")}</table></section>` : ""}
     ${e.returns ? `<section><h2>Returns</h2><div>${typed(e.returns)}</div></section>` : ""}
     ${e.example ? `<section><h2>Example</h2><div class="syntax mono" style="--c:var(--line)">${paint(e.example)}</div></section>` : ""}
     ${e.uses.length || e.usedBy.length ? `<section><h2>Connections</h2>

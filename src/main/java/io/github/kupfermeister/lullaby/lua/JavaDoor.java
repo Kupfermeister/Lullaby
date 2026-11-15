@@ -565,8 +565,9 @@ final class JavaDoor {
 
     /**
      * The Java object behind a Lullaby object. Arguments: kind, slot, then for a block x, y, z (its slot is its
-     * world's). A player is the online Bukkit Player, else an OfflinePlayer; a world or block nil if the world is not
-     * loaded; an item stack a Bukkit copy; an event the Paper event itself.
+     * world's). A player is the online Bukkit Player, else an OfflinePlayer; an entity its Bukkit entity, nil if it is
+     * gone; a world or block nil if the world is not loaded; an item stack a Bukkit copy; an event the Paper event
+     * itself.
      */
     private Object raw(Lua L) {
         String kind = LuaText.string(L, 1);
@@ -577,6 +578,7 @@ final class JavaDoor {
                 Object online = Bukkit.getPlayer(uuid);
                 yield online != null ? online : Bukkit.getOfflinePlayer(uuid);
             }
+            case "entity" -> io.github.kupfermeister.lullaby.nms.Entities.bukkitEntity(inside);
             case "world" -> Nms.bukkitWorld(inside);
             case "block" -> {
                 World world = Nms.bukkitWorld(inside);

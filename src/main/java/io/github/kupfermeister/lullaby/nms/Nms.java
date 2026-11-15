@@ -234,6 +234,16 @@ public final class Nms {
         return state.setValue(property, parsed);
     }
 
+    /** A Bukkit BlockData's vanilla state number (event fields of kind block_state). */
+    public static int blockStateId(org.bukkit.block.data.BlockData data) {
+        return Block.getId(((org.bukkit.craftbukkit.block.data.CraftBlockData) data).getState());
+    }
+
+    /** A Bukkit BlockData for a vanilla state number (setting event fields of kind block_state). */
+    public static org.bukkit.block.data.BlockData bukkitBlockData(int id) {
+        return org.bukkit.craftbukkit.block.data.CraftBlockData.createData(state(id));
+    }
+
     /** The state number at a position; -1 if the world or chunk is not loaded (never loads a chunk). */
     public static int blockStateAt(ResourceKey<Level> world, int x, int y, int z) {
         ServerLevel level = server().getLevel(world);

@@ -18,7 +18,10 @@ package io.github.kupfermeister.lullaby.lua;
  */
 public final class Watchdog {
 
-    private volatile boolean expired;
+    // The flag belongs to one run of the clock: restart() counts up `run`, and the thread marks the run it measured.
+    // So a measurement of an old run that lands just after a restart can never stop the code that runs next.
+    private volatile long run;          // which run of the clock this is (main thread writes, after `started`)
+    private volatile long expiredRun = -1; // the run that went past the limit; -1: none
     private volatile long started;  // System.nanoTime() when the current entry began
     private volatile boolean running;
     private volatile long limit;    // nanoseconds; 0: no limit
@@ -42,8 +45,9 @@ public final class Watchdog {
                 Thread.sleep(100);
                 long max = limit;
                 if (max <= 0 || !running) continue;
+                long measured = run; // read before `started`: restart() writes `started` first, then `run`
                 long ran = System.nanoTime() - started;
-                if (!expired && ran > max) expired = true;
+                if (expiredRun != measured && ran > max) expiredRun = measured;
                 // Twice the limit and still no call into the game: a loop that can't be stopped. Only a note in the
                 // console (logging is safe from any thread); the thread never touches Lua or the world.
                 if (!reported && ran > 2 * max) {
@@ -77,7 +81,7 @@ public final class Watchdog {
 
     /** True once the current entry ran past the limit. Read by the main thread at every library call. */
     public boolean expired() {
-        return expired;
+        return expiredRun == run;
     }
 
     /** The error text for the script that is stopped; starts the clock again for the code that runs next. */
@@ -89,7 +93,7 @@ public final class Watchdog {
     /** Starts the clock again (after a stop, and for each script file while loading). */
     public void restart() {
         started = System.nanoTime();
-        expired = false;
+        run++; // a new run: a flag the thread sets for the old one doesn't count (see expiredRun)
         reported = false;
     }
 
@@ -112,7 +116,7 @@ public final class Watchdog {
     public void exit() {
         if (--depth == 0) {
             running = false;
-            expired = false;
+            run++; // nothing left of this run may stop later code
         }
     }
 

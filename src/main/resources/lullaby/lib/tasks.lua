@@ -176,7 +176,7 @@ local TASK_META = {
 		local task = handles[handle]
 		if key == "alive" then return task.alive end
 		if key == "id" then return task.id end
-		return nil
+		I.no_field("task", key, "alive, id", 2)
 	end,
 	__newindex = function(_, key) error("task fields can't be changed (t." .. tostring(key) .. ")", 2) end,
 	__tostring = function() return "task" end, -- FORMAT

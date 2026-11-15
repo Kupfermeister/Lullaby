@@ -22,7 +22,7 @@
 --                            :contains(block_pos) :intersects(bounding_box) :center()
 --   global_pos(dimension, block_pos)   a block position in a dimension (vanilla GlobalPos); dimension is an id
 --   location(world, vec3, yaw_pitch)   world + exact position + direction (yaw_pitch optional: 0, 0)
---                                      ==  :block() -> the block object at it  :offset(vec3)
+--                                      ==  :block() -> the block object at it  :chunk() -> its chunk  :offset(vec3)
 -- Each maker also takes a value of its own type (returned as is: values never change), a table { 1, 2, 3 } or
 -- { x = , y = , z = } (named like the fields), and for the position types vanilla's command text ("1 64 -3").
 -- Errors are raised without a position (level 0): core.lua's report finds the script line itself, and a script that
@@ -30,7 +30,7 @@
 -- Angles are degrees everywhere (vanilla's Vec3.xRot uses radians; Lullaby keeps one unit).
 local J, lib, I = ...
 
-local type, error, setmetatable, tonumber, tostring, select = type, error, setmetatable, tonumber, tostring, select
+local type, error, setmetatable, tonumber, tostring, select, rawget = type, error, setmetatable, tonumber, tostring, select, rawget
 local floor, sqrt, sin, cos, atan2, asin, abs, huge, pi = math.floor, math.sqrt, math.sin, math.cos, math.atan2,
 	math.asin, math.abs, math.huge, math.pi
 local concat, pairs, unpack = table.concat, pairs, unpack
@@ -131,11 +131,20 @@ end
 local function value_type(name, fields, methods)
 	local index_of = {}
 	for i = 1, #fields do index_of[fields[i]] = i end
+	local has -- "x, y, z, :length(), ..." for the error on a name it doesn't have; made on first need
 	local meta = {
 		__index = function(v, key)
 			local i = index_of[key]
-			if i then return v[i] end
-			return methods[key]
+			if i then return rawget(v, i) end -- rawget: a field may be nil (a damage without causing)
+			local method = methods[key]
+			if method then return method end
+			if not has then
+				local names = {}
+				for k in pairs(methods) do names[#names + 1] = ":" .. k .. "()" end
+				table.sort(names)
+				has = table.concat(fields, ", ") .. (#names > 0 and ", " .. table.concat(names, ", ") or "")
+			end
+			I.no_field(name, key, has, 0)
 		end,
 		__newindex = function(_, key)
 			error(name .. " values can't be changed (." .. tostring(key) .. "): make a new one", 0)
@@ -148,13 +157,15 @@ local function value_type(name, fields, methods)
 	meta.__eq = function(a, b)
 		if I.debug_getmetatable(a) ~= meta or I.debug_getmetatable(b) ~= meta then return false end
 		for i = 1, n do
-			if a[i] ~= b[i] then return false end
+			if rawget(a, i) ~= rawget(b, i) then return false end -- rawget: a field may be nil
 		end
 		return true
 	end
 	kind_by_meta[meta] = name
 	return meta
 end
+
+I.value_type = value_type -- objects.lua makes damage with it
 
 local function is(meta, value)
 	return type(value) == "table" and I.debug_getmetatable(value) == meta
@@ -180,6 +191,7 @@ local function new_block(x, y, z) return setmetatable({ x, y, z }, BLOCK) end
 local function new_section(x, y, z) return setmetatable({ x, y, z }, SECTION) end
 local function new_chunk(x, z) return setmetatable({ x, z }, CHUNK) end
 I.new_block_pos = new_block
+I.new_chunk_pos = new_chunk
 
 -- Math on whole numbers can leave Java's int range: checked on each result.
 local function in_range(what, x, y, z)
@@ -534,7 +546,8 @@ lib.quaternion = setmetatable({}, {
 	__call = function(_, ...)
 		local first = ...
 		if is(QUAT, first) and select("#", ...) == 1 then return first end
-		if type(first) == "table" and first.angle ~= nil then -- vanilla's axis-angle form
+		-- vanilla's axis-angle form; only a plain table (another value has no angle, and reading one would be an error)
+		if I.type_name(first) == "table" and first.angle ~= nil then
 			if select("#", ...) > 1 then error("quaternion: give either a table or numbers, not both", 0) end
 			for key in pairs(first) do
 				if key ~= "angle" and key ~= "axis" then error("quaternion: unknown field " .. tostring(key), 0) end
@@ -603,13 +616,14 @@ local function new_aabb(a, b)
 	return setmetatable({ new_vec(min(a[1], b[1]), min(a[2], b[2]), min(a[3], b[3])),
 		new_vec(max(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3])) }, AABB)
 end
+I.new_aabb = new_aabb
 local function new_bb(a, b)
 	return setmetatable({ new_block(min(a[1], b[1]), min(a[2], b[2]), min(a[3], b[3])),
 		new_block(max(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3])) }, BB)
 end
 
 local function corners(what, meta, kind, first, second, n)
-	if type(first) == "table" and not is(meta, first) and second == nil and n == 1 then
+	if I.type_name(first) == "table" and second == nil and n == 1 then -- the table form: plain tables only
 		local a, b = first.min or first[1], first.max or first[2]
 		for key in pairs(first) do
 			if key ~= "min" and key ~= "max" and key ~= 1 and key ~= 2 then
@@ -758,7 +772,7 @@ function lib.global_pos(...)
 	local first, second = ...
 	local n = select("#", ...)
 	if is(GP, first) and n == 1 then return first end
-	if type(first) == "table" and not is(GP, first) and n == 1 then
+	if I.type_name(first) == "table" and n == 1 then -- the table form: plain tables only
 		for key in pairs(first) do
 			if key ~= "dimension" and key ~= "pos" then error("global_pos: unknown field " .. tostring(key), 0) end
 		end
@@ -782,7 +796,7 @@ kind: reading
 group: Values
 words: where place spot
 syntax: location( world, pos, rot ) → location
-lead: A world, an exact position and a direction (yaw_pitch optional: 0, 0). == :block() :offset(vec3). Also takes { world = , pos = , rot = }.
+lead: A world, an exact position and a direction (yaw_pitch optional: 0, 0). == :block() :chunk() :offset(vec3). Also takes { world = , pos = , rot = }.
 arg: world | world | The world.
 arg: pos | vec3 | The exact position.
 arg: rot? | yaw_pitch | The direction. Optional: 0, 0.
@@ -799,7 +813,7 @@ function lib.location(...)
 	local world, pos, rot = ...
 	local n = select("#", ...)
 	if is(LOC, world) and n == 1 then return world end
-	if type(world) == "table" and I.kind_of[world] ~= "world" and n == 1 then
+	if I.type_name(world) == "table" and n == 1 then -- the table form: plain tables only
 		for key in pairs(world) do
 			if key ~= "world" and key ~= "pos" and key ~= "rot" then error("location: unknown field " .. tostring(key), 0) end
 		end
@@ -817,6 +831,12 @@ function loc_methods.block(l)
 	need(LOC, l, "location:block", "a location (use : not .)")
 	local p = l[2]:block_pos()
 	return I.block_at(tostring(l[1]), p[1], p[2], p[3])
+end
+-- The chunk object the position is in (vanilla: block coordinate >> 4).
+function loc_methods.chunk(l)
+	need(LOC, l, "location:chunk", "a location (use : not .)")
+	local p = l[2]
+	return I.chunk_at(tostring(l[1]), floor(p[1] / 16), floor(p[3] / 16))
 end
 function loc_methods.offset(l, v)
 	need(LOC, l, "location:offset", "a location (use : not .)"); need(VEC, v, "location:offset", "a vec3")

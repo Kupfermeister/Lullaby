@@ -3,7 +3,6 @@ package io.github.kupfermeister.lullaby.event;
 import io.github.kupfermeister.lullaby.Engine;
 import io.github.kupfermeister.lullaby.lua.LuaText;
 import io.github.kupfermeister.lullaby.lua.ToLua;
-import io.github.kupfermeister.lullaby.nms.Codecs;
 import io.github.kupfermeister.lullaby.nms.Fields;
 import io.github.kupfermeister.lullaby.nms.Nms;
 import java.io.IOException;
@@ -11,7 +10,6 @@ import java.io.InputStream;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -52,7 +50,10 @@ import party.iroiro.luajava.Lua;
 public final class EventBridge implements Listener {
 
     /** What Lullaby makes of a field's Java type: the kind words of events.txt (a word not here is a Lullaby bug). */
-    private enum Kind { PLAYER, WORLD, BLOCK, LOCATION, ITEM_STACK, COMPONENT, TEXT, ENUM, KEY, UUID, BOOLEAN, INTEGER, NUMBER }
+    private enum Kind {
+        PLAYER, ENTITY, WORLD, BLOCK, CHUNK, LOCATION, VEC3, BLOCK_POS, AABB, BLOCK_STATE, DAMAGE, ITEM_STACK, COMPONENT,
+        TEXT, ENUM, KEY, UUID, BOOLEAN, INTEGER, NUMBER
+    }
 
     /**
      * One field of one event. {@code read}/{@code write} are null when Lullaby can't handle the type yet; then
@@ -166,28 +167,18 @@ public final class EventBridge implements Listener {
         }
         if (value == null) return 0;
         switch (field.read()) {
-            case PLAYER, WORLD, BLOCK, LOCATION, ITEM_STACK -> {
-                return ToLua.object(L, value, addSlot); // a HumanEntity that is no player gives nil
-            }
-            case COMPONENT -> {
-                // a component table: wire bytes plus the count of item slots in show_item hovers
-                Object[] out = Codecs.componentOut(Codecs.vanilla((Component) value), addSlot);
-                L.push("c");
-                L.push((ByteBuffer) out[0]);
-                L.push((int) out[1]);
-                return 3;
-            }
-            default -> {
+            case ENUM, KEY, UUID -> {
                 L.push("v");
                 switch (field.read()) {
-                    case TEXT -> LuaText.push(L, (String) value);
                     case ENUM -> L.push(((Enum<?>) value).name().toLowerCase(Locale.ROOT));
                     case KEY -> LuaText.push(L, keyText(value));
-                    case UUID -> L.push(value.toString());
-                    case BOOLEAN -> L.push((Boolean) value);
-                    default -> L.push((Number) value); // INTEGER, NUMBER
+                    default -> L.push(value.toString()); // UUID
                 }
                 return 2;
+            }
+            default -> {
+                // objects, values, components, text, booleans, numbers: the one conversion in ToLua.java
+                return ToLua.object(L, value, addSlot);
             }
         }
     }
@@ -228,7 +219,7 @@ public final class EventBridge implements Listener {
                     if (!isText(L, index)) throw wrong(field, L, index);
                     yield constant(field, LuaText.string(L, index));
                 }
-                default -> throw wrong(field, L, index); // ITEM_STACK, LOCATION: setItem, setLocation
+                default -> throw wrong(field, L, index); // objects and values: setItem, setLocation, setVec3, ...
             };
         }
         invokeSetter(field, event, value);
@@ -257,6 +248,34 @@ public final class EventBridge implements Listener {
         // FORMAT: a location in a world that isn't loaded
         if (world == null) throw new IllegalArgumentException("e." + field.name() + ": the location's world isn't loaded");
         invokeSetter(field, event, new Location(world, x, y, z, yaw, pitch));
+    }
+
+    /** Sets a vec3 field (Bukkit's Vector; a new one goes into the event). */
+    public void setVec3(Object event, int number, double x, double y, double z) {
+        Field field = writable(number);
+        if (field.write() != Kind.VEC3) throw Fields.wrong("", "e." + field.name(), need(field), "a vec3");
+        invokeSetter(field, event, new org.bukkit.util.Vector(x, y, z));
+    }
+
+    /** Sets an entity field from an entity's or player's slot value; a gone entity or the wrong sort is an error. */
+    public void setEntity(Object event, int number, Object slotValue) {
+        Field field = writable(number);
+        if (field.write() != Kind.ENTITY) throw Fields.wrong("", "e." + field.name(), need(field), "an entity");
+        org.bukkit.entity.Entity entity = io.github.kupfermeister.lullaby.nms.Entities.bukkitEntity(slotValue);
+        // FORMAT: an entity field set to an entity that is gone (dead, removed, unloaded or offline)
+        if (entity == null) throw new IllegalArgumentException("e." + field.name() + ": that entity is gone (dead, "
+                + "removed, in an unloaded chunk or offline)");
+        // FORMAT: an entity field that takes only some entities (LivingEntity, Projectile, ...)
+        if (!field.setType().isInstance(entity)) throw new IllegalArgumentException("e." + field.name() + " must be "
+                + need(field) + ", got " + entity.getType().getKey());
+        invokeSetter(field, event, entity);
+    }
+
+    /** Sets a block_state field (a Bukkit BlockData made from vanilla's state number). */
+    public void setBlockState(Object event, int number, int stateId) {
+        Field field = writable(number);
+        if (field.write() != Kind.BLOCK_STATE) throw Fields.wrong("", "e." + field.name(), need(field), "a block_state");
+        invokeSetter(field, event, Nms.bukkitBlockData(stateId));
     }
 
     /** Gives event fields their item slots (item stacks, show_item hovers); set by JavaFunctions. */
@@ -318,6 +337,10 @@ public final class EventBridge implements Listener {
             case COMPONENT -> "text or a component";
             case ITEM_STACK -> "an item_stack";
             case LOCATION -> "a location";
+            case VEC3 -> "a vec3";
+            case BLOCK_STATE -> "a block_state";
+            case ENTITY -> field.setType() == org.bukkit.entity.Entity.class ? "an entity"
+                    : "an entity of the sort " + field.setType().getSimpleName() + " (Paper's name)";
             case ENUM -> {
                 Object[] all = field.setType().getEnumConstants();
                 if (all.length > 16) yield "a " + field.setType().getSimpleName() + " name";

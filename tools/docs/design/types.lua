@@ -55,6 +55,7 @@
 --   arg            vanilla Brigadier argument for script commands (nil: none)
 --   save           how it is saved
 --   later          true: listed for completeness, built when its area is built
+--   built          when and what of it is built (entries without it are not built yet, or older than this field)
 -- Function and method names in `methods` and in this header (type_of, from_json, :with) are proposals: each one
 -- needs Kupfermeister's yes when it is built. Everything else here was agreed with Kupfermeister. `later = true` types are built
 -- when their area is built; the entries are descriptions; code that uses them is added step by step.
@@ -355,6 +356,7 @@ T.damage = {
 	fields = { type = "id (damage type)", direct = "entity or nil", causing = "entity or nil", pos = "vec3 or nil" },
 	accepts = "damage, damage type id, { type = , direct = , causing = , pos = }", save = false,
 	note = "vanilla has no codec for it: a small table of an id and objects, built in Lua",
+	built = "2026-11-15: read only, from event fields (no maker yet: comes with a damage action)",
 }
 
 -- =================================================================================================================
@@ -377,6 +379,9 @@ T.entity = {
 	kind = "object", vanilla = "net.minecraft.world.entity.Entity (all kinds; a player is an entity too)",
 	identity = "uuid; packets use the network id, Lullaby converts", arg = "EntityArgument (@e, @p, names)",
 	save = "uuid", note = "removed: fields read nil, actions return false",
+	built = "2026-11-15: entity( ), fields uuid type alive world pos location velocity on_ground health max_health "
+		.. "custom_name vehicle (list owned by nms/Entities.java), set{ entity = , location = , velocity = , health = }. "
+		.. "One type for every sort (living or not: fields a sort lacks read nil). Players have every entity field.",
 }
 T.world = {
 	kind = "object", vanilla = "net.minecraft.server.level.ServerLevel", identity = "dimension id",
@@ -385,6 +390,7 @@ T.world = {
 T.chunk = {
 	kind = "object", vanilla = "net.minecraft.world.level.chunk.LevelChunk", identity = "world + chunk_pos",
 	save = "world id + chunk_pos", note = "never loaded by a read",
+	built = "2026-11-15: chunk(world, chunk_pos), location:chunk(), fields world pos loaded entities",
 }
 T.section = {
 	kind = "object", vanilla = "net.minecraft.world.level.chunk.LevelChunkSection (16x16x16 of a chunk)",

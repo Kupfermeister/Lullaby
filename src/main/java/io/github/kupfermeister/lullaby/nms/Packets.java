@@ -118,8 +118,8 @@ public final class Packets {
     // ---- sound{} and stop_sound{} ----
 
     /**
-     * sound{}: ClientboundSoundPacket at {@code pos}, or ClientboundSoundEntityPacket following {@code entity} (a
-     * player for now; offline: nothing is sent). Seed missing: a random one, as vanilla's /playsound.
+     * sound{}: ClientboundSoundPacket at {@code pos}, or ClientboundSoundEntityPacket following {@code entity} (any
+     * entity, players too; gone or offline: nothing is sent). Seed missing: a random one, as vanilla's /playsound.
      */
     public static void sound(Object wire, IntFunction<Object> slots) {
         Fields a = new Fields("sound{}", wire);
@@ -129,7 +129,7 @@ public final class Packets {
         float pitch = (float) a.number("pitch", 1);
         // FORMAT: pos and entity both or neither
         if (a.has("pos") == a.has("entity")) {
-            throw new IllegalArgumentException("sound{}: give pos (a vec3) or entity (a player), not both or neither");
+            throw new IllegalArgumentException("sound{}: give pos (a vec3) or entity (an entity), not both or neither");
         }
         double[] p = a.has("pos") ? a.vec3("pos") : null;
         long seed = a.long64("seed", 0);
@@ -140,8 +140,7 @@ public final class Packets {
         if (p != null) {
             packet = new ClientboundSoundPacket(sound, source, p[0], p[1], p[2], volume, pitch, seed);
         } else {
-            Object who = slots.apply(((Number) a.raw("entity")).intValue());
-            ServerPlayer entity = MinecraftServer.getServer().getPlayerList().getPlayer((UUID) who);
+            net.minecraft.world.entity.Entity entity = Entities.entity(slots.apply(((Number) a.raw("entity")).intValue()));
             if (entity == null) return;
             packet = new ClientboundSoundEntityPacket(sound, source, entity, volume, pitch, seed);
         }

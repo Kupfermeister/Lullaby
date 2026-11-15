@@ -63,7 +63,7 @@ public final class Codecs {
      */
     private static final String[] KINDS = {"block_pos", "section_pos", "chunk_pos", "vec3", "yaw_pitch", "quaternion",
             "aabb", "bounding_box", "global_pos", "location", "block_state", "player", "world", "block", "item_stack",
-            "component", "components"};
+            "component", "components", "entity", "chunk", "damage"};
 
     private static RegistryOps<Object> luaOps;
     private static RegistryOps<Tag> nbtOps;
@@ -192,7 +192,7 @@ public final class Codecs {
             return kindShape(kind, t, slots);
         } catch (ClassCastException | IndexOutOfBoundsException | NullPointerException e) {
             // FORMAT: a small value or component changed with rawset
-            throw new IllegalArgumentException("a " + kind + " was changed with rawset and can't be used");
+            throw new IllegalArgumentException(article(kind) + " was changed with rawset and can't be used");
         }
     }
 
@@ -230,7 +230,7 @@ public final class Codecs {
             }
             default -> {
                 // FORMAT: a value that has no codec shape inside a codec table
-                throw new IllegalArgumentException("a " + kind + " can't go inside this table");
+                throw new IllegalArgumentException(article(kind) + " can't go inside this table");
             }
         }
     }
@@ -244,6 +244,11 @@ public final class Codecs {
     static int kindIndex(String name) {
         for (int i = 0; i < KINDS.length; i++) if (KINDS[i].equals(name)) return i;
         throw new IllegalStateException("Lullaby bug: no wire kind " + name);
+    }
+
+    /** "a vec3", "an item_stack", "an entity": a kind name with its article, for error messages. */
+    static String article(String kind) {
+        return ("aeiou".indexOf(kind.charAt(0)) >= 0 ? "an " : "a ") + kind;
     }
 
     /** The wire kind's name ("vec3", "player", ...) for error messages. */

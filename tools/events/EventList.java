@@ -7,11 +7,19 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.jar.JarFile;
 import net.kyori.adventure.text.Component;
+import io.papermc.paper.math.BlockPosition;
+import org.bukkit.Chunk;
 import org.bukkit.Location;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.data.BlockData;
+import org.bukkit.damage.DamageSource;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.util.BoundingBox;
+import org.bukkit.util.Vector;
 import org.bukkit.event.Cancellable;
 import org.bukkit.event.Event;
 import org.bukkit.inventory.ItemStack;
@@ -82,7 +90,8 @@ public final class EventList {
         lines.add("# Field line: <TAB> name <TAB> getter <TAB> read kind <TAB> setter <TAB> setter's parameter class <TAB> write kind");
         lines.add("#   <TAB> enum: its class's simple name, \":\" and its words when 16 or fewer (Result:deny,default,allow);");
         lines.add("#   - where there is none");
-        lines.add("# KINDS: player world block location item_stack component text enum key uuid boolean integer number;");
+        lines.add("# KINDS: player entity world block chunk location vec3 block_pos aabb block_state damage item_stack component");
+        lines.add("#   text enum key uuid boolean integer number;");
         lines.add("#   ?Type: Lullaby can't read (or set) a Type yet");
         lines.add("paper-api\t" + api);
         int fieldCount = 0, changeable = 0;
@@ -206,11 +215,17 @@ public final class EventList {
     // ---- kinds: what Lullaby makes of a Java type --------------------------------------------------------------
 
     private static String readKind(Class<?> t) {
-        if (t == Player.class || t == HumanEntity.class) return "player"; // a HumanEntity is a player on Paper
+        // a HumanEntity is a player on Paper; an OfflinePlayer is the same player object, online or not
+        if (t == Player.class || t == HumanEntity.class || t == OfflinePlayer.class) return "player";
+        if (Entity.class.isAssignableFrom(t)) return "entity"; // every sort: LivingEntity, Item, Creeper, ...
         if (t == World.class) return "world";
         if (t == Block.class) return "block";
+        if (t == Chunk.class) return "chunk";
         if (t == Location.class) return "location";
         if (t == ItemStack.class) return "item_stack";
+        if (t == BoundingBox.class) return "aabb";
+        if (t == BlockPosition.class) return "block_pos";
+        if (t == DamageSource.class) return "damage";
         String common = common(t);
         if (common != null) return common;
         if (t.isEnum()) return "enum";
@@ -223,13 +238,17 @@ public final class EventList {
     private static String writeKind(Class<?> t) {
         if (t == Location.class) return "location";
         if (t == ItemStack.class) return "item_stack";
+        if (Entity.class.isAssignableFrom(t) && !HumanEntity.class.isAssignableFrom(t)) return "entity";
         String common = common(t);
         if (common != null) return common;
         if (t.isEnum()) return "enum";
         return "?" + t.getSimpleName();
     }
 
+    /** Kinds read and written the same way. */
     private static String common(Class<?> t) {
+        if (t == Vector.class) return "vec3";
+        if (t == BlockData.class) return "block_state";
         if (Component.class.isAssignableFrom(t)) return "component";
         if (t == String.class) return "text";
         if (t == boolean.class || t == Boolean.class) return "boolean";

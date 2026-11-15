@@ -27,6 +27,20 @@ public final class Fields {
         this.table = (Wire.Table) wire;
     }
 
+    /**
+     * Refuses every key the action doesn't take, so a typo (velocty = ...) is an error instead of doing nothing.
+     * {@code known}: the action's field names, from its owner's list.
+     */
+    public void only(List<String> known) {
+        for (Object key : table.hash.keySet()) {
+            // FORMAT: an action got a field it doesn't take
+            if (!known.contains(key)) throw new IllegalArgumentException(what + ": unknown field "
+                    + (key instanceof String s ? s : "[" + Codecs.describe(key) + "]") + " (it takes " + names(known) + ")");
+        }
+        // FORMAT: an action got list entries ({ 1, 2 } style) it doesn't take
+        if (!table.array.isEmpty()) throw new IllegalArgumentException(what + ": unknown field [1] (it takes " + names(known) + ")");
+    }
+
     /** The raw value (null if missing), for fields read by a codec or by other code. */
     public Object raw(String field) {
         return table.hash.get(field);
@@ -165,14 +179,19 @@ public final class Fields {
 
     /** A wire value as short text for "got ...": "a vec3", "a table", "\"loud\"", "2.5", "nil". */
     public static String got(Object value) {
-        if (value instanceof Wire.Table t) return t.kind >= 0 ? "a " + Codecs.kindName(t.kind) : "a table";
+        if (value instanceof Wire.Table t) return t.kind >= 0 ? Codecs.article(Codecs.kindName(t.kind)) : "a table";
         return Codecs.describe(value == null ? LuaOps.NONE : value);
     }
 
     /** "\"a\", \"b\" or \"c\"" from a name map, in its order. */
     public static String names(Map<String, ?> names) {
+        return names(names.keySet());
+    }
+
+    /** "\"a\", \"b\" or \"c\"" from names, in their order. */
+    public static String names(java.util.Collection<String> names) {
         List<String> quoted = new ArrayList<>(names.size());
-        for (String name : names.keySet()) quoted.add("\"" + name + "\"");
+        for (String name : names) quoted.add("\"" + name + "\"");
         if (quoted.size() <= 1) return String.join("", quoted);
         return String.join(", ", quoted.subList(0, quoted.size() - 1)) + " or " + quoted.getLast();
     }

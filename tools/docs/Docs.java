@@ -24,8 +24,11 @@ import java.util.stream.Stream;
  * A doc block sits right above `function lib.NAME(` and has one `key: value` per line:
  *   name, kind (doing | reading | event | type | lua), group, syntax, lead, note, returns, example (code; indented
  *   lines below continue it), status (confirmed | unconfirmed), words (extra search words), arg: name | types | text
- *   (repeatable), expert: key | value (repeatable), also (more ids that lead to this page, space-separated: Lua
- *   keywords, old page names). Topic pages without a function (tools/docs/lua.txt) give id:.
+ *   (repeatable), field: name | types | text (repeatable: the fields of the object or value the page is about),
+ *   fields-from: <java file> <enum> (the field names' owner is that Java enum: the build checks that the field: lines
+ *   name exactly its constants, lowercase, see checkFieldsFrom), expert: key | value (repeatable), also (more ids that
+ *   lead to this page, space-separated: Lua keywords, old page names). Topic pages without a function
+ *   (tools/docs/lua.txt) give id:.
  * Every kind has fixed expert rows (EXPERT_ROWS), in that order, so readers always find the same things in the same
  * place; a missing row is a warning in the build. A speed nobody measured is written as a guess with a range
  * ("guess 1–5 µs (not measured)"), never as a bare number.
@@ -76,6 +79,7 @@ public final class Docs {
         read(here.resolve("lua.txt"), "tools/docs/lua.txt", entries, bodies); // first: the Lua group leads the sidebar
         for (Path file : files) read(file, "src/main/resources/lullaby/lib/" + file.getFileName(), entries, bodies);
         checkDocumented(files, entries);
+        checkFieldsFrom(entries);
         String minecraft = minecraftVersion();
         events(entries, minecraft);
         checkExpertRows(entries);
@@ -172,6 +176,41 @@ public final class Docs {
         System.exit(1);
     }
 
+    /**
+     * A page with fields-from: its field: lines must name exactly the constants of that Java enum (lowercase), the
+     * owner of the list. Stops the build otherwise, so the docs can't drift from what Java really reads.
+     */
+    private static void checkFieldsFrom(Map<String, Entry> entries) throws IOException {
+        List<String> bad = new ArrayList<>();
+        for (Entry e : entries.values()) {
+            String from = e.f().get("fields-from");
+            if (from == null) continue;
+            String[] parts = from.trim().split("\\s+");
+            Path file = Path.of(parts[0]);
+            if (parts.length != 2 || !Files.exists(file)) {
+                bad.add(e.f().get("src") + "  fields-from: needs an existing Java file and an enum name, got \"" + from + "\"");
+                continue;
+            }
+            Matcher m = Pattern.compile("enum " + Pattern.quote(parts[1]) + "\\s*\\{([^;}]*)[;}]")
+                    .matcher(Files.readString(file, StandardCharsets.UTF_8));
+            if (!m.find()) {
+                bad.add(e.f().get("src") + "  fields-from: " + parts[0] + " has no enum " + parts[1]);
+                continue;
+            }
+            List<String> java = new ArrayList<>();
+            for (String c : m.group(1).split(",")) if (!c.isBlank()) java.add(c.trim().toLowerCase(Locale.ROOT));
+            List<String> doc = new ArrayList<>();
+            for (String[] field : e.fields()) doc.add(field[0]);
+            if (!doc.equals(java)) bad.add(e.f().get("src") + "  field: lines " + doc + " but " + parts[1] + " in "
+                    + parts[0] + " has " + java + " (same names, same order)");
+        }
+        if (bad.isEmpty()) return;
+        // FORMAT: docs build, field lines that don't match their Java owner
+        System.err.println("docs: these pages' field: lines don't match Java's list:");
+        for (String b : bad) System.err.println("  " + b);
+        System.exit(1);
+    }
+
     /** Warns (doesn't stop) about pages missing one of their kind's fixed expert rows, or having them out of order. */
     private static void checkExpertRows(Map<String, Entry> entries) {
         List<String> wrong = new ArrayList<>();
@@ -196,7 +235,7 @@ public final class Docs {
         Matcher m = BLOCK.matcher(text);
         while (m.find()) {
             Map<String, String> f = new LinkedHashMap<>();
-            List<String[]> args = new ArrayList<>(), expert = new ArrayList<>();
+            List<String[]> args = new ArrayList<>(), expert = new ArrayList<>(), fields = new ArrayList<>();
             // `key: value` per line; an indented line (tab or 2 spaces) or an empty line continues the key before it,
             // keeping the line break (for `example:` code).
             String last = null;
@@ -211,6 +250,7 @@ public final class Docs {
                 String key = line.substring(0, colon).trim(), value = line.substring(colon + 1).trim();
                 last = null;
                 if (key.equals("arg")) args.add(split(value, 3));
+                else if (key.equals("field")) fields.add(split(value, 3));
                 else if (key.equals("expert")) expert.add(split(value, 2));
                 else { f.merge(key, value, (a, b) -> a + " " + b); last = key; }
             }
@@ -225,7 +265,7 @@ public final class Docs {
             int at = m.group(2) != null ? m.start(2) : m.start();
             int line = 1 + (int) text.substring(0, at).chars().filter(c -> c == '\n').count();
             f.put("src", src + ":" + line);
-            entries.put(id, new Entry(f, args, expert, new LinkedHashSet<>(), new LinkedHashSet<>(), new ArrayList<>()));
+            entries.put(id, new Entry(f, args, expert, new LinkedHashSet<>(), new LinkedHashSet<>(), fields));
             if (m.group(2) == null) continue; // a topic page: no code, no connections
             // Strings and comments are no calls.
             bodies.put(id, body(text, m.end()).replaceAll("--[^\\n]*", "")
@@ -459,7 +499,7 @@ public final class Docs {
             }
             if (!e.fields().isEmpty()) {
                 b.append("\n| field | type | |\n|---|---|---|\n");
-                for (String[] a : e.fields()) b.append("| `e.").append(a[0]).append("` | ").append(a[1]).append(" | ").append(a[2]).append(" |\n");
+                for (String[] a : e.fields()) b.append("| `").append("event".equals(f.get("kind")) ? "e." : ".").append(a[0]).append("` | ").append(a[1]).append(" | ").append(a[2]).append(" |\n");
             }
             if (f.containsKey("returns")) b.append("\nReturns: ").append(f.get("returns")).append('\n');
             if (!e.uses().isEmpty()) b.append("\nUses: ").append(String.join(", ", e.uses())).append('\n');

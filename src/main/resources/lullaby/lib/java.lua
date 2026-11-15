@@ -9,7 +9,7 @@
 -- and raw objects go to Java: never a Lua function, so Java can never call a script back (see the docs page).
 --   java.class("org.bukkit.Bukkit") -> class C     C:staticMethod(...)  C.STATIC_FIELD  C:new(...)
 --   obj:method(...)  obj.field  obj.field = v  arr[1] (from 1, like Lua)  arr.length
---   java.raw(p | world | block | item_stack | event) -> raw object      java.wrap(raw) -> Lullaby object or nil
+--   java.raw(p | entity | world | block | item_stack | event) -> raw object      java.wrap(raw) -> Lullaby value or nil
 local J, lib, I = ...
 
 function I.java_door()
@@ -208,8 +208,8 @@ kind: reading
 group: Java door
 words: raw java bukkit player world block event item unwrap handle
 syntax: java.raw( x ) → java | nil
-lead: The Java object behind a Lullaby object: a player gives Bukkit's Player (an OfflinePlayer when offline), a world Bukkit's World, a block Bukkit's Block, an item_stack a Bukkit ItemStack copy, an event the Paper event itself (only while its handler runs). nil for a world or block whose world isn't loaded. Only with unlock.java in the config.
-arg: x | player · world · block · item_stack · event | The Lullaby object.
+lead: The Java object behind a Lullaby object: a player gives Bukkit's Player (an OfflinePlayer when offline), an entity its Bukkit entity, a world Bukkit's World, a block Bukkit's Block, an item_stack a Bukkit ItemStack copy, an event the Paper event itself (only while its handler runs). nil for an entity that is gone, or a world or block whose world isn't loaded. Only with unlock.java in the config.
+arg: x | player · entity · world · block · item_stack · event | The Lullaby object.
 returns: java · nil
 example:
   after{ "PlayerJoinEvent", function(e)
@@ -226,7 +226,7 @@ status: unconfirmed
 	function java.raw(x)
 		if class_of[x] or class_id[x] then return x end
 		local kind = kind_of[x]
-		if kind == "player" or kind == "world" or kind == "event" then
+		if kind == "player" or kind == "entity" or kind == "world" or kind == "event" then
 			local slot = slot_of[x]
 			-- FORMAT: java.raw( ) of an event whose handlers ended, or of the reload event
 			if not slot then error("java.raw: this event has no Java event now (it is over, or it is Lullaby's own)", 2) end
@@ -244,7 +244,7 @@ status: unconfirmed
 			return result(kind_, a, b)
 		end
 		-- FORMAT: java.raw( ) of something without a Java side
-		error("java.raw needs a player, world, block, item_stack or event, got " .. I.type_name(x), 2)
+		error("java.raw needs a player, entity, world, block, item_stack or event, got " .. I.type_name(x), 2)
 	end
 
 --[[doc
@@ -252,11 +252,11 @@ id: java.wrap
 name: java.wrap( )
 kind: reading
 group: Java door
-words: raw java bukkit player world block location item wrap
-syntax: java.wrap( obj ) → player · world · block · location · item_stack · nil
-lead: The Lullaby object for a raw Java object, where Lullaby has one: a Bukkit Player or OfflinePlayer gives a player, a World a world, a Block a block, a Location a location, a Bukkit or Minecraft ItemStack an item_stack copy. nil for anything else. Only with unlock.java in the config.
+words: raw java bukkit player entity world block chunk location vector item wrap
+syntax: java.wrap( obj ) → a Lullaby value · nil
+lead: The Lullaby value for a raw Java object, where Lullaby has one: a Bukkit Player or OfflinePlayer gives a player, any other Bukkit entity an entity, a World a world, a Block a block, a Chunk a chunk, a Location a location, a Vector a vec3, a BoundingBox an aabb, a BlockData a block_state, a DamageSource a damage, an adventure Component a component, a Bukkit or Minecraft ItemStack an item_stack copy. nil for anything else. Only with unlock.java in the config.
 arg: obj | java | A raw Java object.
-returns: player · world · block · location · item_stack · nil
+returns: player · entity · world · block · chunk · location · vec3 · aabb · block_state · damage · component · item_stack · nil
 example:
   local Bukkit = java.class("org.bukkit.Bukkit")
   local p = java.wrap(Bukkit:getPlayer("Notch")) -- nil if Notch is offline

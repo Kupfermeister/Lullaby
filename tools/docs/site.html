@@ -104,12 +104,13 @@ details.pkt > summary { color: var(--text); font-size: 14.5px; font-weight: 400;
 details.pkt > summary .mono { margin-right: 10px; }
 details.pkt table { margin: 0 0 8px 18px; width: calc(100% - 18px); }
 details.pkt tr.word td:first-child { padding-left: 18px; }
-/* new or changed lately (Docs.java fresh): a small filled box. Level 1 (the newest change) is solid; older levels
-   are the same box with a see-through fill that blends into the background, then the mark is gone. */
+/* new or changed lately (Docs.java fresh): a small filled box. Level 1 (the newest change) is solid with white text;
+   older levels are the same box with a see-through fill that blends into the background, and their text has the
+   fill of the level before (jft 2026-11-22), so each step fades a little more, then the mark is gone. */
 .fresh { display: inline-block; background: var(--fresh); color: #fff; border-radius: 3px; padding: 0 5px;
   margin-left: 8px; font-size: 10.5px; line-height: 16px; font-weight: 600; white-space: nowrap; vertical-align: 1px; }
-.fresh.f2 { background: color-mix(in srgb, var(--fresh) 50%, transparent); }
-.fresh.f3 { background: color-mix(in srgb, var(--fresh) 25%, transparent); }
+.fresh.f2 { background: color-mix(in srgb, var(--fresh) 50%, transparent); color: var(--fresh); }
+.fresh.f3 { background: color-mix(in srgb, var(--fresh) 25%, transparent); color: color-mix(in srgb, var(--fresh) 50%, transparent); }
 .item .fresh { margin-left: 6px; }
 /* Guide pages (kind guide): running text from text: in guide.txt, see prose() below */
 .prose { border-top: 1px solid var(--line); padding: 8px 28px 20px; }
@@ -323,6 +324,12 @@ function score(e, q) {
   }
   return best <= Math.max(1, Math.floor(q.length / 3)) ? best : 99;
 }
+// The side list's group order (jft 2026-11-22): the guide, then what nearly every script uses, then the game's
+// things, then looking things up, the Java door (experts) last. This list owns the order; a group not named here
+// (a new one) goes at the end, in the order its pages are read, so it can't go missing.
+const GROUP_ORDER = ["Guide", "Events", "Commands", "Tasks", "Players", "Entities", "Blocks", "Worlds", "Items",
+  "Text", "Effects", "Values", "Scripts", "Java door"];
+const groupRank = g => { const i = GROUP_ORDER.indexOf(g); return i < 0 ? GROUP_ORDER.length : i; };
 function nav() {
   const q = document.getElementById("q").value.trim().toLowerCase();
   // Raw Java functions (J.*) can't be called from scripts: they keep their pages (reached through "uses") but stay
@@ -332,7 +339,9 @@ function nav() {
   if (rx) { try { const r = new RegExp(rx[1], "i"); list = list.filter(e => r.test(e.id + " " + (e.words || ""))); } catch { list = []; } }
   else if (q) list = list.map(e => [e, score(e, q) + dist(q, e.id.toLowerCase()) / 1000]).filter(x => x[1] < 99)
     .sort((a, b) => a[1] - b[1]).map(x => x[0]); // ties: the closer name first
+  // Without a search the groups stand in GROUP_ORDER; while searching, the group of the best hit comes first.
   const groups = [...new Set(list.map(e => e.group))];
+  if (!q) groups.sort((a, b) => groupRank(a) - groupRank(b));
   // Groups fold open and shut; while searching every group with a hit is open. Which groups are shut is remembered
   // in this browser only (and forgotten without error where storage is blocked).
   // A group's pages with a sub group (the generated events: Player, Block, ...) fold into sub groups, shut until

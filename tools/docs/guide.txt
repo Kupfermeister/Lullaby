@@ -3,7 +3,7 @@ format as lib/*.lua; each block names itself with id:). Pages are read in this o
 links each to the previous and next one. Its first page is the site's landing page. Every line of text: is indented
 by two spaces; its small markup (## heading, - list, 1. numbered, > tip, ! warning, ``` code ```, `code`, **bold**,
 [words](#id) for a page, [words](file) for a file of the site) is explained at prose() in site.html.
-Lua syntax is explained once, on the page "lua for scratch users"; the other pages link there instead of repeating it
+Lua syntax is explained once, on the page "lua basics", for beginners who know logic but not syntax; the other pages link there instead of repeating it
 (jft 2026-11-22: heavily compact, no repeats). also: keeps the addresses of older, merged pages working (the old Lua
 pages, old guide pages) and makes Lua's keywords in code link to the Lua page.
 
@@ -84,22 +84,22 @@ status: unconfirmed
 
 --[[doc
 id: lua
-name: lua for scratch users
+name: lua basics
 kind: guide
 group: Guide
 also: guide_lua guide_variables guide_if guide_loops comments values nil true false numbers strings and or not local tables methods if then else elseif while repeat until for in do break goto function return end varargs closures error string_lib table_lib math_lib metatables locked io os ffi debug require
-words: lua syntax scratch blocks basics variable local value table list number text string nil true false if then else elseif condition loop for while repeat until forever ipairs pairs break goto continue function return comment operator equal join length string table math random floor format insert remove sort concat metatable setmetatable
-lead: All of Lua's grammar, for people who know Scratch. You already know the logic (if, loops, variables, lists); here is how to write it as text.
+words: lua syntax grammar basics variable local value table list number text string nil true false if then else elseif condition loop for while repeat until forever ipairs pairs break goto continue function return comment operator equal join length string table math random floor format insert remove sort concat metatable setmetatable
+lead: All of Lua's grammar on one page: how to write variables, lists, if, loops and functions so Lua understands them.
 text:
-  ## Text instead of blocks
-  - Scratch's C-shaped blocks become a start word and `end`: `if ... then` ... `end`. Every `if`, `for`, `while` and `function` needs its own `end`; a missing one is the most common error (it points to the end of the file).
+  ## Writing code
+  - A block starts with a word and closes with `end`: `if ... then` ... `end`. Every `if`, `for`, `while` and `function` needs its own `end`; a missing one is the most common error (it points to the end of the file).
   - Indent the inside by two spaces so you see what belongs where. Lua ignores it; you won't.
   - Capitals matter: `Message` is not `message`. Text needs quotes: `"hello"`, `'hello'` (or `[[...]]` over many lines). `\n` is a line break.
   - `--` starts a comment to the end of the line (`--[[ ... ]]` over many lines). Lua skips it; write notes there.
 
   ## Variables
   ```
-  local coins = 10            -- make a variable (Scratch: "make a variable" + "set to")
+  local coins = 10            -- make a variable and set it
   coins = coins + 5           -- change it (no "local" again)
   local a, b = 1, 2           -- several at once
   ```
@@ -109,12 +109,12 @@ text:
   - Math: `+ - * /`, `%` remainder, `^` power. `7 / 2` is `3.5`; `math.floor(7 / 2)` is `3`.
   - Compare: `==` equal, `~=` not equal, `< > <= >=`. **One `=` stores, two compare**: `if x = 5` is an error.
   - Logic: `and`, `or`, `not`. Only `nil` and `false` count as false; `0` and `""` are true. `x or 5` gives x, or 5 when x is nil: a default.
-  - Text: `..` joins (Scratch "join"), `#` is the length.
+  - Text: `..` joins two texts, `#` is the length.
 
   ## Lists and tables
   ```
-  local list = { "a", "b", "c" }     -- a list; counted from 1, like Scratch
-  print(list[1], #list)              -- item 1 of list, length of list
+  local list = { "a", "b", "c" }     -- a list, counted from 1
+  print(list[1], #list)              -- the first item, the length
   list[#list + 1] = "d"              -- add to the end
   local spawn = { x = 0, y = 64 }    -- named fields
   spawn.z = 0                        -- same as spawn["z"] = 0
@@ -136,18 +136,18 @@ text:
 
   ## Loops
   ```
-  for i = 1, 10 do print(i) end              -- repeat 10, i counts 1 to 10
+  for i = 1, 10 do print(i) end              -- 10 times, i counts 1 to 10
   for i = 10, 1, -1 do print(i) end          -- count down (third number: the step)
   for i, p in ipairs(online_players()) do    -- each item of a list, in order
     print(i, p.name)
   end
   for key, value in pairs(spawn) do end      -- each field of a table, any order
-  while x < 10 do x = x + 1 end              -- checks first, like "repeat until" turned around
-  repeat x = x - 1 until x <= 0              -- checks after: runs at least once
+  while x < 10 do x = x + 1 end              -- as long as true; checks before each round
+  repeat x = x - 1 until x <= 0              -- until true; checks after: runs at least once
   ```
-  Scratch's "forever" is `while true do ... wait(1) ... end`: always wait inside, or the script is stopped. `break` leaves a loop. Lua has no `continue`: write `goto continue` and put `::continue::` right before the loop's `end`.
+  Forever is `while true do ... wait(1) ... end`: always wait inside, or the script is stopped. `break` leaves a loop. Lua has no `continue`: write `goto continue` and put `::continue::` right before the loop's `end`.
 
-  ## Functions (Scratch "My Blocks")
+  ## Functions
   ```
   local function add(a, b)           -- define
     return a + b                     -- give a value back and leave
@@ -162,7 +162,7 @@ text:
   ## Ready-made functions
   - Text: `s:upper()`, `s:lower()`, `s:sub(1, 5)` (letters 1 to 5), `s:find("x")`, `s:gsub("a", "b")` (replace), `s:rep(3)`, `string.format("%d coins", 5)`, `tostring(5)`, `tonumber("5")`.
   - Lists: `table.insert(t, v)`, `table.remove(t, i)`, `table.sort(t)`, `table.concat(t, ", ")` (list to one text).
-  - Math: `math.random(1, 6)` (pick random), `math.floor`, `math.ceil`, `math.abs`, `math.min`, `math.max`, `math.sqrt`, `math.pi`.
+  - Math: `math.random(1, 6)` (a random whole number), `math.floor`, `math.ceil`, `math.abs`, `math.min`, `math.max`, `math.sqrt`, `math.pi`.
   - Other: `print(x)` (to the server window), `type(x)`, `pairs`, `ipairs`, `select`, `unpack`, `setmetatable` (own classes; most scripts never need it).
   Locked for safety, so they don't exist in scripts: `io`, `os`, `ffi`, `debug`, `require`. They can be unlocked in `config.lua` under `unlock`; use [import( )](#import) for your own files.
 expert: LuaJIT | Lullaby runs LuaJIT, which speaks Lua 5.1 plus goto. Newer Lua (//, bit operators like &, utf8, <const>) doesn't exist; bit.band and friends do. Numbers are doubles, whole numbers exact up to 2^53. # counts bytes: "ä" has length 2. Lua patterns (find, match, gsub) are not regex: %d digit, %a letter, %s space, % escapes, no | and no {n}.
@@ -356,6 +356,6 @@ text:
   - Read the clock; run vanilla commands
   - Player details: game mode, permissions, hunger, experience
   - Named areas and entering them
-  Experts can reach some of it through the [Java door](#java). Locked Lua libraries: end of [lua for scratch users](#lua).
+  Experts can reach some of it through the [Java door](#java). Locked Lua libraries: end of [lua basics](#lua).
 status: unconfirmed
 ]]

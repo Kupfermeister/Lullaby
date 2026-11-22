@@ -9,17 +9,16 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.logger.slf4j.ComponentLogger;
 
 /**
- * Shows script errors and warnings to every online op in chat and in the console, in the same format:
+ * Shows script errors and warnings to every online op in chat and in the console as the exact same text, all of it
+ * red (a warning: all yellow, first word "Warning"):
  * <pre>
- * ⚠ Error in scripts/lobby/join.lua on line 12                      red (a warning: yellow, "Warning")
- *   via PlayerJoinEvent (on) → greet                                gray
- *   the Lua error message                                           gray
- *   37 times in 10s                                                 gray, only in a repeat summary
+ * Error in scripts/lobby/join.lua on line 12
+ *   via PlayerJoinEvent (on) -> greet
+ *   the Lua error message
+ *   37 times in 10s                                                 only in a repeat summary
  * </pre>
- * The console version has no symbols ("->" instead of "→", no "⚠"), because many consoles (Windows' default code
- * page) show them as garbage like "ÔÜá"; there the details are the normal text color and a warning's first line too
- * Chat keeps the symbols and colors above. The head names no function: the via line already ends
- * with it.
+ * No symbols ("->", no "⚠"), because many consoles (Windows' default code page) show them as garbage like "ÔÜá",
+ * and chat must match the console. The head names no function: the via line already ends with it.
  * The same error (kind, file, line, message) repeating within the window is only counted; when the window ends, one
  * summary with the count is shown. The Lua library finds file, line, function and "via" (see core.lua); this class
  * only formats and sends. Main thread only.
@@ -102,13 +101,9 @@ public final class ErrorReporter {
         details.append("\n  ").append(key.message());
         if (repeats > 0) details.append("\n  ").append(repeats).append(repeats == 1 ? " time in " : " times in ").append(Math.round(windowNanos / 1e9)).append('s');
 
-        Component chat = Component.text("⚠ " + head, warning ? NamedTextColor.YELLOW : NamedTextColor.RED)
-                .append(Component.text(details.toString(), NamedTextColor.GRAY));
-        Nms.sendToOps(chat);
-
-        Component console = Component.text(head.toString(), warning ? null : NamedTextColor.RED)
-                .append(Component.text(details.toString().replace("→", "->")));
-        if (warning) logger.warn(console);
-        else logger.error(console);
+        Component text = Component.text(head.append(details).toString(), warning ? NamedTextColor.YELLOW : NamedTextColor.RED);
+        Nms.sendToOps(text);
+        if (warning) logger.warn(text);
+        else logger.error(text);
     }
 }

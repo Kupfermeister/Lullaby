@@ -7,6 +7,7 @@ import io.github.kupfermeister.lullaby.lua.LuaRuntime;
 import io.github.kupfermeister.lullaby.lua.Watchdog;
 import io.github.kupfermeister.lullaby.nms.Input;
 import io.github.kupfermeister.lullaby.nms.Nms;
+import io.github.kupfermeister.lullaby.nms.SavedData;
 import io.github.kupfermeister.lullaby.nms.ScriptCommands;
 import io.papermc.paper.event.server.ServerResourcesReloadedEvent;
 import java.io.IOException;
@@ -26,11 +27,14 @@ import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.world.WorldSaveEvent;
+import org.bukkit.plugin.IllegalPluginAccessException;
 
 /**
  * Holds everything one load of the scripts needs: the Lua state, the event listeners and the error reporter, and the
  * files in plugins/lullaby. A reload stops every task (their finals run), throws the Lua state and all listeners
- * away and builds them new; script data will live in Java and survive that. Main thread only.
+ * away and builds them new; server.data is saved first and loaded into the new state (see {@link SavedData}). Main
+ * thread only.
  */
 public final class Engine {
 
@@ -49,6 +53,9 @@ public final class Engine {
     // Owns the join/quit listeners for script commands; registered only while scripts declare commands.
     private final Listener commandPlayers = new Listener() {
     };
+    private final Listener saves = new Listener() { // WorldSaveEvent, for the plugin's whole life
+    };
+    private final SavedData data; // server.data's file; lives as long as the plugin, so it outlasts reloads
 
     Engine(Lullaby plugin) {
         this.plugin = plugin;
@@ -57,6 +64,69 @@ public final class Engine {
         this.errors = new ErrorReporter(plugin.getComponentLogger());
         this.events = new EventBridge(this);
         this.watchdog = new Watchdog(plugin.getSLF4JLogger());
+        this.data = new SavedData(dataFolder,
+                (kind, via, message) -> errors.report(kind, SavedData.FILE_TEXT, -1, via, message),
+                task -> {
+                    try {
+                        Bukkit.getScheduler().runTask(plugin, task);
+                    } catch (IllegalPluginAccessException e) {
+                        task.run(); // the plugin is turning off: nothing else runs on the main thread any more
+                    }
+                });
+        listenForSaves();
+    }
+
+    public SavedData data() {
+        return data;
+    }
+
+    /**
+     * server.data is saved when the world is: Paper fires WorldSaveEvent once per world at each autosave, /save-all
+     * and stop, so only the main world's counts. (At stop, plugins turn off before the worlds save: {@link #unload}
+     * saves then.) Registered once for the plugin's life.
+     */
+    private void listenForSaves() {
+        Bukkit.getPluginManager().registerEvent(WorldSaveEvent.class, saves, EventPriority.MONITOR, (listener, e) -> {
+            if (e instanceof WorldSaveEvent save && !Bukkit.getWorlds().isEmpty()
+                    && save.getWorld().equals(Bukkit.getWorlds().getFirst())) {
+                saveData(false, false);
+            }
+        }, plugin);
+    }
+
+    /**
+     * Saves server.data unless a hand edit or a bad load forbids it (then says why). {@code wait}: write the file
+     * now; {@code reloading}: a load follows at once.
+     */
+    private void saveData(boolean wait, boolean reloading) {
+        if (runtime == null) return;
+        try {
+            String refusal = data.refusal(reloading);
+            if (refusal != null) {
+                errors.report("warning", SavedData.FILE_TEXT, -1, "saving server.data", refusal);
+                return;
+            }
+            runtime.saveData(data, wait);
+        } catch (RuntimeException e) {
+            internalError("saving server.data", e);
+        }
+    }
+
+    /** /lullaby data server [path]: the view and the place's name; view null: nothing there (or no scripts loaded). */
+    public Object[] viewData(String path) {
+        if (runtime == null) return new Object[]{null, "server.data"};
+        return runtime.dataView(path);
+    }
+
+    /** Tab completion of /lullaby data server: the keys at one place. Main thread. */
+    public List<String> dataKeys(String path) {
+        if (runtime == null) return List.of();
+        try {
+            return runtime.dataKeys(path);
+        } catch (RuntimeException e) {
+            internalError("listing server.data keys", e);
+            return List.of();
+        }
     }
 
     public Lullaby plugin() {
@@ -100,13 +170,14 @@ public final class Engine {
     /** Loads (or reloads) every script; on a reload, the old state's tasks are stopped first. See {@link #afterReload}. */
     public LoadResult load() {
         long start = System.nanoTime();
-        unload();
+        unload(true);
         errors.resetCount();
         int scripts = 0;
         try {
             commands = new ScriptCommands(this::runCommand);
             listenForCommandPlayers(); // before the scripts, so it runs before their own lowest-stage join handlers
             runtime = new LuaRuntime(this);
+            runtime.loadData(data); // server.data is there before the first script line runs
             scripts = runtime.loadAll();
         } catch (IOException | RuntimeException e) {
             internalError("loading the scripts", e);
@@ -184,10 +255,11 @@ public final class Engine {
     }
 
     /**
-     * Stops every task (finals run, and may still use commands), removes the listeners and commands and closes the
-     * Lua state.
+     * Stops every task (finals run, and may still use commands), saves server.data (after the finals, which may change
+     * it), removes the listeners and commands and closes the Lua state. {@code reloading}: a load follows (false: the
+     * plugin turns off).
      */
-    void unload() {
+    void unload(boolean reloading) {
         events.unregisterAll();
         Input.stop();
         HandlerList.unregisterAll(commandPlayers);
@@ -197,6 +269,7 @@ public final class Engine {
             } catch (RuntimeException e) {
                 internalError("stopping the tasks", e);
             }
+            saveData(true, reloading);
             runtime.close();
             runtime = null;
         }

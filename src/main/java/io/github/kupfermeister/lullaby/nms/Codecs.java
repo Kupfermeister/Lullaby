@@ -86,6 +86,17 @@ public final class Codecs {
         return luaOps;
     }
 
+    /** Vanilla's NBT ops with the server's registries (for saved data, SavedData.java). */
+    static RegistryOps<Tag> nbt() {
+        ops();
+        return nbtOps;
+    }
+
+    /** Lua's ops with the server's registries. */
+    static RegistryOps<Object> lua() {
+        return ops();
+    }
+
     private static <T> T get(DataResult<T> result) {
         return result.getOrThrow(IllegalArgumentException::new);
     }
@@ -479,15 +490,20 @@ public final class Codecs {
      * components; the second value is how many, so lazy.lua only looks for them when there are any.
      */
     public static Object[] componentOut(Component text, ToIntFunction<Object> addSlot) {
+        int[] items = {0};
+        Object tree = componentTree(text, addSlot, items);
+        return new Object[]{Wire.write(tree), items[0]};
+    }
+
+    /** A component as its codec table (Java's picture of it, see componentOut); {@code items} counts the item slots. */
+    static Object componentTree(Component text, ToIntFunction<Object> addSlot, int[] items) {
         Object tree = get(ComponentSerialization.CODEC.encodeStart(ops(), text));
         if (tree instanceof String s) {
             Map<Object, Object> map = new LinkedHashMap<>();
             map.put("text", s);
             tree = map;
         }
-        int[] items = {0};
-        tree = itemsOut(tree, addSlot, items);
-        return new Object[]{Wire.write(tree), items[0]};
+        return itemsOut(tree, addSlot, items);
     }
 
     /** from_json's result: a component as {@link #componentOut} gives it, or null if it is not a component. */

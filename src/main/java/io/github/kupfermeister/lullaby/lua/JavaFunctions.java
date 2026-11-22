@@ -82,6 +82,11 @@ final class JavaFunctions {
             return 1;
         });
 
+        // config data_max_size in megabytes (0: no limit), once per load (data.lua)
+        addFree(lua, "data_limit", L -> {
+            engine.data().setLimit(L.toNumber(1));
+            return 0;
+        });
         addFree(lua, "wire_kinds", L -> {
             push(L, Codecs.kindList());
             return 1;

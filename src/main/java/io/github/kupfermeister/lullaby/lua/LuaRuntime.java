@@ -3,6 +3,7 @@ package io.github.kupfermeister.lullaby.lua;
 import io.github.kupfermeister.lullaby.Engine;
 import io.github.kupfermeister.lullaby.event.EventBridge;
 import io.github.kupfermeister.lullaby.nms.Input;
+import io.github.kupfermeister.lullaby.nms.SavedData;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -21,7 +22,8 @@ import party.iroiro.luajava.luajit.LuaJit;
  */
 public final class LuaRuntime {
 
-    private static final String[] LIBRARY = {"core", "values", "tasks", "events", "objects", "lazy", "commands", "loader", "java"};
+    private static final String[] LIBRARY = {"core", "values", "tasks", "events", "objects", "lazy", "commands", "data",
+            "loader", "java"};
 
     private final Lua lua;
     private final Slots slots = new Slots();
@@ -67,6 +69,68 @@ public final class LuaRuntime {
             pushInternal("load_all");
             enterLua("loading the scripts", 0, 1);
             return (int) lua.toInteger(-1);
+        } finally {
+            lua.setTop(top);
+        }
+    }
+
+    // ---- server.data (data.lua, nms/SavedData.java) ----
+
+    /** Fills server.data from the file; called before the scripts load. */
+    public void loadData(SavedData data) {
+        int top = lua.getTop();
+        try {
+            ByteBuffer bytes = data.read(slots::add);
+            pushInternal("data_load");
+            if (bytes == null) lua.pushNil();
+            else lua.push(bytes);
+            enterLua("loading server.data", 1, 1);
+            data.loaded(LuaText.string(lua, -1));
+        } catch (RuntimeException e) {
+            data.loadFailed(); // never save a half-loaded server.data over the file
+            throw e;
+        } finally {
+            lua.setTop(top);
+        }
+    }
+
+    /** Saves server.data; {@code wait}: write the file now instead of on the writer thread. */
+    public void saveData(SavedData data, boolean wait) {
+        int top = lua.getTop();
+        try {
+            pushInternal("data_save");
+            enterLua("saving server.data", 0, 2);
+            Object tree = Wire.read(lua.toBuffer(-2));
+            data.saveProblems(LuaText.string(lua, -1));
+            data.save(tree, slots::get, wait);
+        } finally {
+            lua.setTop(top);
+        }
+    }
+
+    /** /lullaby data server [path]: the view of one place ({tree}, or null if nothing is there) and its name. */
+    public Object[] dataView(String path) {
+        int top = lua.getTop();
+        try {
+            pushInternal("data_view");
+            LuaText.push(lua, path);
+            enterLua("showing server.data", 1, 2);
+            Object tree = lua.isNil(-2) ? null : Wire.read(lua.toBuffer(-2));
+            return new Object[]{tree == null ? null : SavedData.view(tree, slots::get), LuaText.string(lua, -1)};
+        } finally {
+            lua.setTop(top);
+        }
+    }
+
+    /** The keys at one place of server.data, sorted (tab completion). */
+    public List<String> dataKeys(String path) {
+        int top = lua.getTop();
+        try {
+            pushInternal("data_keys");
+            LuaText.push(lua, path);
+            enterLua("listing server.data keys", 1, 1);
+            String keys = LuaText.string(lua, -1);
+            return keys.isEmpty() ? List.of() : List.of(keys.split("\n"));
         } finally {
             lua.setTop(top);
         }

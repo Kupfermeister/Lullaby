@@ -33,8 +33,8 @@ Java, under `src/main/java/io/github/kupfermeister/lullaby/`:
 | File | What it does |
 |---|---|
 | [Lullaby.java](src/main/java/io/github/kupfermeister/lullaby/Lullaby.java) | Plugin entry: the version lock, the per-tick job, `/lullaby` registration. |
-| [Engine.java](src/main/java/io/github/kupfermeister/lullaby/Engine.java) | One load of the scripts: Lua state, listeners, files in `plugins/lullaby`. A reload throws it all away and builds it new. |
-| [LullabyCommand.java](src/main/java/io/github/kupfermeister/lullaby/LullabyCommand.java) | `/lullaby reload`, `/lullaby version` and `/lul` (exactly `/lullaby reload`), the built-in commands. In Java so it works when every script is broken. |
+| [Engine.java](src/main/java/io/github/kupfermeister/lullaby/Engine.java) | One load of the scripts: Lua state, listeners, files in `plugins/lullaby`. A reload saves `server.data`, throws it all away and builds it new. |
+| [LullabyCommand.java](src/main/java/io/github/kupfermeister/lullaby/LullabyCommand.java) | `/lullaby reload`, `/lullaby version`, `/lullaby data server [path]` (with tab completion of the keys) and `/lul` (exactly `/lullaby reload`), the built-in commands. In Java so it works when every script is broken. |
 | [lua/LuaRuntime.java](src/main/java/io/github/kupfermeister/lullaby/lua/LuaRuntime.java) | The LuaJIT state; loads the library files in a fixed order (`LIBRARY`). |
 | [lua/JavaFunctions.java](src/main/java/io/github/kupfermeister/lullaby/lua/JavaFunctions.java) | The raw Java functions the library calls (table `J`). Scripts never see them. |
 | [lua/Wire.java](src/main/java/io/github/kupfermeister/lullaby/lua/Wire.java) | Lua tables as bytes in LuaJIT's own `string.buffer` format, so a whole table crosses in one call. |
@@ -62,6 +62,7 @@ never goes through it, so this rule stays true for Lullaby itself. Names are Moj
 | [SoundSeeds.java](src/main/java/io/github/kupfermeister/lullaby/nms/SoundSeeds.java) | `sound_seed()`: runs the game's own file pick over vanilla's `sounds.json` (downloaded at build) to find the seed for one exact file. |
 | [Entities.java](src/main/java/io/github/kupfermeister/lullaby/nms/Entities.java) | Entities: what an entity object's slot holds (its UUID and the vanilla entity last seen, found again by UUID after an unload or a world change), the entity field list (its owner), `set{}`, and the entities of a chunk. |
 | [Input.java](src/main/java/io/github/kupfermeister/lullaby/nms/Input.java) | Lullaby's own `input` event: owns the input packets, their fields and action words (startup checks them against vanilla); a hook in each player's network pipeline, only while a script listens; what a cancelled packet gets back (vanilla's own refusal). |
+| [SavedData.java](src/main/java/io/github/kupfermeister/lullaby/nms/SavedData.java) | `server.data` on disk: `plugins/lullaby/data/server.snbt` through vanilla's SNBT printer and parser, codecs and data fixer. A hand edit wins, a file that didn't load cleanly is never saved over, past `data_max_size` nothing is saved. Lives as long as the plugin, so it outlasts reloads. |
 | [Nms.java](src/main/java/io/github/kupfermeister/lullaby/nms/Nms.java) | Small vanilla reads and actions without a bigger class yet. |
 
 The library, in `src/main/resources/lullaby/lib/` (loaded in this order; each file starts with a comment saying
@@ -76,6 +77,7 @@ what it holds and gets three tables: `J` Java functions, `lib` what scripts see 
 | [objects.lua](src/main/resources/lullaby/lib/objects.lua) | Player, entity, world, block, chunk, block state, damage; `set{}`, `message`, `particle{}`, `sound{}`, `stop_sound{}`. |
 | [lazy.lua](src/main/resources/lullaby/lib/lazy.lua) | The wire, item stacks, components, `from_json`, Lullaby's own `pairs`/`next` (LuaJIT ignores `__pairs`). |
 | [commands.lua](src/main/resources/lullaby/lib/commands.lua) | `command{}`, `refresh_commands{}`, `online_players()`. |
+| [data.lua](src/main/resources/lullaby/lib/data.lua) | `server` and `server.data`: a plain Lua table while running, turned into a save tree for SavedData.java and back. |
 | [loader.lua](src/main/resources/lullaby/lib/loader.lua) | Loading script files, `import`. |
 | [java.lua](src/main/resources/lullaby/lib/java.lua) | The raw Java door's Lua side (table `java`, only when `unlock.java` is on) and its docs page. |
 
@@ -108,7 +110,7 @@ Other files:
    copies.)*
 4. Every class that runs work off the main thread says so in its Javadoc.
 
-Today three places meet other threads:
+Today four places meet other threads:
 
 - [Watchdog.java](src/main/java/io/github/kupfermeister/lullaby/lua/Watchdog.java) runs one thread that only compares
   two numbers and raises a flag; the main thread checks that flag at every library call into Java.
@@ -119,6 +121,10 @@ Today three places meet other threads:
 - [Input.java](src/main/java/io/github/kupfermeister/lullaby/nms/Input.java): while a script listens to `input`,
   a hook on the network threads wraps the input packets (it reads one field and touches nothing else). Vanilla queues
   them for the main thread as it queues every packet, in their order; the handlers run there.
+- [SavedData.java](src/main/java/io/github/kupfermeister/lullaby/nms/SavedData.java): after an autosave the file is
+  written on its one worker thread from bytes made on the main thread; every other step waits for that write first.
+  Tab completion of `/lullaby data server` may be asked for off the main thread: the keys are then worked out on the
+  main thread and handed back later ([LullabyCommand.java](src/main/java/io/github/kupfermeister/lullaby/LullabyCommand.java)).
 
 The raw Java door ([JavaDoor.java](src/main/java/io/github/kupfermeister/lullaby/lua/JavaDoor.java)) takes no Lua
 functions, so Java can never call a script back and Lullaby never hands a raw object to another thread. A script can
@@ -314,7 +320,7 @@ server and say which build is needed.
 
 Marked so nobody mistakes them for features: event fields Lullaby can't read yet (inventories, menus, lists of
 those, merchant offers, ...; `?` kinds in events.txt), new block snapshots in a changed list (only existing ones can be
-kept, removed or given another state), and events Paper fires off the main thread (chat, pre-login); script data that lives
-in Java and survives reloads; a generated packet system (`on_packet`, `send_packet`) on the same send core;
+kept, removed or given another state), and events Paper fires off the main thread (chat, pre-login); saved data on players,
+entities, items, blocks and chunks (only `server.data` exists so far); a generated packet system (`on_packet`, `send_packet`) on the same send core;
 inventories; more entity fields and actions (spawning, removing, equipment, effects); worker threads for big block
 edits; mixins as an optional add-on.

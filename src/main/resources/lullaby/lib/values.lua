@@ -162,6 +162,7 @@ local function value_type(name, fields, methods)
 		return true
 	end
 	kind_by_meta[meta] = name
+	I.value_fields[name] = fields
 	return meta
 end
 

@@ -61,7 +61,7 @@ public final class Lullaby extends JavaPlugin {
         }
 
         getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event -> {
-            event.registrar().register(LullabyCommand.build(this), "Lullaby: reload the scripts, show the version", List.of());
+            event.registrar().register(LullabyCommand.build(this), "Lullaby: reload the scripts, show the version or the saved data", List.of());
             event.registrar().register(LullabyCommand.buildShort(this), "Lullaby: reload the scripts", List.of());
         });
     }
@@ -70,7 +70,8 @@ public final class Lullaby extends JavaPlugin {
     public void onDisable() {
         tickTarget = null;
         if (engine != null) {
-            engine.unload(); // finals of running tasks run here
+            engine.unload(false); // finals of running tasks run here, then server.data is saved
+            engine.data().close();
             engine.watchdog().shutdown();
         }
     }

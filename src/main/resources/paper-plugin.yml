@@ -11,3 +11,6 @@ permissions:
   lullaby.command:
     description: Use /lullaby (reload, version) and /lul (the same as /lullaby reload).
     default: op
+  lullaby.data:
+    description: Use /lullaby data (look at server.data, the scripts' saved data). Needs lullaby.command too.
+    default: op

@@ -314,6 +314,15 @@ local function new_component(bytes, items)
 end
 I.new_component = new_component
 
+-- A codec table Java built inside a bigger tree (saved data, see data.lua) as a component.
+function I.as_component(c)
+	items_in(c)
+	return setmetatable(c, COMPONENT)
+end
+
+-- Wire bytes from Java as Lua values (the other direction of I.wire).
+I.decode = buffer.decode
+
 -- component("<red>Hi") reads MiniMessage (the only place that does); component(table or component) is a checked
 -- fresh copy, cleaned up by vanilla's codec.
 --[[doc

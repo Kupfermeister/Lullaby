@@ -165,6 +165,7 @@ I.is_int64 = is_int64
 -- metatables (__metatable = false) with its private copy of debug.getmetatable; scripts can't.
 I.kind_by_meta = {}
 local kind_by_meta = I.kind_by_meta
+I.value_fields = {} -- value type name -> its field names in order (values.lua value_type; data.lua saves by them)
 local debug_getmetatable = debug.getmetatable
 I.debug_getmetatable = debug_getmetatable
 
@@ -283,6 +284,7 @@ local DEFAULTS = {
 	error_repeat_seconds = 10,
 	particle_limit = 100000,
 	script_time_limit = 5,
+	data_max_size = 16,
 }
 
 -- Reads config.lua (a Lua file that returns a table) with nothing in reach, fills in defaults for missing keys.
@@ -471,5 +473,6 @@ function I.setup()
 	-- The exact error text of a script stopped by the time limit (Watchdog.java), so the pcall guards know it.
 	I.TIME_UP = J.set_time_limit(I.config.script_time_limit or 0)
 	J.set_error_window(tonumber(I.config.error_repeat_seconds) or 10)
+	I.data_setup(I.config) -- data.lua
 	build_sandbox(I.config.unlock)
 end

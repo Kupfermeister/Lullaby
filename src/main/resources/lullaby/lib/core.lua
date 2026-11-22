@@ -81,7 +81,7 @@ function I.report(kind, co, level, message, origin)
 		if name then via[#via + 1] = name end
 	end
 	message = message:gsub("^[^\n]-:%d+: ", "", 1) -- cut Lua's own "file:line: " prefix
-	J.report(kind, file, line, concat(via, " -> "), message)
+	J.report(kind, file, line, concat(via, " → "), message)
 end
 
 -- A yellow warning about the script line `level` levels up (2 = the caller of the library function).

@@ -9,16 +9,16 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.logger.slf4j.ComponentLogger;
 
 /**
- * Shows script errors and warnings to every online op in chat and in the console as the exact same text, all of it
- * red (a warning: all yellow, first word "Warning"):
+ * Shows script errors and warnings to every online op in chat and in the console. Chat:
  * <pre>
- * Error in scripts/lobby/join.lua on line 12
- *   via PlayerJoinEvent (on) -> greet
- *   the Lua error message
- *   37 times in 10s                                                 only in a repeat summary
+ * ⚠ Error in scripts/lobby/join.lua on line 12                      red (a warning: yellow, "Warning")
+ *   via PlayerJoinEvent (on) → greet                                gray
+ *   the Lua error message                                           gray
+ *   37 times in 10s                                                 gray, only in a repeat summary
  * </pre>
- * No symbols ("->", no "⚠"), because many consoles (Windows' default code page) show them as garbage like "ÔÜá",
- * and chat must match the console. The head names no function: the via line already ends with it.
+ * The console gets the same lines without symbols ("->" instead of "→", no "⚠"), because many consoles (Windows'
+ * default code page) show them as garbage like "ÔÜá", and all of it red (a warning: all yellow). The head names no
+ * function: the via line already ends with it.
  * The same error (kind, file, line, message) repeating within the window is only counted; when the window ends, one
  * summary with the count is shown. The Lua library finds file, line, function and "via" (see core.lua); this class
  * only formats and sends. Main thread only.
@@ -101,9 +101,11 @@ public final class ErrorReporter {
         details.append("\n  ").append(key.message());
         if (repeats > 0) details.append("\n  ").append(repeats).append(repeats == 1 ? " time in " : " times in ").append(Math.round(windowNanos / 1e9)).append('s');
 
-        Component text = Component.text(head.append(details).toString(), warning ? NamedTextColor.YELLOW : NamedTextColor.RED);
-        Nms.sendToOps(text);
-        if (warning) logger.warn(text);
-        else logger.error(text);
+        NamedTextColor color = warning ? NamedTextColor.YELLOW : NamedTextColor.RED;
+        Nms.sendToOps(Component.text("⚠ " + head, color).append(Component.text(details.toString(), NamedTextColor.GRAY)));
+
+        Component console = Component.text(head.append(details.toString().replace("→", "->")).toString(), color);
+        if (warning) logger.warn(console);
+        else logger.error(console);
     }
 }

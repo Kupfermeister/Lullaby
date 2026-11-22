@@ -176,10 +176,10 @@ Lua's disagree, loading stops with a message starting `Lullaby bug:`. Nothing lo
   replaced is removed.
 - Dangerous Lua parts (`io`, `os`, `ffi`, `debug`, C modules) and the raw Java door are locked by default and unlocked in the config
   (README lists what each allows). Deliberate power needs an unlock; one script must not break another by accident.
-- Error format: `Error in <path> on line N` (warnings: `Warning`), then the lines `via <event> -> <calls>`, the Lua
-  message without its `file:line:` prefix, and `N times in 10s` for collapsed repeats. Ops and the console get the
-  exact same text, all red for errors and all yellow for warnings. No symbols (`->`, no `⚠`), because Windows
-  consoles show them as garbage; console colors go through Paper's component logger, log files stay plain. Details:
+- Error format: `⚠ Error in <path> on line N` in red (warnings yellow, `Warning`), then gray lines: `via <event> →
+  <calls>`, the Lua message without its `file:line:` prefix, and `N times in 10s` for collapsed repeats. The console
+  gets the same lines without symbols (`->` instead of `→`, no `⚠`), because Windows consoles show them as garbage,
+  all red (warnings all yellow); console colors go through Paper's component logger, log files stay plain. Details:
   [ErrorReporter.java](src/main/java/io/github/kupfermeister/lullaby/error/ErrorReporter.java).
 - Every text players or the console see has a `// FORMAT:` comment (in Lua `-- FORMAT:`) right above it, so all of
   them can be found and polished: search for `FORMAT:`.

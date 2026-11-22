@@ -160,6 +160,9 @@ tasks.register<JavaExec>("runServer") {
     jvmArgs(
         "-Xms4G", "-Xmx4G",
         "-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8", // so ⚠ and other symbols survive the console
+        // Gradle hands the server's output on through a pipe, so Paper's console thinks there is no real terminal
+        // and drops every color; this keeps them (red errors, yellow warnings)
+        "-Dterminal.ansi=true",
         "--enable-native-access=ALL-UNNAMED", // allows native code (LuaJIT, the console library) without warnings
     )
     args("--nogui")

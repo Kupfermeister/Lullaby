@@ -198,12 +198,26 @@ end
 -- The Java slot holding this stack as it is now: its own slot if nothing changed (reading alone changes nothing),
 -- else a new copy built from the changed parts. Returns the slot and a helper object owning that new copy (nil if
 -- none): the caller frees it with I.release right after its Java call.
+-- Whether this part of a loaded item differs from the Java copy (reading alone changes nothing).
+local function part_changed(it, part, value)
+	local send = written[it][part]
+	if part == "components" and not send and value ~= nil then send = I.wire(value) ~= original[it] end
+	return send
+end
+
+-- Whether the script changed this item_stack since it was made (event lists use it to see a change).
+function I.item_changed(it)
+	for part in raw_next, loaded[it] do
+		if part_changed(it, part, rawget(it, part)) then return true end
+	end
+	return false
+end
+
 function I.item_java(it)
 	local changed, any = {}, false
 	for part in raw_next, loaded[it] do
 		local value = rawget(it, part)
-		local send = written[it][part]
-		if part == "components" and not send and value ~= nil then send = I.wire(value) ~= original[it] end
+		local send = part_changed(it, part, value)
 		if send then
 			-- FORMAT: a part set to nil
 			if value == nil then error("item_stack: " .. part .. " can't be nil" .. (part == "components"

@@ -4,6 +4,7 @@ import io.github.kupfermeister.lullaby.Engine;
 import io.github.kupfermeister.lullaby.event.EventBridge;
 import io.github.kupfermeister.lullaby.nms.Codecs;
 import io.github.kupfermeister.lullaby.nms.Entities;
+import io.github.kupfermeister.lullaby.nms.Fields;
 import io.github.kupfermeister.lullaby.nms.Nms;
 import io.github.kupfermeister.lullaby.nms.Packets;
 import io.github.kupfermeister.lullaby.nms.ScriptCommands;
@@ -141,6 +142,19 @@ final class JavaFunctions {
             events.setBlockState(slots.get(slot(L, 1)), (int) L.toInteger(2), (int) L.toInteger(3));
             return 0;
         });
+        // Entry i (1-based) of the list field event_get just copied (events.lua reads them right away).
+        add(lua, "event_list_item", L -> events.listItem(L, (int) L.toInteger(1)));
+        // event slot, field number, the changed list's wire bytes (entries as EventBridge.setList describes)
+        add(lua, "event_set_list", L -> {
+            events.setList(slots.get(slot(L, 1)), (int) L.toInteger(2), Wire.read(L.toBuffer(3)), slots::get);
+            return 0;
+        });
+        // event slot, field number, world slot, x, y, z, vanilla's block state number
+        add(lua, "event_set_snapshot", L -> {
+            events.setSnapshot(slots.get(slot(L, 1)), (int) L.toInteger(2), slots.get(slot(L, 3)), (int) L.toInteger(4),
+                    (int) L.toInteger(5), (int) L.toInteger(6), (int) L.toInteger(7));
+            return 0;
+        });
         // Slots (see Slots.java): objects are created in Lua, Java keeps what each number stands for.
         addFree(lua, "free_slots", L -> {
             slots.free(string(L, 1));
@@ -260,6 +274,12 @@ final class JavaFunctions {
             return 0;
         });
 
+        // Arguments: what ("message{}"), the unknown key as text, the names it takes (one per line). Gives the error
+        // text, so actions checked in Lua word it exactly as Fields does for the others.
+        add(lua, "unknown_field", L -> {
+            LuaText.push(L, Fields.unknownField(string(L, 1), string(L, 2), List.of(string(L, 3).split("\n"))));
+            return 1;
+        });
         add(lua, "message", L -> {
             L.push(Nms.sendLiteral(slots.get(slot(L, 1)), string(L, 2)));
             return 1;

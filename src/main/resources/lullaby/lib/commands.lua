@@ -42,7 +42,7 @@ local runners = {}   -- executable node id -> { fn, checks = { { name, fn } }, o
 
 -- Every check below raises its message without a position (level 0); lib.command adds the script line.
 local function fail(message)
-	error("command: " .. message, 0)
+	error("command{}: " .. message, 0)
 end
 
 -- A word to type: anything without spaces, not empty (Kupfermeister: symbols allowed, "/set" gives WorldEdit-style //set).
@@ -291,7 +291,7 @@ expert: Time limit | the function runs as a task; checked: it calls into the gam
 status: unconfirmed
 ]]
 function lib.command(a)
-	if type(a) ~= "table" then error("command needs { }: command{ \"name\", function(c) ... end }", 2) end
+	if type(a) ~= "table" then error("command{} needs { }: command{ \"name\", function(c) ... end }", 2) end
 	-- players' trees are worked out after loading, so a later command would be half there
 	if not I.loading then error("command{} works only while scripts load (at the top of a file)", 2) end
 	local ok, err = pcall(check_command, a)
@@ -336,6 +336,7 @@ function I.refresh_player(uuid)
 	J.cmd_refresh(uuid, concat(ids, "\n"), concat(records, RS))
 end
 
+local REFRESH_TAKES = I.takes(0, "player")
 --[[doc
 name: refresh_commands{ }
 kind: doing
@@ -348,16 +349,17 @@ returns: nothing
 expert: Thread | main thread, like every script
 expert: Cost | 50 µs–2 ms per player, more with many show and suggest functions (guess, not measured)
 expert: Under the hood | runs every permission, show and suggest for the player, then sends vanilla's Commands packet
-expert: Can fail | player not a player; an offline player is skipped quietly; errors in show or suggest are reported and that part is hidden
+expert: Can fail | an unknown field (the error lists the ones it takes), player not a player; an offline player is skipped quietly; errors in show or suggest are reported and that part is hidden
 expert: Reload | reload refreshes every online player anyway
 expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 function lib.refresh_commands(a)
-	if type(a) ~= "table" then error("refresh_commands needs { }: refresh_commands{ player = p }", 2) end
+	if type(a) ~= "table" then error("refresh_commands{} needs { }: refresh_commands{ player = p }", 2) end
 	if I.object_kind(a.player) ~= "player" then
-		error("refresh_commands: player must be a player, got " .. I.type_name(a.player), 2)
+		error("refresh_commands{}: player must be a player, got " .. I.type_name(a.player), 2)
 	end
+	I.only(a, "refresh_commands{}", REFRESH_TAKES, 2)
 	if a.player.online then I.refresh_player(a.player.uuid) end
 end
 

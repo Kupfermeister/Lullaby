@@ -190,6 +190,7 @@ local function place_of(f)
 	return info.source .. ":" .. info.linedefined
 end
 
+local RUN_TAKES = I.takes(1, "args", "final", "id")
 --[[doc
 name: run{ }
 kind: doing
@@ -206,17 +207,18 @@ note: A task (and every event handler) that runs longer than the config's script
 expert: Thread | main thread, like every script; a task is a coroutine, never a thread
 expert: Cost | 1–5 µs to start (coroutines are reused) (guess, not measured)
 expert: Under the hood | plain Lua coroutines and a tick list (tasks.lua); no Java
-expert: Can fail | f not a function, args not a table, final not a function; an id already running gives nil
+expert: Can fail | an unknown field (the error lists the ones it takes), f not a function, args not a table, final not a function; an id already running gives nil
 expert: Reload | every task ends and its final runs
 expert: Time limit | each task has its own clock and a wait starts it again; checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 function lib.run(a)
-	if type(a) ~= "table" then error("run needs { }: run{ f, args = { ... } }", 2) end
+	if type(a) ~= "table" then error("run{} needs { }: run{ f, args = { ... } }", 2) end
 	local f, args, final, id = a[1], a.args, a.final, a.id
-	if type(f) ~= "function" then error("run: the first value must be a function, got " .. I.type_name(f), 2) end
-	if args ~= nil and type(args) ~= "table" then error("run: args must be a table { ... }, got " .. I.type_name(args), 2) end
-	if final ~= nil and type(final) ~= "function" then error("run: final must be a function, got " .. I.type_name(final), 2) end
+	if type(f) ~= "function" then error("run{}: the first value must be a function, got " .. I.type_name(f), 2) end
+	if args ~= nil and type(args) ~= "table" then error("run{}: args must be a table { ... }, got " .. I.type_name(args), 2) end
+	if final ~= nil and type(final) ~= "function" then error("run{}: final must be a function, got " .. I.type_name(final), 2) end
+	I.only(a, "run{}", RUN_TAKES, 2)
 	local slot
 	if id ~= nil then
 		local place = place_of(f)
@@ -295,6 +297,7 @@ function lib.wait(duration)
 	co_yield(WAIT, max(1, ceil(ms / 50)))
 end
 
+local STOP_TAKES = I.takes(0, "task", "force")
 --[[doc
 name: stop{ }
 kind: doing
@@ -308,15 +311,16 @@ returns: boolean
 expert: Thread | main thread, like every script
 expert: Cost | 0.5–5 µs plus its final (guess, not measured)
 expert: Under the hood | plain Lua; a task stopping itself unwinds with an error pcall can't catch
-expert: Can fail | task not a task; an ended task gives false
+expert: Can fail | an unknown field (the error lists the ones it takes), task not a task; an ended task gives false
 expert: Reload | nothing to undo
 expert: Time limit | not checked: plain Lua, no call into the game
 status: unconfirmed
 ]]
 function lib.stop(a)
-	if type(a) ~= "table" then error("stop needs { }: stop{ task = t }", 2) end
+	if type(a) ~= "table" then error("stop{} needs { }: stop{ task = t }", 2) end
 	local task = a.task ~= nil and handles[a.task]
-	if not task then error("stop: task must be a task, got " .. I.type_name(a.task), 2) end
+	if not task then error("stop{}: task must be a task, got " .. I.type_name(a.task), 2) end
+	I.only(a, "stop{}", STOP_TAKES, 2)
 	if not task.alive then return false end
 	local force = a.force == true
 	local status = co_status(task.co)

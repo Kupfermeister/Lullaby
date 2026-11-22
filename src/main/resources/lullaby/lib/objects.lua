@@ -106,6 +106,7 @@ syntax: player( text ) → player | nil
 lead: A player by name or UUID: online, or one who has played on this server before. nil if none. Each player exists once, so == works, online and offline. A player is an entity too: every field of entity( ) works on p (p.pos, p.health, ...) and reads nil while the player is offline; set{ entity = p, ... } changes an online player.
 arg: x | text · player | Name or UUID (a player is returned as is).
 returns: player · nil
+is: entity
 field: uuid | text | The UUID, lowercase with dashes. Also while offline.
 field: name | text · nil | The name; for an offline player the one the server last saw (nil if it never saw one).
 field: online | boolean | Whether the player is online now.
@@ -604,10 +605,80 @@ status: unconfirmed
 ]]
 function I.new_damage(type_id, direct, causing, pos) return setmetatable({ type_id, direct, causing, pos }, DAMAGE) end
 
+-- A block snapshot: a value whose state can be changed (only inside an event, where the change goes back: events.lua).
+local SNAPSHOT = I.value_type("block_snapshot", { "block", "state" }, {})
+-- FORMAT: a block_snapshot as text
+SNAPSHOT.__tostring = function(s) return "block_snapshot " .. tostring(rawget(s, 2)) .. " at " .. tostring(rawget(s, 1)) end
+local STATE_META = I.STATE_META
+
+--[[doc
+id: block_snapshot
+name: block_snapshot
+kind: type
+group: Blocks
+words: snapshot blockstate new state grow form spread tree structure
+syntax: s.block   s.state   s.state = block_state
+lead: A block and the state it has, would get or had, from events: e.new_state in BlockFormEvent, BlockGrowEvent, ..., e.blocks in StructureGrowEvent (a list of them). Changing s.state inside on{ } changes what the event places, where the event's page says the field can be changed; anywhere else a change is a red error when the handler ends (never silently lost).
+field: block | block | Where.
+field: state | block_state | The state. The only field that can be changed.
+example:
+  -- trees grow birch logs instead of oak logs
+  on{ "StructureGrowEvent", function(e)
+    for _, s in ipairs(e.blocks) do
+      if s.state.type == "minecraft:oak_log" then s.state = block_state("birch_log") end
+    end
+  end }
+expert: Java object | none kept: a Lua value (block and block_state); in an event, the change is written back into Paper's BlockState when the handler ends or first waits
+expert: Stays valid | always (a copy)
+expert: Compare | == compares block and state
+expert: Cost | made when the event field is read: 2–10 µs per snapshot (guess, not measured)
+status: unconfirmed
+]]
+function I.new_block_snapshot(block, state)
+	return setmetatable({ block, state }, SNAPSHOT)
+end
+-- s.state = x: the fields live in [1], [2], so the name reaches __newindex; checked here (Java can't see an object's
+-- kind), then stored in [2], where events.lua looks for a change.
+SNAPSHOT.__newindex = function(s, key, value)
+	-- FORMAT: a block_snapshot field that can't be changed, or state of the wrong kind
+	if key ~= "state" then error("block_snapshot: only state can be changed (." .. tostring(key) .. ")", 2) end
+	if I.debug_getmetatable(value) ~= STATE_META then
+		error("block_snapshot: state must be a block_state, got " .. I.type_name(value), 2)
+	end
+	rawset(s, 2, value)
+end
+
+local PROFILE = I.value_type("profile", { "name", "uuid", "textures", "textures_signature" }, {})
+-- FORMAT: a profile as text
+PROFILE.__tostring = function(p) return "profile " .. tostring(rawget(p, 1) or rawget(p, 2)) end
+
+--[[doc
+id: profile
+name: profile
+kind: type
+group: Players
+words: game profile skin textures head
+syntax: p.name   p.uuid   p.textures
+lead: A player's profile as the server knows it (name, UUID, skin), from events: e.player_profile in PlayerServerFullCheckEvent, ProfileWhitelistVerifyEvent, ... A value: your own copy, it can't be changed.
+field: name | text · nil | The name; nil if the profile has none.
+field: uuid | text · nil | The UUID, lowercase with dashes; nil if the profile has none.
+field: textures | text · nil | The skin: the "textures" property's value (base64 text, as Mojang sends it); nil if none.
+field: textures_signature | text · nil | Mojang's signature of textures; nil if unsigned.
+expert: Java object | none kept: a plain Lua value; other profile properties than textures aren't shown yet
+expert: Stays valid | always (a copy)
+expert: Compare | == compares all four fields
+expert: Cost | made when the event field is read: 2–10 µs (guess, not measured)
+status: unconfirmed
+]]
+function I.new_profile(name, uuid, textures, signature)
+	return setmetatable({ name, uuid, textures, signature }, PROFILE)
+end
+
 -- ---------------------------------------------------------------------------------------------------------------
 -- Actions
 -- ---------------------------------------------------------------------------------------------------------------
 
+local MESSAGE_TAKES = I.takes(0, "player", "text")
 --[[doc
 name: message{ }
 kind: doing
@@ -621,19 +692,21 @@ returns: boolean (false if the player is offline)
 expert: Thread | main thread, like every script
 expert: Cost | text 3–15 µs, a component 10–60 µs (guess, not measured)
 expert: Under the hood | one Lua → Java call; packet System Chat (play, clientbound)
-expert: Can fail | player or text of the wrong kind; an offline player gives false, no error
+expert: Can fail | an unknown field (the error lists the ones it takes), player or text of the wrong kind; an offline player gives false, no error
 expert: Reload | sent messages stay in chat
 expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 function lib.message(a)
-	if type(a) ~= "table" then error("message needs { }: message{ player = p, text = \"...\" }", 2) end
-	if kind_of[a.player] ~= "player" then error("message: player must be a player, got " .. I.type_name(a.player), 2) end
+	if type(a) ~= "table" then error("message{} needs { }: message{ player = p, text = \"...\" }", 2) end
+	if kind_of[a.player] ~= "player" then error("message{}: player must be a player, got " .. I.type_name(a.player), 2) end
 	local text = a.text
-	if type(text) == "table" and (I.type_name(text) == "component" or debug_getmetatable(text) == nil) then
-		return J.message_component(slot_of[a.player], I.wire(text))
+	local component = type(text) == "table" and (I.type_name(text) == "component" or debug_getmetatable(text) == nil)
+	if not component and type(text) ~= "string" then
+		error("message{}: text must be text or a component, got " .. I.type_name(text), 2)
 	end
-	if type(text) ~= "string" then error("message: text must be text or a component, got " .. I.type_name(text), 2) end
+	I.only(a, "message{}", MESSAGE_TAKES, 2)
+	if component then return J.message_component(slot_of[a.player], I.wire(text)) end
 	return J.message(slot_of[a.player], text)
 end
 
@@ -643,39 +716,47 @@ end
 -- What each action takes is in its doc block below (the doc block is the one description; don't copy it here).
 -- ---------------------------------------------------------------------------------------------------------------
 
--- The receivers as slot numbers: player = p or players = { p1, p2, ... } (exactly one of them).
+-- The receivers as slot numbers: player = p or players = { p1, p2, ... } (exactly one of them). `what` is the
+-- error prefix ("particle{}"). Returns the player's slot and nil, or nil and the list of slots. Errors use level 4:
+-- receivers <- action_table <- the action <- the script.
 local function receivers(a, what)
 	local p, list = a.player, a.players
 	-- FORMAT: player/players wrong
-	if (p == nil) == (list == nil) then error(what .. ": give player = p or players = { ... } (one of them)", 3) end
+	if (p == nil) == (list == nil) then error(what .. ": give player = p or players = { ... } (one of them)", 4) end
 	if p ~= nil then
-		if kind_of[p] ~= "player" then error(what .. ": player must be a player, got " .. I.type_name(p), 3) end
-		return { slot_of[p] }
+		if kind_of[p] ~= "player" then error(what .. ": player must be a player, got " .. I.type_name(p), 4) end
+		return slot_of[p], nil
 	end
 	if type(list) ~= "table" or debug_getmetatable(list) ~= nil then
-		error(what .. ": players must be a list of players, got " .. I.type_name(list), 3)
+		error(what .. ": players must be a list of players, got " .. I.type_name(list), 4)
 	end
 	local n = 0
 	for key in raw_next, list do
 		n = n + 1
 		-- FORMAT: players is not a plain list
 		if type(key) ~= "number" or key < 1 or key ~= math.floor(key) then
-			error(what .. ": players must be a list (no other keys), found key " .. tostring(key), 3)
+			error(what .. ": players must be a list (no other keys), found key " .. tostring(key), 4)
 		end
 	end
 	local slots = {}
 	for i = 1, n do
 		local q = list[i]
 		-- FORMAT: a list entry that is not a player (nil: a hole in the list)
-		if kind_of[q] ~= "player" then error(what .. ": players[" .. i .. "] must be a player, got " .. I.type_name(q), 3) end
+		if kind_of[q] ~= "player" then error(what .. ": players[" .. i .. "] must be a player, got " .. I.type_name(q), 4) end
 		slots[i] = slot_of[q]
 	end
-	return slots
+	return nil, slots
 end
 
-local function action_table(a, what)
+-- The wire table of a packet action: ALL of a's fields (so Java's Fields.done can refuse a typo), with the
+-- receivers as slots. name: "particle"; errors start with "particle{}:".
+local function action_table(a, name)
 	-- FORMAT: action called without { }
-	if type(a) ~= "table" then error(what .. " needs { }: " .. what .. "{ player = p, ... }", 3) end
+	if type(a) ~= "table" then error(name .. "{} needs { }: " .. name .. "{ player = p, ... }", 3) end
+	local t = {}
+	for key, value in raw_next, a do t[key] = value end
+	t.player, t.players = receivers(a, name .. "{}")
+	return t
 end
 
 --[[doc
@@ -699,13 +780,13 @@ note: Positions × count (count 0 counts as 1) over the config's particle_limit 
 expert: Thread | main thread, like every script
 expert: Cost | 5–50 µs per call plus 0.2–2 µs per position and player (guess, not measured)
 expert: Under the hood | one Lua → Java call; packet Level Particles (play, clientbound), one per position, bundled by 4096, built once and shared by every receiver
-expert: Can fail | positions × count over particle_limit; any field vanilla's codec refuses (named in the error)
+expert: Can fail | an unknown field (the error lists the ones it takes), positions × count over particle_limit; any field vanilla's codec refuses (named in the error)
 expert: Reload | particles already shown play out
 expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 function lib.particle(a)
-	action_table(a, "particle")
+	local t = action_table(a, "particle")
 	-- The config's particle_limit is checked ONLY here, before the list is packed for Java (a huge list would cost
 	-- memory first). Positions: a plain list counts its entries, anything else counts as one (Java checks the kinds).
 	local limit = I.config.particle_limit
@@ -720,11 +801,7 @@ function lib.particle(a)
 				.. "particle_limit of " .. I.number_text(limit), 2)
 		end
 	end
-	J.particle(I.wire({
-		players = receivers(a, "particle"), particle = a.particle, pos = a.pos, dist = a.dist,
-		max_speed = a.max_speed, count = a.count, override_limiter = a.override_limiter, always_show = a.always_show,
-		randomization_type = a.randomization_type,
-	}))
+	J.particle(I.wire(t))
 end
 
 --[[doc
@@ -745,25 +822,22 @@ returns: nothing
 expert: Thread | main thread, like every script
 expert: Cost | 3–20 µs plus 0.5–2 µs per player (guess, not measured)
 expert: Under the hood | one Lua → Java call; packet Sound or Sound Entity (play, clientbound)
-expert: Can fail | no source or no pos/entity, an unknown source (the error lists them), fields vanilla refuses
+expert: Can fail | an unknown field (the error lists the ones it takes), no source or no pos/entity, an unknown source (the error lists them), fields vanilla refuses
 expert: Reload | sounds already playing keep playing
 expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 function lib.sound(a)
-	action_table(a, "sound")
+	local t = action_table(a, "sound")
 	local entity = a.entity
 	if entity ~= nil then
 		-- FORMAT: sound entity is not an entity
 		if kind_of[entity] ~= "player" and kind_of[entity] ~= "entity" then
-			error("sound: entity must be an entity or a player, got " .. I.type_name(entity), 2)
+			error("sound{}: entity must be an entity or a player, got " .. I.type_name(entity), 2)
 		end
-		entity = slot_of[entity]
+		t.entity = slot_of[entity]
 	end
-	J.sound(I.wire({
-		players = receivers(a, "sound"), sound = a.sound, source = a.source, pos = a.pos, entity = entity,
-		volume = a.volume, pitch = a.pitch, seed = a.seed,
-	}))
+	J.sound(I.wire(t))
 end
 
 --[[doc
@@ -809,14 +883,13 @@ returns: nothing
 expert: Thread | main thread, like every script
 expert: Cost | 3–15 µs plus 0.5–2 µs per player (guess, not measured)
 expert: Under the hood | one Lua → Java call; packet Stop Sound (play, clientbound)
-expert: Can fail | receivers of the wrong kind, an unknown source
+expert: Can fail | an unknown field (the error lists the ones it takes), receivers of the wrong kind, an unknown source
 expert: Reload | nothing to undo
 expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 function lib.stop_sound(a)
-	action_table(a, "stop_sound")
-	J.stop_sound(I.wire({ players = receivers(a, "stop_sound"), sound = a.sound, source = a.source }))
+	J.stop_sound(I.wire(action_table(a, "stop_sound")))
 end
 
 -- Java hands a value over as a kind word plus values (ToLua.java; "v" is a plain value, "c" a component, EventBridge
@@ -836,6 +909,8 @@ function I.from_java(kind, a, b, c, d, f, g, h, i)
 	if kind == "c" then return I.new_component(a, b) end
 	if kind == "block_pos" then return I.new_block_pos(a, b, c) end
 	if kind == "aabb" then return I.new_aabb(I.new_vec3(a, b, c), I.new_vec3(d, f, g)) end
+	if kind == "block_snapshot" then return I.new_block_snapshot(I.block_at(a, b, c, d), I.block_state_by_id(f)) end
+	if kind == "profile" then return I.new_profile(a, b, c, d) end
 	if kind == "damage" then
 		return I.new_damage(a, nested_entity(b, c), nested_entity(d, f), g and I.new_vec3(g, h, i) or nil)
 	end

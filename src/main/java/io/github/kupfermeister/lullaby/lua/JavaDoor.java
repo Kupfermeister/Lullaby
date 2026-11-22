@@ -256,7 +256,7 @@ final class JavaDoor {
         // FORMAT: a class without public constructors (or abstract, an interface)
         if (found.length == 0 || Modifier.isAbstract(c.getModifiers()))
             throw new IllegalArgumentException(what + ": " + c.getName() + " can't be created with new");
-        Choice choice = choose(what, found, arguments(L, 3));
+        Choice choice = choose(what, found, arguments(L, 2)); // stack: class, mask, arguments
         try {
             return push(L, ((Constructor<?>) choice.executable).newInstance(choice.args));
         } catch (InvocationTargetException e) {

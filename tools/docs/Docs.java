@@ -26,7 +26,8 @@ import java.util.stream.Stream;
  *   lines below continue it), status (confirmed | unconfirmed), words (extra search words), arg: name | types | text
  *   (repeatable), field: name | types | text (repeatable: the fields of the object or value the page is about),
  *   fields-from: <java file> <enum> (the field names' owner is that Java enum: the build checks that the field: lines
- *   name exactly its constants, lowercase, see checkFieldsFrom), expert: key | value (repeatable), also (more ids that
+ *   name exactly its constants, lowercase, see checkFieldsFrom), is: <id> (the object is also that one and has all
+ *   its fields: player has "is: entity"; VS Code's class inherits it), expert: key | value (repeatable), also (more ids that
  *   lead to this page, space-separated: Lua keywords, old page names). Topic pages without a function
  *   (tools/docs/lua.txt) give id:.
  * Every kind has fixed expert rows (EXPERT_ROWS), in that order, so readers always find the same things in the same
@@ -480,7 +481,7 @@ public final class Docs {
             type = switch (read) {
                 case "enum", "key", "uuid" -> "text";
                 case "integer" -> "number";
-                default -> read;
+                default -> read.startsWith("list:") ? "list of " + read.substring(5) : read;
             };
             text = switch (read) {
                 case "enum" -> {
@@ -492,12 +493,14 @@ public final class Docs {
                 case "integer" -> "a whole number";
                 default -> "";
             };
-            String change = p[4].equals("-") ? "read only"
+            String change = write.equals("-") ? "read only"
                     : write.startsWith("?") ? "read only for now: Lullaby can't make a " + write.substring(1) + " yet"
-                    : "can be changed in on{ }" + (write.equals("component") ? " (to text or a component)" : "");
+                    : "can be changed in on{ }" + (write.equals("component") ? " (to text or a component)"
+                    : write.startsWith("list:") ? " (change the list or its entries; it goes back when the handler ends)"
+                    : write.equals("block_snapshot") ? " (change its state)" : "");
             text = text.isEmpty() ? change : text + "; " + change;
         }
-        boolean writable = !p[4].equals("-") && !write.startsWith("?");
+        boolean writable = !write.equals("-") && !write.startsWith("?");
         return new String[]{p[1], type, text, writable ? "w" : ""};
     }
 
@@ -605,9 +608,42 @@ public final class Docs {
         return b.toString();
     }
 
-    /** Definitions for the Lua language server (VS Code autocomplete). Types: "list of X" -> X[], text -> string. */
+    /**
+     * Definitions for the Lua language server (VS Code autocomplete). Types: "list of X" -> X[], text -> string.
+     * Every page with field: lines gives a class of that name with those fields (is: gives its parent class); every
+     * other page a type word names gets an empty class, so the type is known. A returns: line that is a plain type
+     * list ("player · nil", "boolean (false if ...)": the words in brackets become the note) gives @return.
+     */
     private static String luals(List<Entry> list) {
         StringBuilder b = new StringBuilder("---@meta\n-- Lullaby library definitions for the Lua language server. Generated, do not edit.\n");
+        Map<String, Entry> byId = new HashMap<>();
+        for (Entry e : list) byId.put(e.id(), e);
+        // Classes first, each followed by a blank line, so none is bound to the function of the same name below.
+        Set<String> classes = new TreeSet<>();
+        for (Entry e : list) {
+            if (e.f().containsKey("sub")) continue;
+            if (!e.fields().isEmpty()) classes.add(e.id());
+            List<String> words = new ArrayList<>();
+            for (String[] a : e.args()) words.add(a[1]);
+            for (String[] fl : e.fields()) words.add(fl[1]);
+            if (returnTypes(e) != null) words.add(returnTypes(e)[0]);
+            for (String w : words) for (String t : w.split("·")) {
+                t = t.trim().replaceFirst("^list of ", "");
+                // not Lua's own pages (function, table, ...): those are Lua's types already
+                if (byId.containsKey(t) && List.of("reading", "type").contains(byId.get(t).f().get("kind"))) classes.add(t);
+            }
+        }
+        for (String c : classes) {
+            Entry e = byId.get(c);
+            b.append('\n').append("---@class ").append(c);
+            if (e.f().containsKey("is")) b.append(" : ").append(e.f().get("is"));
+            b.append('\n');
+            for (String[] fl : e.fields()) {
+                b.append("---@field ").append(fl[0]).append(' ').append(luaType(fl[1]));
+                if (fl.length > 2 && !fl[2].isEmpty()) b.append(' ').append(fl[2]);
+                b.append('\n');
+            }
+        }
         Set<String> tables = new HashSet<>(); // "java" of java.class: declared once, before its first function
         for (Entry e : list) {
             String kind = e.f().get("kind");
@@ -622,15 +658,38 @@ public final class Docs {
                 for (String[] a : e.args())
                     for (String n : a[0].replace("?", "").split("/"))
                         b.append("---@field ").append(n.trim().matches("\\d+") ? "[" + n.trim() + "]" : n.trim()).append("? ").append(luaType(a[1])).append(' ').append(a[2]).append('\n');
-                b.append("---@param a lullaby.").append(e.id()).append("_args\nfunction ").append(e.id()).append("(a) end\n");
+                b.append("---@param a lullaby.").append(e.id()).append("_args\n");
+                appendReturn(b, e);
+                b.append("function ").append(e.id()).append("(a) end\n");
             } else {
                 for (String[] a : e.args()) b.append("---@param ").append(a[0].replace("?", "").split("/")[0].trim()).append(' ').append(luaType(a[1])).append('\n');
                 StringJoiner params = new StringJoiner(", ");
                 for (String[] a : e.args()) params.add(a[0].replace("?", "").split("/")[0].trim());
+                appendReturn(b, e);
                 b.append("function ").append(e.id()).append('(').append(params).append(") end\n");
             }
         }
         return b.toString();
+    }
+
+    /** The returns: line as { types, note } when it is a plain type list (see luals), else null. "nothing": null. */
+    private static String[] returnTypes(Entry e) {
+        String r = e.f().get("returns");
+        if (r == null) return null;
+        String note = "";
+        Matcher m = Pattern.compile("^(.*?)\\s*\\((.*)\\)$").matcher(r);
+        if (m.matches()) { r = m.group(1); note = m.group(2); }
+        for (String t : r.split("·")) if (!t.trim().matches("(list of )?[a-z_0-9]+")) return null;
+        if (r.trim().equals("nothing")) return null;
+        return new String[]{r, note};
+    }
+
+    private static void appendReturn(StringBuilder b, Entry e) {
+        String[] r = returnTypes(e);
+        if (r == null) return;
+        b.append("---@return ").append(luaType(r[0]));
+        if (!r[1].isEmpty()) b.append(" # ").append(r[1]);
+        b.append('\n');
     }
 
     private static String luaType(String types) {

@@ -632,7 +632,7 @@ local function corners(what, meta, kind, first, second, n)
 		end
 		first, second = a, b
 	elseif n ~= 2 then
-		error(what .. " needs two corners (" .. kind .. "), got " .. n .. " values", 0)
+		error(what .. " needs two corners (" .. kind .. "), got " .. n .. (n == 1 and " value" or " values"), 0)
 	end
 	if not is(meta, first) or not is(meta, second) then
 		error(what .. " needs two " .. kind .. " corners, got " .. I.type_name(first) .. " and " .. I.type_name(second), 0)

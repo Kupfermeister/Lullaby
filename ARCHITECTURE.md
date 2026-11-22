@@ -142,6 +142,11 @@ components; messages go out as vanilla's System Chat Message packet. As few depe
   Objects change only through actions: `set{ entity = e, velocity = v }` uses the same names as the fields read.
 - Event fields come from Paper's getters and setters by one rule (`getJoinMessage()` → `e.join_message`,
   `isCancelled()` → `e.cancelled`), writable in `on`, read only in `after`.
+- A change goes where the value lives. A list field (`e.drops`) reads as a plain Lua list, a block snapshot
+  (`e.new_state`) as a `block_snapshot`; the same one for every read in the handler. When the handler ends or first
+  waits, a changed one goes back into the event (events.lua `flush`, EventBridge `setList`/`setSnapshot`); where it
+  can't (in `after`, or a field Paper doesn't let change) that is a red error at the line that read it. Which lists
+  without a setter may change is EventList.java's `CHANGEABLE_LISTS` (the lists Paper's docs call mutable).
 
 **Speed.** A library function with named arguments is a thin Lua wrapper that reads the `{ }` fields and calls Java
 once with plain values; Java never reads a Lua table field by field (each read is a slow Lua-Java trip). Several
@@ -152,7 +157,10 @@ test server) when fields moved from names to numbers.
 **Checks.** Every value from a script is checked exactly once, where it becomes a game thing. Lua checks only what
 Java can't see (is it a function, a player object, was `{ }` given); Java checks everything that arrives over the
 wire, through [Fields.java](src/main/java/io/github/kupfermeister/lullaby/nms/Fields.java). Errors name the field,
-what it needs and what it got: `count must be a whole number, got 2.5`.
+what it needs and what it got: `count must be a whole number, got 2.5`. A field a doing function doesn't take is an
+error too (`particle{}: unknown field cuont (it takes ...)`), never ignored: Java's `Fields.done()` refuses every key
+the action's code didn't read; functions checked in Lua use `I.only` (core.lua) with Java's wording. Errors of a
+doing function start with its name and `{}` (`sound{}: ...`).
 
 **One owner per list.** Java owns the game's facts (wire kinds, events and their fields, event stages, sound
 sources); the library reads them once at startup. The events come from Paper itself: EventList.java writes them into
@@ -176,7 +184,8 @@ Lua's disagree, loading stops with a message starting `Lullaby bug:`. Nothing lo
 
 **Docs.** Everything scripts can use has a `--[[doc ... ]]` block right above its `function lib.NAME(`, in the same
 change that adds or changes it. The format is at the top of [Docs.java](tools/docs/Docs.java). The block feeds the
-docs site, VS Code autocomplete and the Markdown copy; uses and used-by are found from the code, not written.
+docs site, VS Code autocomplete (a class per page with `field:` lines, `is:` for its parent, `@return` from a plain
+`returns:` type list) and the Markdown copy; uses and used-by are found from the code, not written.
 Pages changed in the last three commits that changed any page are marked new or changed, brightest for the newest
 (`fresh` in Docs.java, from git blame over each page's lines; uncommitted changes count as the newest), so nothing
 has to be marked by hand. The GitHub job checks out the whole history for this.
@@ -207,14 +216,16 @@ the docs build, not from discipline.
    plain arguments.
 2. If plain Lua can do it, stop here.
 3. Otherwise, in the Lua function check only what Java can't see (`{ }` given, player objects), then call Java once:
-   `J.name(plain values)`, or `J.name(I.wire({ ... }))` for several fields.
+   `J.name(plain values)`, or `J.name(I.wire({ ... }))` for several fields. A doing function refuses fields it doesn't
+   take: through the wire, send all of the `{ }` and call `a.done()` in Java (step 5); otherwise call
+   `I.only(a, "name{}", NAME_TAKES, 2)` in Lua, with `local NAME_TAKES = I.takes(...)` above the doc block.
 4. In [JavaFunctions.java](src/main/java/io/github/kupfermeister/lullaby/lua/JavaFunctions.java), inside `fill`,
    add `add(lua, "name", L -> { ... })`. Arguments are stack positions 1, 2, ...; push the results and return how
    many. Text goes through `LuaText`. Use `add`, not `addFree` (`add` checks the script time limit; `addFree` is only
    for what the library needs while loading or reporting).
 5. Anything that touches Minecraft's code goes into a static method in `nms` ([Nms.java](src/main/java/io/github/kupfermeister/lullaby/nms/Nms.java)
-   or the class of its topic). Wire fields are read through `Fields`. Every new message text gets a `FORMAT:`
-   comment.
+   or the class of its topic). Wire fields are read through `Fields`; call `a.done()` after the last read, before
+   anything changes. Every new message text gets a `FORMAT:` comment.
 
 Follows by itself: scripts see `lib.NAME` as a global; the docs site page, autocomplete and the Markdown copy come
 from the doc block; "uses" and the grayed page for `J.name` are found from the code. A `function lib.NAME(` without a
@@ -223,7 +234,9 @@ doc block stops the docs build with its file and line.
 ### Events
 
 Every Paper event is there already: a new one in Paper appears by itself with the next build (commit the changed
-`events.txt` so the docs site shows it too). Fields whose Java type Lullaby can't handle yet give a clear red error
+`events.txt` so the docs site shows it too). Lists of a known kind work by themselves (`list:<kind>`); a list Paper
+means to be changed but gives no setter for goes into `CHANGEABLE_LISTS` in EventList.java, and a block snapshot
+field that Paper places after the event into its `CHANGEABLE_SNAPSHOTS`. Fields whose Java type Lullaby can't handle yet give a clear red error
 when read (`e.inventory can't be read yet: Lullaby has no Inventory for scripts yet`).
 
 To let fields of a new Java type through (for example inventories):
@@ -255,15 +268,17 @@ an event, no listener exists and its class isn't even loaded.
 
 1. In [Packets.java](src/main/java/io/github/kupfermeister/lullaby/nms/Packets.java), add
    `public static void name(Object wire, IntFunction<Object> slots)`: `Fields a = new Fields("name{}", wire)`, read
-   each field with vanilla's own default, build the vanilla packet(s), then `send(receivers(a, slots), packets)`.
-   Field names are Mojang's, snake_case.
+   each field with vanilla's own default, then `var to = receivers(a, slots); a.done();` (refuses fields nobody
+   read), build the vanilla packet(s), then `send(to, packets)`. Field names are Mojang's, snake_case.
 2. In [JavaFunctions.java](src/main/java/io/github/kupfermeister/lullaby/lua/JavaFunctions.java), add
    `add(lua, "name", L -> { Packets.name(Wire.read(L.toBuffer(1)), slotLookup); return 0; });`.
 3. In [objects.lua](src/main/resources/lullaby/lib/objects.lua), add the doc block (with
    `expert: Packet | <the packet's protocol wiki name> (play, clientbound)`) and
-   `function lib.name(a) action_table(a, "name"); J.name(I.wire({ players = receivers(a, "name"), ... })) end`.
+   `function lib.name(a) J.name(I.wire(action_table(a, "name"))) end` (`action_table` copies every field and puts
+   the receivers' slots in; replace object fields by their slot there, as `sound{}` does for `entity`).
 
-Follows by itself: the player/players check and its error, every field error's wording (from `Fields`), bundling
+Follows by itself: the player/players check and its error, every field error's wording (from `Fields`), the error
+for a field the action doesn't take, bundling
 when there is more than one packet, building each packet once for all receivers, the docs page.
 
 ### Update to a new Minecraft version
@@ -286,8 +301,9 @@ server and say which build is needed.
 
 ## Plans (not built)
 
-Marked so nobody mistakes them for features: event fields Lullaby can't read yet (lists, inventories, Bukkit's
-block snapshots, profiles, ...) and events Paper fires off the main thread (chat, pre-login); script data that lives
+Marked so nobody mistakes them for features: event fields Lullaby can't read yet (inventories, menus, lists of
+those, merchant offers, ...; `?` kinds in events.txt), new block snapshots in a changed list (only existing ones can be
+kept, removed or given another state), and events Paper fires off the main thread (chat, pre-login); script data that lives
 in Java and survives reloads; a generated packet system (`on_packet`, `send_packet`) on the same send core;
 inventories; more entity fields and actions (spawning, removing, equipment, effects); worker threads for big block
 edits; mixins as an optional add-on.

@@ -46,13 +46,21 @@ import party.iroiro.luajava.Lua;
  *
  * <p>{@code on} handlers run at their stage and also for events another plugin cancelled (they see
  * {@code e.cancelled}); {@code after} handlers run at MONITOR and only for events that were not cancelled.
+ *
+ * <p>List fields ({@code list:<kind>}) and block snapshots: "a change goes where the value lives". Lua reads a list
+ * element by element ({@link #get} copies it, {@link #listItem} hands out one entry) and keeps it for the handler;
+ * when the handler ends or first waits, a changed list comes back through {@link #setList} (Paper's setter, or
+ * Paper's own list emptied and filled again) and a changed snapshot through {@link #setSnapshot}. A field Paper
+ * doesn't let change gives the normal "can't be changed" error then, so no change is ever dropped silently.
  */
 public final class EventBridge implements Listener {
 
     /** What Lullaby makes of a field's Java type: the kind words of events.txt (a word not here is a Lullaby bug). */
     private enum Kind {
         PLAYER, ENTITY, WORLD, BLOCK, CHUNK, LOCATION, VEC3, BLOCK_POS, AABB, BLOCK_STATE, DAMAGE, ITEM_STACK, COMPONENT,
-        TEXT, ENUM, KEY, UUID, BOOLEAN, INTEGER, NUMBER
+        TEXT, ENUM, KEY, UUID, BOOLEAN, INTEGER, NUMBER, BLOCK_SNAPSHOT, PROFILE,
+        /** a List, Set or Collection: events.txt writes "list:<element kind>" */
+        LIST
     }
 
     /**
@@ -60,7 +68,7 @@ public final class EventBridge implements Listener {
      * {@code unread}/{@code unwritten} name it for the error. {@code setter} is null if Paper has none.
      */
     private record Field(String event, String name, MethodHandle getter, Kind read, String unread, MethodHandle setter,
-                         Class<?> setType, Kind write, String unwritten) {
+                         Class<?> setType, Kind write, String unwritten, Kind element, Class<?> elementClass) {
     }
 
     /** One event as events.txt lists it: its class name, whether Paper fires it off the main thread, its field lines. */
@@ -79,6 +87,9 @@ public final class EventBridge implements Listener {
     private final Engine engine;
     private final List<String> listeners = new ArrayList<>(); // listener number - 1 -> "Name (kind)" (for errors)
     private ToIntFunction<Object> addSlot;
+    /** The list field Lua is reading right now, copied by get (Lua takes its entries at once with listItem). */
+    private List<Object> reading = List.of();
+    private Kind readingKind;
 
     public EventBridge(Engine engine) {
         this.engine = engine;
@@ -166,10 +177,28 @@ public final class EventBridge implements Listener {
             throw failure(t);
         }
         if (value == null) return 0;
-        switch (field.read()) {
+        if (field.read() == Kind.LIST) {
+            // a copy, so Paper changing its list while Lua reads can't mix up the entries
+            reading = new ArrayList<>((java.util.Collection<?>) value);
+            readingKind = field.element();
+            L.push("list");
+            L.push(reading.size());
+            return 2;
+        }
+        return push(L, field.read(), value);
+    }
+
+    /** Entry {@code i} (1-based) of the list the last {@link #get} copied, as get pushes a value. */
+    public int listItem(Lua L, int i) {
+        Object value = reading.get(i - 1);
+        return value == null ? 0 : push(L, readingKind, value);
+    }
+
+    private int push(Lua L, Kind kind, Object value) {
+        switch (kind) {
             case ENUM, KEY, UUID -> {
                 L.push("v");
-                switch (field.read()) {
+                switch (kind) {
                     case ENUM -> L.push(((Enum<?>) value).name().toLowerCase(Locale.ROOT));
                     case KEY -> LuaText.push(L, keyText(value));
                     default -> L.push(value.toString()); // UUID
@@ -278,6 +307,155 @@ public final class EventBridge implements Listener {
         invokeSetter(field, event, Nms.bukkitBlockData(stateId));
     }
 
+    /**
+     * Puts a changed list back into the event. {@code wire}: the Lua list, each entry a plain value (text, number,
+     * true/false) or { kind, parts... }: { "item_stack", slot }, { "entity", slot }, { "block", world slot, x, y, z },
+     * { "block_snapshot", world slot, x, y, z, state number }, { "component", table }. Every entry is checked
+     * before anything changes. Paper's setter if it has one, else Paper's own list is emptied and filled again.
+     */
+    @SuppressWarnings("unchecked")
+    public void setList(Object event, int number, Object wire, java.util.function.IntFunction<Object> slots) {
+        Field field = FIELDS.get(number);
+        // FORMAT: a list field that can't be changed (Paper's list is read only, or not meant to be changed)
+        if (field.read() == Kind.LIST && field.write() != Kind.LIST) throw new IllegalArgumentException("e."
+                + field.name() + " can't be changed (Paper gives it read only; copy it first to work with a changed list)");
+        if (field.write() != Kind.LIST) throw Fields.wrong("", "e." + field.name(), need(field), "a list");
+        Fields check = new Fields("", null);
+        List<Object> entries = check.list(wire, "e." + field.name());
+        List<Object> made = new ArrayList<>(entries.size());
+        for (int i = 0; i < entries.size(); i++) made.add(entry(field, i + 1, entries.get(i), slots));
+        if (field.setter() != null) {
+            Object value = java.util.Set.class.isAssignableFrom(field.setType()) ? new java.util.LinkedHashSet<>(made) : made;
+            invokeSetter(field, event, value);
+            return;
+        }
+        java.util.Collection<Object> live;
+        try {
+            Object got = field.getter().invokeExact(event); // invokeExact: the result must be taken as Object first
+            live = (java.util.Collection<Object>) got;
+        } catch (Throwable t) {
+            throw failure(t);
+        }
+        List<Object> before = new ArrayList<>(live);
+        try {
+            live.clear();
+            live.addAll(made);
+        } catch (UnsupportedOperationException | IllegalArgumentException | ClassCastException e) {
+            try {
+                live.clear();
+                live.addAll(before);
+            } catch (RuntimeException ignored) {
+                // Paper's list takes removals only: what is left of it stays
+            }
+            // FORMAT: Paper refused the changed list (it only lets entries be removed, or refuses an entry)
+            throw new IllegalArgumentException("e." + field.name() + ": Paper refused the change ("
+                    + (e.getMessage() != null ? e.getMessage() : "it only takes some changes, for example removing entries") + ")");
+        }
+    }
+
+    /** One entry of a changed list as the Java thing Paper's list holds; {@code at} is its place for errors. */
+    private Object entry(Field field, int at, Object entry, java.util.function.IntFunction<Object> slots) {
+        String where = "e." + field.name() + "[" + at + "]";
+        Kind kind = field.element();
+        String need = switch (kind) {
+            case ITEM_STACK -> "an item_stack";
+            case ENTITY -> "an entity";
+            case PLAYER -> "a player";
+            case BLOCK -> "a block";
+            case BLOCK_SNAPSHOT -> "a block_snapshot";
+            case COMPONENT -> "text or a component";
+            case TEXT -> "text";
+            case INTEGER -> "a whole number";
+            case NUMBER -> "a number";
+            default -> "true or false";
+        };
+        List<Object> parts = entry instanceof io.github.kupfermeister.lullaby.lua.Wire.Table t && t.kind < 0
+                && t.hash.isEmpty() && !t.array.isEmpty() && t.array.getFirst() instanceof String ? t.array : null;
+        String got = parts != null ? (String) parts.getFirst() : null;
+        switch (kind) {
+            case TEXT -> {
+                if (entry instanceof String text) return text;
+            }
+            case COMPONENT -> {
+                if (entry instanceof String text) return Component.text(text);
+                if ("component".equals(got)) return io.github.kupfermeister.lullaby.nms.Codecs.adventure(
+                        io.github.kupfermeister.lullaby.nms.Codecs.componentFromTable(parts.get(1), slots));
+            }
+            case BOOLEAN -> {
+                if (entry instanceof Boolean b) return b;
+            }
+            case INTEGER, NUMBER -> {
+                if (entry instanceof Number n) {
+                    double d = n.doubleValue();
+                    if (kind == Kind.NUMBER) return field.elementClass() == Float.class ? (Object) (float) d : (Object) d;
+                    if (d == Math.rint(d) && Math.abs(d) <= Integer.MAX_VALUE) return field.elementClass() == Long.class ? (Object) (long) d : (Object) (int) d;
+                }
+            }
+            case ITEM_STACK -> {
+                if ("item_stack".equals(got)) return Nms.bukkitItem(slots.apply(((Number) parts.get(1)).intValue()));
+            }
+            case ENTITY, PLAYER -> {
+                if ("entity".equals(got)) {
+                    org.bukkit.entity.Entity e = io.github.kupfermeister.lullaby.nms.Entities.bukkitEntity(
+                            slots.apply(((Number) parts.get(1)).intValue()));
+                    // FORMAT: a list entry that is an entity that is gone
+                    if (e == null) throw new IllegalArgumentException(where + ": that entity is gone (dead, removed, "
+                            + "in an unloaded chunk or offline)");
+                    // FORMAT: a list entry of the wrong sort of entity (the list holds only Items, ...)
+                    if (field.elementClass() != null && !field.elementClass().isInstance(e)) throw new IllegalArgumentException(
+                            where + " must be an entity of the sort " + field.elementClass().getSimpleName() + " (Paper's name), got "
+                                    + e.getType().getKey());
+                    return e;
+                }
+            }
+            case BLOCK, BLOCK_SNAPSHOT -> {
+                if (kind.name().toLowerCase(Locale.ROOT).equals(got)) {
+                    org.bukkit.block.Block block = block(where, parts, slots);
+                    if (kind == Kind.BLOCK) return block;
+                    org.bukkit.block.BlockState state = block.getState();
+                    state.setBlockData(Nms.bukkitBlockData(((Number) parts.get(5)).intValue()));
+                    return state;
+                }
+            }
+            default -> {
+            }
+        }
+        throw Fields.wrong("", where, need, got != null ? (got.equals("?") ? "a " + parts.get(1) : "a " + got)
+                : Fields.got(entry));
+    }
+
+    private static org.bukkit.block.Block block(String where, List<Object> parts, java.util.function.IntFunction<Object> slots) {
+        World world = Nms.bukkitWorld(slots.apply(((Number) parts.get(1)).intValue()));
+        // FORMAT: a block in a world that isn't loaded
+        if (world == null) throw new IllegalArgumentException(where + ": the block's world isn't loaded");
+        return world.getBlockAt(((Number) parts.get(2)).intValue(), ((Number) parts.get(3)).intValue(),
+                ((Number) parts.get(4)).intValue());
+    }
+
+    /**
+     * Puts a changed block snapshot field back: Paper's own snapshot gets the new state (Paper places it after the
+     * event). The place can't change: the snapshot belongs to the event's block.
+     */
+    public void setSnapshot(Object event, int number, Object worldKey, int x, int y, int z, int stateId) {
+        Field field = FIELDS.get(number);
+        // FORMAT: a block snapshot field whose change Paper doesn't use
+        if (field.read() == Kind.BLOCK_SNAPSHOT && field.write() != Kind.BLOCK_SNAPSHOT) throw new IllegalArgumentException(
+                "e." + field.name() + " can't be changed (Paper doesn't place it: it only says what was there)");
+        if (field.write() != Kind.BLOCK_SNAPSHOT) throw Fields.wrong("", "e." + field.name(), need(field), "a block_snapshot");
+        org.bukkit.block.BlockState state;
+        try {
+            Object got = field.getter().invokeExact(event); // invokeExact: the result must be taken as Object first
+            state = (org.bukkit.block.BlockState) got;
+        } catch (Throwable t) {
+            throw failure(t);
+        }
+        // FORMAT: a block snapshot field moved to another block
+        if (state.getX() != x || state.getY() != y || state.getZ() != z || !Nms.worldIdOf(state.getWorld()).equals(
+                Nms.worldIdOf(Nms.bukkitWorld(worldKey)))) throw new IllegalArgumentException("e." + field.name()
+                + ".block can't be changed: the snapshot belongs to the event's block");
+        state.setBlockData(Nms.bukkitBlockData(stateId));
+    }
+
     /** Gives event fields their item slots (item stacks, show_item hovers); set by JavaFunctions. */
     public void slots(ToIntFunction<Object> addSlot) {
         this.addSlot = addSlot;
@@ -339,6 +517,8 @@ public final class EventBridge implements Listener {
             case LOCATION -> "a location";
             case VEC3 -> "a vec3";
             case BLOCK_STATE -> "a block_state";
+            case LIST -> "a list";
+            case BLOCK_SNAPSHOT -> "a block_snapshot";
             case ENTITY -> field.setType() == org.bukkit.entity.Entity.class ? "an entity"
                     : "an entity of the sort " + field.setType().getSimpleName() + " (Paper's name)";
             case ENUM -> {
@@ -430,9 +610,11 @@ public final class EventBridge implements Listener {
                     setType = parameterClass(f[5]);
                     set = lookup.unreflect(type.getMethod(f[4], setType));
                 }
+                Kind element = f[3].startsWith("list:") ? kind(f[3].substring(5)) : null;
+                Class<?> elementClass = element == null ? null : elementClass(type.getMethod(f[2]).getGenericReturnType());
                 FIELDS.add(new Field(name, f[1], get, kind(f[3]), f[3].substring(1), set, setType,
-                        f[6].equals("-") ? null : kind(f[6]), f[6].substring(1)));
-                info.add(f[1] + "=" + (FIELDS.size() - 1));
+                        f[6].equals("-") ? null : kind(f[6]), f[6].substring(1), element, elementClass));
+                info.add(f[1] + "=" + (FIELDS.size() - 1) + (element != null ? ":list" : ""));
             }
         } catch (ReflectiveOperationException | LinkageError e) {
             // FORMAT: events.txt names a class or method this Paper doesn't have (a Lullaby bug)
@@ -444,9 +626,22 @@ public final class EventBridge implements Listener {
         return resolved;
     }
 
-    /** A kind word from events.txt; "?Type" (Lullaby can't handle it yet) gives null. */
+    /** List<Item> -> Item (the same rule as EventList.elementClass); null if Java's type doesn't say. */
+    private static Class<?> elementClass(java.lang.reflect.Type generic) {
+        if (!(generic instanceof java.lang.reflect.ParameterizedType p) || p.getActualTypeArguments().length != 1) return null;
+        java.lang.reflect.Type arg = p.getActualTypeArguments()[0];
+        if (arg instanceof java.lang.reflect.WildcardType w) arg = w.getUpperBounds()[0];
+        if (arg instanceof java.lang.reflect.ParameterizedType inner) arg = inner.getRawType();
+        return arg instanceof Class<?> c ? c : null;
+    }
+
+    /** A kind word from events.txt; "?Type" (Lullaby can't handle it yet) gives null; "list:x" gives LIST. */
     private static Kind kind(String word) {
         if (word.startsWith("?")) return null;
+        if (word.startsWith("list:")) {
+            kind(word.substring(5)); // a Lullaby bug if the element's word is unknown
+            return Kind.LIST;
+        }
         try {
             return Kind.valueOf(word.toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {

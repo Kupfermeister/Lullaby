@@ -69,9 +69,14 @@ public final class Packets {
         }
     }
 
-    /** The online players among the slot numbers Lua sent (offline ones have no connection). */
+    /**
+     * The online players among the slot numbers Lua sent (offline ones have no connection): player = slot or
+     * players = { slots } (Lua checked that exactly one is there and that they are players).
+     */
     private static List<ServerPlayer> receivers(Fields a, IntFunction<Object> slots) {
-        List<Object> list = a.list("players");
+        Object one = a.raw("player");
+        Object many = a.raw("players");
+        List<Object> list = one != null ? List.of(one) : a.list(many, "players");
         List<ServerPlayer> result = new ArrayList<>(list.size());
         var playerList = MinecraftServer.getServer().getPlayerList();
         for (Object slot : list) {
@@ -98,8 +103,16 @@ public final class Packets {
         boolean alwaysShow = a.bool("always_show", false);
         var randomization = a.choice("randomization_type", RANDOMIZATION,
                 ClientboundLevelParticlesPacket.RandomizationType.DEFAULT);
-        ParticleOptions options = Codecs.particle(particleField, slots);
         List<ServerPlayer> to = receivers(a, slots);
+        a.done();
+        ParticleOptions options;
+        try {
+            options = Codecs.particle(particleField, slots);
+        } catch (IllegalArgumentException e) {
+            // FORMAT: the action and the field in front of the codec's own message, like every Fields error
+            String why = e.getMessage();
+            throw new IllegalArgumentException("particle{}: " + (why.startsWith("particle") ? why : "particle: " + why), e);
+        }
         // every point is still checked, but no packets are built for nobody
         if (to.isEmpty()) {
             for (int i = 0; i < points.size(); i++) a.vec3(points.get(i), points.size() == 1 ? "pos" : "pos[" + (i + 1) + "]");
@@ -134,6 +147,7 @@ public final class Packets {
         double[] p = a.has("pos") ? a.vec3("pos") : null;
         long seed = a.long64("seed", 0);
         List<ServerPlayer> to = receivers(a, slots);
+        a.done();
         if (to.isEmpty()) return;
         if (!a.has("seed")) seed = to.getFirst().level().getRandom().nextLong(); // vanilla: level.getRandom().nextLong()
         Packet<? super ClientGamePacketListener> packet;
@@ -152,7 +166,9 @@ public final class Packets {
         Fields a = new Fields("stop_sound{}", wire);
         Identifier id = a.has("sound") ? identifier(a, "sound", a.raw("sound")) : null;
         SoundSource source = a.has("source") ? a.choice("source", SOURCES, null) : null;
-        send(receivers(a, slots), List.of(new ClientboundStopSoundPacket(id, source)));
+        List<ServerPlayer> to = receivers(a, slots);
+        a.done();
+        send(to, List.of(new ClientboundStopSoundPacket(id, source)));
     }
 
     /** "entity.player.levelup" (a registered sound by its registry entry; any other id inline, as /playsound) or
@@ -168,8 +184,10 @@ public final class Packets {
         if (value instanceof Wire.Table t && t.kind < 0) {
             Fields inner = new Fields("sound{}: sound", t);
             Identifier id = identifier(inner, "sound_id", inner.required("sound_id", "an id like \"entity.player.levelup\""));
-            return Holder.direct(inner.has("range") ? SoundEvent.createFixedRangeEvent(id, (float) inner.number("range", 0))
-                    : SoundEvent.createVariableRangeEvent(id));
+            boolean fixed = inner.has("range");
+            float range = (float) inner.number("range", 0);
+            inner.done();
+            return Holder.direct(fixed ? SoundEvent.createFixedRangeEvent(id, range) : SoundEvent.createVariableRangeEvent(id));
         }
         throw a.wrong("sound", "an id or { sound_id = , range = }", value);
     }

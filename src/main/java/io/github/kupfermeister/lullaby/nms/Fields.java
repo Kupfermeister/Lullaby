@@ -14,6 +14,10 @@ import java.util.Map;
  *
  * <p>One Fields per action call: {@code Fields f = new Fields("sound{}", wire); f.number("volume", 1)}. A missing
  * optional field gives the default the caller names (vanilla's own default, never an invented one).
+ *
+ * <p>Unknown fields: every read (also {@link #has} and {@link #raw}) notes the field's name, so the reading code is
+ * the one list of what an action takes. Call {@link #done} after the last read and before anything changes or is
+ * sent: it refuses every other key, so a typo ({@code cuont = 5}) is an error instead of doing nothing.
  */
 public final class Fields {
 
@@ -21,6 +25,8 @@ public final class Fields {
 
     private final String what;
     private final Wire.Table table;
+    /** The field names read so far, in reading order (what the action takes, for done() and its error). */
+    private final java.util.LinkedHashSet<String> read = new java.util.LinkedHashSet<>();
 
     public Fields(String what, Object wire) {
         this.what = what;
@@ -31,40 +37,56 @@ public final class Fields {
      * Refuses every key the action doesn't take, so a typo (velocty = ...) is an error instead of doing nothing.
      * {@code known}: the action's field names, from its owner's list.
      */
-    public void only(List<String> known) {
+    public void only(java.util.Collection<String> known) {
         for (Object key : table.hash.keySet()) {
-            // FORMAT: an action got a field it doesn't take
-            if (!known.contains(key)) throw new IllegalArgumentException(what + ": unknown field "
-                    + (key instanceof String s ? s : "[" + Codecs.describe(key) + "]") + " (it takes " + names(known) + ")");
+            if (!known.contains(key)) {
+                throw new IllegalArgumentException(unknownField(what, key instanceof String s ? s : "[" + Codecs.describe(key) + "]", known));
+            }
         }
-        // FORMAT: an action got list entries ({ 1, 2 } style) it doesn't take
-        if (!table.array.isEmpty()) throw new IllegalArgumentException(what + ": unknown field [1] (it takes " + names(known) + ")");
+        if (!table.array.isEmpty()) throw new IllegalArgumentException(unknownField(what, "[1]", known));
+    }
+
+    /** {@link #only} with the fields read so far: call it after the last read, before anything changes. */
+    public void done() {
+        only(read);
+    }
+
+    /** {@code <what>: unknown field <key> (it takes "a", "b" or "c")}; also for Lua (J.unknown_field, message{}). */
+    public static String unknownField(String what, String key, java.util.Collection<String> known) {
+        // FORMAT: an action got a field it doesn't take
+        return what + ": unknown field " + key + " (it takes " + names(known) + ")";
     }
 
     /** The raw value (null if missing), for fields read by a codec or by other code. */
     public Object raw(String field) {
-        return table.hash.get(field);
+        return get(field);
     }
 
     public boolean has(String field) {
-        return table.hash.get(field) != null;
+        return get(field) != null;
+    }
+
+    /** Every read goes through here, so done() knows what the action takes. */
+    private Object get(String field) {
+        read.add(field);
+        return table.hash.get(field);
     }
 
     /** A field that must be there; {@code need} says what it takes ("a vec3 or a list of vec3"). */
     public Object required(String field, String need) {
-        Object value = table.hash.get(field);
+        Object value = get(field);
         // FORMAT: a required field is missing
         if (value == null) throw new IllegalArgumentException(what + ": " + field + " is missing (" + need + ")");
         return value;
     }
 
     public double number(String field, double missing) {
-        Object value = table.hash.get(field);
+        Object value = get(field);
         return value == null ? missing : number(value, field);
     }
 
     public int whole(String field, int missing) {
-        Object value = table.hash.get(field);
+        Object value = get(field);
         if (value == null) return missing;
         double d = number(value, field);
         if (d != Math.rint(d)) throw wrong(field, "a whole number", value);
@@ -77,7 +99,7 @@ public final class Fields {
 
     /** Any 64-bit whole number (the long64 rule): a whole Lua number or a LuaJIT 64-bit number. */
     public long long64(String field, long missing) {
-        Object value = table.hash.get(field);
+        Object value = get(field);
         if (value == null) return missing;
         double d = number(value, field);
         if (d != Math.rint(d)) throw wrong(field, "a whole number", value);
@@ -89,19 +111,19 @@ public final class Fields {
     }
 
     public boolean bool(String field, boolean missing) {
-        Object value = table.hash.get(field);
+        Object value = get(field);
         if (value == null) return missing;
         if (value instanceof Boolean b) return b;
         throw wrong(field, "true or false", value);
     }
 
     public double[] vec3(String field) {
-        return vec3(table.hash.get(field), field);
+        return vec3(get(field), field);
     }
 
     /** A vec3 as a packet's three floats; missing: 0, 0, 0. */
     public float[] vec3f(String field) {
-        Object value = table.hash.get(field);
+        Object value = get(field);
         if (value == null) return new float[3];
         double[] v = vec3(value, field);
         return new float[]{(float) v[0], (float) v[1], (float) v[2]};
@@ -114,7 +136,7 @@ public final class Fields {
     }
 
     public List<Object> list(String field) {
-        return list(table.hash.get(field), field);
+        return list(get(field), field);
     }
 
     /**
@@ -122,7 +144,7 @@ public final class Fields {
      * {@code missing}: the value when the field is not there; null makes the field required.
      */
     public <T> T choice(String field, Map<String, T> names, T missing) {
-        Object value = table.hash.get(field);
+        Object value = get(field);
         if (value == null) {
             // FORMAT: a required choice is missing
             if (missing == null) throw new IllegalArgumentException(what + ": " + field + " is missing (" + names(names) + ")");
@@ -154,7 +176,8 @@ public final class Fields {
             if (t.hash.isEmpty()) {
                 for (int i = 0; i < t.array.size(); i++) {
                     // FORMAT: a list with a hole
-                    if (t.array.get(i) == null) throw new IllegalArgumentException(what + ": " + field + " has a hole at [" + (i + 1) + "]");
+                    if (t.array.get(i) == null) throw new IllegalArgumentException((what.isEmpty() ? "" : what + ": ")
+                            + field + " has a hole at [" + (i + 1) + "]");
                 }
                 return t.array;
             }

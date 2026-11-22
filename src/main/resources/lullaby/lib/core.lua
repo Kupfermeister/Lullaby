@@ -199,6 +199,29 @@ function lib.type_of(value)
 end
 I.type_name = lib.type_of -- readable type for error messages
 
+-- What a doing function's { } takes, for I.only: `positional` list entries (a[1], a[2], ...) and the named fields,
+-- the same names the function's code reads. Made once per function, when its file loads.
+function I.takes(positional, ...)
+	local names = { ... }
+	local set = {}
+	for i = 1, #names do set[names[i]] = true end
+	return { positional = positional, set = set, text = concat(names, "\n") }
+end
+
+-- Refuses every key of a doing function's { } that it doesn't take, so a typo (stage = "hihg" is checked, but
+-- stgae = "high" would be ignored) is an error instead of doing nothing. The wording is Java's (Fields.unknownField),
+-- so these errors read exactly like those of the actions Java checks (particle{}, set{}, ...). level: as error().
+local raw_next = next
+function I.only(a, what, takes, level)
+	local set, positional = takes.set, takes.positional
+	for key in raw_next, a do
+		if not set[key] and not (type(key) == "number" and key >= 1 and key <= positional and key % 1 == 0) then
+			error(J.unknown_field(what, type(key) == "string" and key or "[" .. tostring(key) .. "]", takes.text),
+				level + 1)
+		end
+	end
+end
+
 -- Reading a name a value, object or event doesn't have is an error, not nil: a typo (e.helth) would otherwise read
 -- nil and fail somewhere else. `has` lists what it has. level: 2 (objects, events: the script's line) or 0 (values:
 -- the report finds the line).

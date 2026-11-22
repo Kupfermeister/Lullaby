@@ -49,6 +49,31 @@ public final class EventList {
     private static final Set<String> NOT_FIELDS = Set.of("getHandlers", "getEventName", "isAsynchronous", "callEvent",
             "toString", "hashCode", "getClass");
 
+    /**
+     * List fields without a setter whose list Paper's docs call mutable: changing it IS the way to change the event
+     * (fewer drops, fewer exploded blocks). Only these and lists with a setter can be changed by scripts; every other
+     * list (viewers, ...) is read only, because changing Paper's live list there would break the game, not the event.
+     * "Class.field": the class that declares the getter, or the event.
+     */
+    private static final Set<String> CHANGEABLE_LISTS = Set.of("BlockBreakBlockEvent.drops", "BlockDropItemEvent.items",
+            "BlockExplodeEvent.block_list", "EntityExplodeEvent.block_list", "BlockFertilizeEvent.blocks",
+            "BrewEvent.results", "EntityDeathEvent.drops", "PlayerDeathEvent.drops", "PlayerDeathEvent.items_to_keep",
+            "PlayerHarvestBlockEvent.items_harvested", "PlayerShearBlockEvent.drops", "PiglinBarterEvent.outcome",
+            "PortalCreateEvent.blocks", "SpongeAbsorbEvent.blocks", "StructureGrowEvent.blocks",
+            "AreaEffectCloudApplyEvent.affected_entities", "BellResonateEvent.resonated_entities",
+            "PlayerCommandSendEvent.commands", "SignChangeEvent.lines");
+
+    /**
+     * Block snapshot fields Paper places after the event (its docs: "the new state"): changing their state changes
+     * what the event places. Other snapshots only say what was there, so changing them is refused.
+     */
+    private static final Set<String> CHANGEABLE_SNAPSHOTS = Set.of("BlockGrowEvent.new_state", "BlockFadeEvent.new_state",
+            "CauldronLevelChangeEvent.new_state", "MoistureChangeEvent.new_state");
+
+    /** Kinds a changed list may hold (EventBridge.setList makes these from Lua values). */
+    private static final Set<String> LIST_WRITE = Set.of("item_stack", "entity", "player", "block", "block_snapshot",
+            "component", "text", "integer", "number", "boolean");
+
     public static void main(String[] argv) throws IOException {
         Path out = Path.of(argv[0]);
         List<String> lines = new ArrayList<>();
@@ -91,7 +116,8 @@ public final class EventList {
         lines.add("#   <TAB> enum: its class's simple name, \":\" and its words when 16 or fewer (Result:deny,default,allow);");
         lines.add("#   - where there is none");
         lines.add("# KINDS: player entity world block chunk location vec3 block_pos aabb block_state damage item_stack component");
-        lines.add("#   text enum key uuid boolean integer number;");
+        lines.add("#   text enum key uuid boolean integer number block_snapshot profile, and list:<kind> (a List, Set or");
+        lines.add("#   Collection); a list field without a setter can still have a write kind: Paper's list is meant to be changed");
         lines.add("#   ?Type: Lullaby can't read (or set) a Type yet");
         lines.add("paper-api\t" + api);
         int fieldCount = 0, changeable = 0;
@@ -190,9 +216,22 @@ public final class EventList {
                 }
                 values = type.getSimpleName() + ":" + (count <= 16 ? j.toString() : "");
             }
-            out.add(g.getKey() + "\t" + n + "\t" + readKind(type) + "\t"
-                    + (setter == null ? "-\t-\t-" : setter.getName() + "\t" + setter.getParameterTypes()[0].getName()
-                    + "\t" + writeKind(setter.getParameterTypes()[0])) + "\t" + values);
+            String read = fieldKind(getter);
+            String write = setter == null ? "-" : writeKind(setter.getParameterTypes()[0]);
+            if (read.startsWith("list:")) {
+                boolean listed = CHANGEABLE_LISTS.contains(c.getSimpleName() + "." + g.getKey())
+                        || CHANGEABLE_LISTS.contains(getter.getDeclaringClass().getSimpleName() + "." + g.getKey());
+                write = (setter != null || listed) && LIST_WRITE.contains(read.substring(5)) ? read
+                        : setter != null ? "?" + read : "-";
+            }
+            if (read.equals("block_snapshot") && setter == null
+                    && (CHANGEABLE_SNAPSHOTS.contains(c.getSimpleName() + "." + g.getKey())
+                    || CHANGEABLE_SNAPSHOTS.contains(getter.getDeclaringClass().getSimpleName() + "." + g.getKey()))) {
+                write = "block_snapshot";
+            }
+            out.add(g.getKey() + "\t" + n + "\t" + read + "\t"
+                    + (setter == null ? "-\t-" : setter.getName() + "\t" + setter.getParameterTypes()[0].getName())
+                    + "\t" + write + "\t" + values);
         }
         return out;
     }
@@ -214,6 +253,28 @@ public final class EventList {
 
     // ---- kinds: what Lullaby makes of a Java type --------------------------------------------------------------
 
+    /**
+     * A getter's read kind. A List, Set or Collection of a kind Lullaby knows is "list:<kind>" (scripts get a Lua
+     * list; changes in on{ } go back into the event, see EventBridge); of anything else "?list of <Type>".
+     */
+    private static String fieldKind(Method getter) {
+        Class<?> t = getter.getReturnType();
+        if (!java.util.Collection.class.isAssignableFrom(t)) return readKind(t);
+        Class<?> element = elementClass(getter.getGenericReturnType());
+        if (element == null) return "?list of unknown things";
+        String kind = readKind(element);
+        return kind.startsWith("?") ? "?list of " + kind.substring(1) : "list:" + kind;
+    }
+
+    /** List<Item> -> Item, List<? extends Entity> -> Entity; null if Java's type doesn't say. */
+    static Class<?> elementClass(java.lang.reflect.Type generic) {
+        if (!(generic instanceof java.lang.reflect.ParameterizedType p) || p.getActualTypeArguments().length != 1) return null;
+        java.lang.reflect.Type arg = p.getActualTypeArguments()[0];
+        if (arg instanceof java.lang.reflect.WildcardType w) arg = w.getUpperBounds()[0];
+        if (arg instanceof java.lang.reflect.ParameterizedType inner) arg = inner.getRawType();
+        return arg instanceof Class<?> c ? c : null;
+    }
+
     private static String readKind(Class<?> t) {
         // a HumanEntity is a player on Paper; an OfflinePlayer is the same player object, online or not
         if (t == Player.class || t == HumanEntity.class || t == OfflinePlayer.class) return "player";
@@ -226,6 +287,8 @@ public final class EventList {
         if (t == BoundingBox.class) return "aabb";
         if (t == BlockPosition.class) return "block_pos";
         if (t == DamageSource.class) return "damage";
+        if (t == org.bukkit.block.BlockState.class) return "block_snapshot"; // only the interface: Sign, Beacon, ... later
+        if (t == com.destroystokyo.paper.profile.PlayerProfile.class) return "profile";
         String common = common(t);
         if (common != null) return common;
         if (t.isEnum()) return "enum";

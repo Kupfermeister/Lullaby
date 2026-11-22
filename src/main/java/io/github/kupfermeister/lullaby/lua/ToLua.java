@@ -127,6 +127,26 @@ public final class ToLua {
                 }
                 return 9;
             }
+            case org.bukkit.block.BlockState s -> { // Bukkit's snapshot of a block: where, and the state it holds
+                L.push("block_snapshot");
+                L.push(Nms.worldIdOf(s.getWorld()));
+                L.push(s.getX());
+                L.push(s.getY());
+                L.push(s.getZ());
+                L.push(Nms.blockStateId(s.getBlockData()));
+                return 6;
+            }
+            case com.destroystokyo.paper.profile.PlayerProfile p -> {
+                // name, uuid, then the skin ("textures" property: value and signature), each nil if missing
+                L.push("profile");
+                pushOrNil(L, p.getName());
+                pushOrNil(L, p.getId() == null ? null : p.getId().toString());
+                com.destroystokyo.paper.profile.ProfileProperty textures = null;
+                for (var property : p.getProperties()) if (property.getName().equals("textures")) textures = property;
+                pushOrNil(L, textures == null ? null : textures.getValue());
+                pushOrNil(L, textures == null ? null : textures.getSignature());
+                return 5;
+            }
             case Component c -> {
                 // a component table: wire bytes plus the count of item slots in show_item hovers
                 Object[] out = Codecs.componentOut(Codecs.vanilla(c), addSlot);
@@ -158,6 +178,11 @@ public final class ToLua {
                 return 2;
             }
         }
+    }
+
+    private static void pushOrNil(Lua L, String text) {
+        if (text == null) L.pushNil();
+        else LuaText.push(L, text);
     }
 
     /** An entity inside another value: its uuid and slot (slot 0: a player, found by its uuid), or nil, nil. */

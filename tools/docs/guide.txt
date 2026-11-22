@@ -28,9 +28,9 @@ id: guide_setup
 name: setup
 kind: guide
 group: Guide
-also: guide_server guide_editor
-words: test server local install paper java setup localhost eula op editor vscode visual studio code autocomplete lullaby.d.lua luarc extension sumneko download
-lead: A private test server on your own computer, and an editor that knows every Lullaby name.
+also: guide_server
+words: test server local install paper java setup localhost eula op
+lead: A private test server on your own computer.
 text:
   ## Test server
   Never test on the server your players use.
@@ -40,16 +40,38 @@ text:
   4. Join `localhost`, then type `op YourName` in the server window. Ops see script errors in chat.
 
   Scripts go in `plugins/lullaby/scripts`. Every `.lua` file there loads; a name starting with `--` switches a file or folder off. Settings are in `plugins/lullaby/config.lua`.
+status: unconfirmed
+]]
 
-  ## Editor (VS Code)
-  With this, the editor suggests Lullaby's names while you type, shows a function's page when you point at it, and underlines mistakes before you reload.
-  1. Install **VS Code** from code.visualstudio.com and open it.
-  2. Press `Ctrl+Shift+X` (the four squares on the left). Search **Lua**, pick the one by **sumneko**, click **Install**.
-  3. **File → Open Folder…** and choose `plugins/lullaby` inside your server folder. The left side now lists `config.lua` and `scripts`.
-  4. Click [download lullaby.d.lua](lullaby.d.lua). Your browser saves it to Downloads; move it into `plugins/lullaby`, next to `config.lua`, **not** into `scripts` (there it would run as a script).
-  5. In VS Code, right-click the empty space in the left list, **New File**, name it `.luarc.json` (with the dot), paste `{ "runtime.version": "LuaJIT" }`, save with `Ctrl+S`. This tells the editor which Lua Lullaby speaks.
-  6. Test it: open a file in `scripts` and type `mess`. `message` should be suggested; point at it to see its page. Nothing? `Ctrl+Shift+P`, type **Reload Window**, Enter.
-  After a Lullaby update, download the file again and replace the old one.
+--[[doc
+id: guide_editor
+name: editor setup
+kind: guide
+group: Guide
+words: editor vscode visual studio code autocomplete suggestions hover underline lullaby.d.lua luarc luarc.json extension sumneko download install
+lead: Make VS Code know every Lullaby name: it suggests them while you type, shows what they do, and underlines mistakes before you reload. Done once, about five minutes.
+text:
+  ## What you install
+  - **VS Code**: a free program for writing code.
+  - **The Lua extension**: teaches VS Code the Lua language.
+  - **lullaby.d.lua**: a list of every Lullaby name with its description, made from this site. Only the editor reads it; Lullaby never runs it.
+
+  ## Steps
+  1. **Install VS Code.** Go to code.visualstudio.com, click the big download button, run the installer, open VS Code.
+  2. **Add Lua.** Click the icon of four squares on the far left (or press `Ctrl+Shift+X`). Type `Lua` into the search box. Click the result called **Lua** by **sumneko**, then the blue **Install** button.
+  3. **Open the Lullaby folder.** Menu **File → Open Folder…**. Go into your server folder (the one with `paper.jar`), then `plugins`, click `lullaby` once and press **Select Folder**. If VS Code asks whether you trust the authors, click **Yes**. The left side now shows `scripts` and `config.lua`.
+    No `lullaby` folder? Start the server once with the Lullaby jar in `plugins`; it makes the folder.
+  4. **Download the list.** Click here: [download lullaby.d.lua](lullaby.d.lua). Your browser saves it in your **Downloads** folder.
+  5. **Put it next to config.lua.** Open your Downloads folder, drag `lullaby.d.lua` into VS Code and drop it on the empty space on the left, **below** the files (not on `scripts`). It now shows next to `config.lua`.
+  6. **Tell VS Code which Lua.** Right-click the empty space on the left, **New File…**, type `.luarc.json` (with the dot in front), press Enter. Into the empty file paste `{ "runtime.version": "LuaJIT" }` and save with `Ctrl+S`. Without this, VS Code marks some correct code as wrong.
+
+  The left side now shows: `scripts`, `.luarc.json`, `config.lua`, `lullaby.d.lua`.
+
+  ## Check it
+  Right-click `scripts`, **New File…**, name it `test.lua`. Type `mess`: a small list pops up with `message`. Press Enter, then point the mouse at `message`: its description appears. Delete `test.lua` afterwards (right-click, **Delete**), or the next reload runs it.
+  Nothing happens? Press `Ctrl+Shift+P`, type `Reload Window`, press Enter, try again.
+
+  > After a Lullaby update, do steps 4 and 5 again and replace the old file.
 status: unconfirmed
 ]]
 

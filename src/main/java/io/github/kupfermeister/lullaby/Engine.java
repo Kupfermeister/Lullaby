@@ -9,6 +9,7 @@ import io.github.kupfermeister.lullaby.nms.Input;
 import io.github.kupfermeister.lullaby.nms.Nms;
 import io.github.kupfermeister.lullaby.nms.SavedData;
 import io.github.kupfermeister.lullaby.nms.ScriptCommands;
+import io.github.kupfermeister.lullaby.nms.Worlds;
 import io.papermc.paper.event.server.ServerResourcesReloadedEvent;
 import java.io.IOException;
 import java.io.InputStream;
@@ -56,6 +57,7 @@ public final class Engine {
     private final Listener saves = new Listener() { // WorldSaveEvent, for the plugin's whole life
     };
     private final SavedData data; // server.data's file; lives as long as the plugin, so it outlasts reloads
+    private final Worlds worlds; // world folders; lives as long as the plugin, so a copy outlasts a reload
 
     Engine(Lullaby plugin) {
         this.plugin = plugin;
@@ -74,10 +76,15 @@ public final class Engine {
                     }
                 });
         listenForSaves();
+        this.worlds = new Worlds(dataFolder.resolve("temp"));
     }
 
     public SavedData data() {
         return data;
+    }
+
+    public Worlds worlds() {
+        return worlds;
     }
 
     /**
@@ -273,6 +280,7 @@ public final class Engine {
             runtime.close();
             runtime = null;
         }
+        worlds.forgetJobs();
         if (commands != null) {
             commands.clear();
             commands = null;
@@ -280,6 +288,7 @@ public final class Engine {
     }
 
     void tick() {
+        worlds.tick(); // before the scripts, so a task waiting for a copy wakes in the tick it finished
         if (runtime != null) {
             try {
                 runtime.tick();

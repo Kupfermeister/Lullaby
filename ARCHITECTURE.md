@@ -63,6 +63,7 @@ never goes through it, so this rule stays true for Lullaby itself. Names are Moj
 | [Entities.java](src/main/java/io/github/kupfermeister/lullaby/nms/Entities.java) | Entities: what an entity object's slot holds (its UUID and the vanilla entity last seen, found again by UUID after an unload or a world change), the entity field list (its owner), `set{}`, and the entities of a chunk. |
 | [Input.java](src/main/java/io/github/kupfermeister/lullaby/nms/Input.java) | Lullaby's own `input` event: owns the input packets, their fields and action words (startup checks them against vanilla); a hook in each player's network pipeline, only while a script listens; what a cancelled packet gets back (vanilla's own refusal). |
 | [SavedData.java](src/main/java/io/github/kupfermeister/lullaby/nms/SavedData.java) | `server.data` on disk: `plugins/lullaby/data/server.snbt` through vanilla's SNBT printer and parser, codecs and data fixer. A hand edit wins, a file that didn't load cleanly is never saved over, past `data_max_size` nothing is saved. Lives as long as the plugin, so it outlasts reloads. |
+| [Worlds.java](src/main/java/io/github/kupfermeister/lullaby/nms/Worlds.java) | Worlds as folders: `worlds()`, `create_world{}`, `load_world{}`, `unload_world{}`, `copy_world{}`, `delete_world{}`. Creating and loading go through Paper's WorldCreator on purpose (Paper rewrites world loading, so vanilla's own classes would break with every update); vanilla's dimension folders, registries and seed rule. Copies are built in `plugins/lullaby/temp` and moved into place, so a crash never leaves half a world; a deleted world is moved there whole and kept as a last chance until the next start, which empties temp. Lives as long as the plugin, so a copy outlasts a reload. |
 | [Nms.java](src/main/java/io/github/kupfermeister/lullaby/nms/Nms.java) | Small vanilla reads and actions without a bigger class yet. |
 
 The library, in `src/main/resources/lullaby/lib/` (loaded in this order; each file starts with a comment saying
@@ -78,6 +79,7 @@ what it holds and gets three tables: `J` Java functions, `lib` what scripts see 
 | [lazy.lua](src/main/resources/lullaby/lib/lazy.lua) | The wire, item stacks, components, `from_json`, Lullaby's own `pairs`/`next` (LuaJIT ignores `__pairs`). |
 | [commands.lua](src/main/resources/lullaby/lib/commands.lua) | `command{}`, `refresh_commands{}`, `online_players()`. |
 | [data.lua](src/main/resources/lullaby/lib/data.lua) | `server` and `server.data`: a plain Lua table while running, turned into a save tree for SavedData.java and back. |
+| [worlds.lua](src/main/resources/lullaby/lib/worlds.lua) | World folders: list, create, load, unload, copy (waits for the worker), delete. Turns world and location objects into names and numbers; Worlds.java checks everything else. |
 | [loader.lua](src/main/resources/lullaby/lib/loader.lua) | Loading script files, `import`. |
 | [java.lua](src/main/resources/lullaby/lib/java.lua) | The raw Java door's Lua side (table `java`, only when `unlock.java` is on) and its docs page. |
 
@@ -106,11 +108,10 @@ Other files:
    thread-safe; calling into Lua from any other thread is a bug.
 2. Bukkit and Minecraft world objects are touched only on the main thread.
 3. Worker threads only work on copies they own and hand results back to the main thread through a queue. They never
-   call Lua or touch live world objects. *(Planned users: big block edits on copies of chunk sections, big file
-   copies.)*
+   call Lua or touch live world objects. *(Planned user: big block edits on copies of chunk sections.)*
 4. Every class that runs work off the main thread says so in its Javadoc.
 
-Today four places meet other threads:
+Today five places meet other threads:
 
 - [Watchdog.java](src/main/java/io/github/kupfermeister/lullaby/lua/Watchdog.java) runs one thread that only compares
   two numbers and raises a flag; the main thread checks that flag at every library call into Java.
@@ -125,6 +126,11 @@ Today four places meet other threads:
   written on its one worker thread from bytes made on the main thread; every other step waits for that write first.
   Tab completion of `/lullaby data server` may be asked for off the main thread: the keys are then worked out on the
   main thread and handed back later ([LullabyCommand.java](src/main/java/io/github/kupfermeister/lullaby/LullabyCommand.java)).
+- [Worlds.java](src/main/java/io/github/kupfermeister/lullaby/nms/Worlds.java): world folders are copied, and temp is
+  emptied at start, on its one worker thread, which touches only folders no world uses (a temp folder, an unloaded source, a target that
+  doesn't exist yet). While a job runs, its world names are refused by every other world function; the finished job
+  comes back through a queue that the main thread reads each tick, and a waiting `copy_world{}` asks for it once per
+  tick.
 
 The raw Java door ([JavaDoor.java](src/main/java/io/github/kupfermeister/lullaby/lua/JavaDoor.java)) takes no Lua
 functions, so Java can never call a script back and Lullaby never hands a raw object to another thread. A script can

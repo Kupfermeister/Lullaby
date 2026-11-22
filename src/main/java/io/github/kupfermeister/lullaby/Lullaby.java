@@ -72,6 +72,7 @@ public final class Lullaby extends JavaPlugin {
         if (engine != null) {
             engine.unload(false); // finals of running tasks run here, then server.data is saved
             engine.data().close();
+            engine.worlds().close();
             engine.watchdog().shutdown();
         }
     }

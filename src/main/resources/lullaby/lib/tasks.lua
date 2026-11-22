@@ -45,6 +45,12 @@ function I.current_origin()
 	return task and task.origin or nil
 end
 
+-- true when the code running now may wait: inside a task, not inside a final (for library functions that wait).
+function I.can_wait()
+	local co = co_running()
+	return co ~= nil and co_task[co] ~= nil and (in_final[co] or 0) == 0
+end
+
 local function run_final(task)
 	local key = co_running() or I.MAIN
 	in_final[key] = (in_final[key] or 0) + 1

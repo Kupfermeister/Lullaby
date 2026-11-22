@@ -110,6 +110,13 @@ public final class Fields {
         }
     }
 
+    public String text(String field, String missing) {
+        Object value = get(field);
+        if (value == null) return missing;
+        if (value instanceof String s) return s;
+        throw wrong(field, "text", value);
+    }
+
     public boolean bool(String field, boolean missing) {
         Object value = get(field);
         if (value == null) return missing;
@@ -217,6 +224,46 @@ public final class Fields {
         for (String name : names) quoted.add("\"" + name + "\"");
         if (quoted.size() <= 1) return String.join("", quoted);
         return String.join(", ", quoted.subList(0, quoted.size() - 1)) + " or " + quoted.getLast();
+    }
+
+    /**
+     * Up to three of {@code names} close to a wrong one: same letters in another case, containing it, or a typo away.
+     * For "did you mean" in errors (unknown events, biomes, blocks).
+     */
+    public static List<String> closeNames(String wrong, java.util.Collection<String> names) {
+        String w = wrong.toLowerCase(java.util.Locale.ROOT);
+        List<String> out = new ArrayList<>();
+        for (String name : names) if (name.equalsIgnoreCase(wrong)) return List.of(name);
+        if (w.length() >= 4) {
+            for (String name : names) {
+                if (out.size() < 3 && name.toLowerCase(java.util.Locale.ROOT).contains(w)) out.add(name);
+            }
+            if (!out.isEmpty()) return out;
+        }
+        int limit = Math.max(2, w.length() / 6);
+        List<Map.Entry<Integer, String>> near = new ArrayList<>();
+        for (String name : names) {
+            int d = distance(w, name.toLowerCase(java.util.Locale.ROOT));
+            if (d <= limit) near.add(Map.entry(d, name));
+        }
+        near.sort(Map.Entry.comparingByKey());
+        for (int i = 0; i < near.size() && i < 3; i++) out.add(near.get(i).getValue());
+        return out;
+    }
+
+    private static int distance(String a, String b) {
+        int[] row = new int[b.length() + 1];
+        for (int j = 0; j <= b.length(); j++) row[j] = j;
+        for (int i = 1; i <= a.length(); i++) {
+            int prev = row[0];
+            row[0] = i;
+            for (int j = 1; j <= b.length(); j++) {
+                int t = row[j];
+                row[j] = Math.min(Math.min(row[j] + 1, row[j - 1] + 1), prev + (a.charAt(i - 1) == b.charAt(j - 1) ? 0 : 1));
+                prev = t;
+            }
+        }
+        return row[b.length()];
     }
 
     /** A name map in the order of the given values (for {@link #choice}); names as the owner writes them. */

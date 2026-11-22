@@ -435,6 +435,38 @@ status: unconfirmed
 ]]
 
 --[[doc
+id: guide_worlds
+name: worlds and arenas
+kind: guide
+group: Guide
+words: world worlds arena arenas map maps instance copy reset round void minigame template
+lead: Build a map once, play in a fresh copy every round.
+text:
+  First make the map: `create_world{ id = "arena_map", generator = "void" }` once (a command is handy), build in it, then `unload_world{ world = "arena_map" }`. Keep it unloaded: only an unloaded world can be copied.
+  ```
+  -- scripts/arena.lua
+  local function new_round()
+    for _, w in ipairs(worlds()) do                -- the old round's arena, also after a restart
+      if w.id == "minecraft:arena" then delete_world{ id = "arena" } end
+    end
+    copy_world{ from = "arena_map", to = "arena" } -- waits; the server keeps running
+    local arena = load_world{ id = "arena" }
+    for _, p in ipairs(online_players()) do
+      set{ entity = p, location = location(arena, vec3(0.5, 65, 0.5)) }
+    end
+  end
+
+  command{ "newround", function(c) new_round() end, permission = "arena.admin" }
+  ```
+  - `delete_world{ }` sends the players in the old arena to the main spawn first, then they come over to the new one.
+  - Several arenas at once: name the copies `"arena_1"`, `"arena_2"`, ...
+  - Worlds don't load again by themselves after a restart: load the ones you need when your script starts.
+  ! Never let `delete_world{ }` reach your map: copy the map, delete only copies. A deleted world waits in `plugins/lullaby/temp` until the next server start, your last chance to move it back.
+  More: [create_world{ }](#create_world), [copy_world{ }](#copy_world).
+status: unconfirmed
+]]
+
+--[[doc
 id: guide_next
 name: where next
 kind: guide

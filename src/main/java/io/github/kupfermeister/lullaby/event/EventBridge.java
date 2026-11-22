@@ -114,7 +114,7 @@ public final class EventBridge implements Listener {
         if (listed != null && listed.async()) return name + " runs off the main thread (Paper fires it there), and "
                 + "scripts only run on the main thread: it can't be used yet";
         if (listed != null || name.equals("reload")) return null;
-        List<String> close = closeNames(name);
+        List<String> close = Fields.closeNames(name, LISTED.keySet());
         // FORMAT: unknown event, with close names from the list
         return "unknown event \"" + name + "\"" + (close.isEmpty() ? " (the docs site lists every event)"
                 : " (did you mean " + String.join(", ", close) + "?)");
@@ -662,42 +662,5 @@ public final class EventBridge implements Listener {
             case "char" -> char.class;
             default -> Class.forName(name, false, EventBridge.class.getClassLoader());
         };
-    }
-
-    /** Up to three listed names close to a wrong one: same letters in another case, containing it, or a typo away. */
-    private static List<String> closeNames(String wrong) {
-        String w = wrong.toLowerCase(Locale.ROOT);
-        List<String> out = new ArrayList<>();
-        for (String name : LISTED.keySet()) if (name.equalsIgnoreCase(wrong)) return List.of(name);
-        if (w.length() >= 4) {
-            for (String name : LISTED.keySet()) {
-                if (out.size() < 3 && name.toLowerCase(Locale.ROOT).contains(w)) out.add(name);
-            }
-            if (!out.isEmpty()) return out;
-        }
-        int limit = Math.max(2, w.length() / 6);
-        List<Map.Entry<Integer, String>> near = new ArrayList<>();
-        for (String name : LISTED.keySet()) {
-            int d = distance(w, name.toLowerCase(Locale.ROOT));
-            if (d <= limit) near.add(Map.entry(d, name));
-        }
-        near.sort(Map.Entry.comparingByKey());
-        for (int i = 0; i < near.size() && i < 3; i++) out.add(near.get(i).getValue());
-        return out;
-    }
-
-    private static int distance(String a, String b) {
-        int[] row = new int[b.length() + 1];
-        for (int j = 0; j <= b.length(); j++) row[j] = j;
-        for (int i = 1; i <= a.length(); i++) {
-            int prev = row[0];
-            row[0] = i;
-            for (int j = 1; j <= b.length(); j++) {
-                int t = row[j];
-                row[j] = Math.min(Math.min(row[j] + 1, row[j - 1] + 1), prev + (a.charAt(i - 1) == b.charAt(j - 1) ? 0 : 1));
-                prev = t;
-            }
-        }
-        return row[b.length()];
     }
 }

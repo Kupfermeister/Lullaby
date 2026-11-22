@@ -15,7 +15,7 @@ group: Guide
 words: guide tutorial beginner learn introduction what is lullaby why
 lead: Lullaby runs Lua scripts inside your Paper server. This guide takes you from nothing to a working mini game. Read it in order and type every example yourself.
 text:
-  A script is a `.lua` text file. It reacts to events (a player joins, a block breaks), adds commands, sends messages, sounds and particles, and waits between steps. Save, type `/lullaby reload`, and the change is live. A mistake gives a red message with file and line; it never crashes the server.
+  A script is a `.lua` text file. It reacts to events (a player joins, a block breaks), adds commands, sends messages, sounds and particles, and waits between steps. Save, type `/lullaby reload` (short: `/lul`), and the change is live. A mistake gives a red message with file and line; it never crashes the server.
 
   The rest of the side list is for looking things up; the guide links there when needed.
 

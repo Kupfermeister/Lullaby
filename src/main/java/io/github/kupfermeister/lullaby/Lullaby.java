@@ -60,8 +60,10 @@ public final class Lullaby extends JavaPlugin {
             });
         }
 
-        getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event -> event.registrar()
-                .register(LullabyCommand.build(this), "Lullaby: reload the scripts, show the version", List.of()));
+        getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event -> {
+            event.registrar().register(LullabyCommand.build(this), "Lullaby: reload the scripts, show the version", List.of());
+            event.registrar().register(LullabyCommand.buildShort(this), "Lullaby: reload the scripts", List.of());
+        });
     }
 
     @Override

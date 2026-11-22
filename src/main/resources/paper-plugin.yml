@@ -9,5 +9,5 @@ description: Lua scripting for Paper servers.
 authors: [Kupfermeister]
 permissions:
   lullaby.command:
-    description: Use /lullaby (reload, version).
+    description: Use /lullaby (reload, version) and /lul (the same as /lullaby reload).
     default: op

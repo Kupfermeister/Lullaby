@@ -34,7 +34,7 @@ Java, under `src/main/java/io/github/kupfermeister/lullaby/`:
 |---|---|
 | [Lullaby.java](src/main/java/io/github/kupfermeister/lullaby/Lullaby.java) | Plugin entry: the version lock, the per-tick job, `/lullaby` registration. |
 | [Engine.java](src/main/java/io/github/kupfermeister/lullaby/Engine.java) | One load of the scripts: Lua state, listeners, files in `plugins/lullaby`. A reload throws it all away and builds it new. |
-| [LullabyCommand.java](src/main/java/io/github/kupfermeister/lullaby/LullabyCommand.java) | `/lullaby reload` and `/lullaby version`, the one built-in command. In Java so it works when every script is broken. |
+| [LullabyCommand.java](src/main/java/io/github/kupfermeister/lullaby/LullabyCommand.java) | `/lullaby reload`, `/lullaby version` and `/lul` (exactly `/lullaby reload`), the built-in commands. In Java so it works when every script is broken. |
 | [lua/LuaRuntime.java](src/main/java/io/github/kupfermeister/lullaby/lua/LuaRuntime.java) | The LuaJIT state; loads the library files in a fixed order (`LIBRARY`). |
 | [lua/JavaFunctions.java](src/main/java/io/github/kupfermeister/lullaby/lua/JavaFunctions.java) | The raw Java functions the library calls (table `J`). Scripts never see them. |
 | [lua/Wire.java](src/main/java/io/github/kupfermeister/lullaby/lua/Wire.java) | Lua tables as bytes in LuaJIT's own `string.buffer` format, so a whole table crosses in one call. |

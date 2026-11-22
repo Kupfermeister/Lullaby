@@ -34,7 +34,7 @@ How the plugin is built inside, and how to add to it: [ARCHITECTURE.md](ARCHITEC
 2. Put it in your Paper 26.3 server's `plugins` folder and start the server once. Lullaby creates
    `plugins/lullaby/` with `config.lua` and `scripts/lullaby.lua` (examples, all switched off).
 3. Open `plugins/lullaby/scripts/lullaby.lua` and add the `hello` command from above at the end.
-4. In the game (as op) or in the console, type `/lullaby reload`.
+4. In the game (as op) or in the console, type `/lullaby reload` (or the short `/lul`).
 5. Type `/hello`. You get the greeting.
 
 A mistake shows up as a red message with the file and line, in the console and for ops in chat. Every `.lua` file

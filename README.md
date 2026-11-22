@@ -21,7 +21,7 @@ end }
 
 ## Docs
 
-Everything scripts can use (every function, event and field, plus a Lua guide for beginners) is on the docs site:
+Everything scripts can use (a beginner guide first, then every function, event and field) is on the docs site:
 **https://kupfermeister.github.io/Lullaby/**. It is built from the code on every change, so it is never older than
 the code. The same text also comes as `lullaby.d.lua` for autocomplete in VS Code (Lua extension) and as
 `lullaby.md`, both made by `gradlew docs` in `build/docs`.
@@ -39,7 +39,7 @@ How the plugin is built inside, and how to add to it: [ARCHITECTURE.md](ARCHITEC
 
 A mistake shows up as a red message with the file and line, in the console and for ops in chat. Every `.lua` file
 in `scripts/` and its folders loads; a file whose name starts with `--` is skipped. Next stop:
-[start here](https://kupfermeister.github.io/Lullaby/#start) on the docs site.
+the [beginner guide](https://kupfermeister.github.io/Lullaby/#guide) on the docs site.
 
 ## Locked by default
 

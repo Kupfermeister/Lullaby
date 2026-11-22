@@ -4,7 +4,7 @@ Lullaby runs LuaJIT, which speaks Lua 5.1 (plus goto). A page is linked from its
 
 --[[doc
 id: start
-name: start here
+name: script files and comments
 kind: lua
 group: Lua
 also: comments

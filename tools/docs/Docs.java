@@ -22,14 +22,15 @@ import java.util.stream.Stream;
  * thread). They sit in the group Events with a sub group (Player, Block, ...) and a status dot.
  *
  * A doc block sits right above `function lib.NAME(` and has one `key: value` per line:
- *   name, kind (doing | reading | event | type | lua), group, syntax, lead, note, returns, example (code; indented
+ *   name, kind (doing | reading | event | type | lua | guide), group, syntax, lead, note, returns, example (code; indented
  *   lines below continue it), status (confirmed | unconfirmed), words (extra search words), arg: name | types | text
  *   (repeatable), field: name | types | text (repeatable: the fields of the object or value the page is about),
  *   fields-from: <java file> <enum> (the field names' owner is that Java enum: the build checks that the field: lines
  *   name exactly its constants, lowercase, see checkFieldsFrom), is: <id> (the object is also that one and has all
  *   its fields: player has "is: entity"; VS Code's class inherits it), expert: key | value (repeatable), also (more ids that
  *   lead to this page, space-separated: Lua keywords, old page names). Topic pages without a function
- *   (tools/docs/lua.txt) give id:.
+ *   (tools/docs/guide.txt, tools/docs/lua.txt) give id:. Guide pages (kind guide, in guide.txt) are read in order and
+ *   have text: (running text over many indented lines; its small markup is explained at prose() in site.html).
  * Every kind has fixed expert rows (EXPERT_ROWS), in that order, so readers always find the same things in the same
  * place; a missing row is a warning in the build. A speed nobody measured is written as a guess with a range
  * ("guess 1–5 µs (not measured)"), never as a bare number.
@@ -82,7 +83,9 @@ public final class Docs {
         Map<String, String> bodies = new HashMap<>();
         List<Path> files;
         try (Stream<Path> s = Files.list(lib)) { files = s.filter(p -> p.toString().endsWith(".lua")).sorted().toList(); }
-        read(here.resolve("lua.txt"), "tools/docs/lua.txt", entries, bodies); // first: the Lua group leads the sidebar
+        // First the guide (its first page is the site's landing page), then the Lua pages: they lead the sidebar.
+        read(here.resolve("guide.txt"), "tools/docs/guide.txt", entries, bodies);
+        read(here.resolve("lua.txt"), "tools/docs/lua.txt", entries, bodies);
         for (Path file : files) read(file, "src/main/resources/lullaby/lib/" + file.getFileName(), entries, bodies);
         checkDocumented(files, entries);
         checkFieldsFrom(entries);
@@ -379,7 +382,19 @@ public final class Docs {
         try {
             Process p = new ProcessBuilder("git", "blame", "--porcelain", "--", file).redirectErrorStream(false).start();
             List<String> out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8).lines().toList();
-            if (p.waitFor() != 0) return null;
+            if (p.waitFor() != 0) {
+                // A file git doesn't know yet (new, not committed): every line is an uncommitted change, so its pages
+                // show as the newest. Without git at all, or outside a repository, there are no marks (null).
+                Process tracked = new ProcessBuilder("git", "ls-files", "--error-unmatch", "--", file).start();
+                tracked.getInputStream().readAllBytes();
+                Process repo = new ProcessBuilder("git", "rev-parse", "--is-inside-work-tree").start();
+                repo.getInputStream().readAllBytes();
+                if (tracked.waitFor() == 0 || repo.waitFor() != 0) return null;
+                String[] all = new String[(int) Files.lines(Path.of(file)).count()];
+                Arrays.fill(all, UNCOMMITTED);
+                times.put(UNCOMMITTED, Long.MAX_VALUE);
+                return all;
+            }
             List<String> commits = new ArrayList<>();
             String current = null;
             for (String line : out) {
@@ -592,6 +607,7 @@ public final class Docs {
             b.append("\n\n`").append(f.getOrDefault("syntax", f.get("name"))).append("`\n");
             if (f.containsKey("lead")) b.append('\n').append(f.get("lead")).append('\n');
             if (f.containsKey("note")) b.append("\n> ⚠ ").append(f.get("note")).append('\n');
+            if (f.containsKey("text")) b.append('\n').append(f.get("text")).append('\n'); // guide pages: nearly Markdown
             if (!e.args().isEmpty()) {
                 b.append("\n| argument | type | |\n|---|---|---|\n");
                 for (String[] a : e.args()) b.append("| `").append(a[0]).append("` | ").append(a[1]).append(" | ").append(a[2]).append(" |\n");
@@ -647,7 +663,7 @@ public final class Docs {
         Set<String> tables = new HashSet<>(); // "java" of java.class: declared once, before its first function
         for (Entry e : list) {
             String kind = e.f().get("kind");
-            if (kind.equals("java") || kind.equals("type") || kind.equals("lua") || e.f().containsKey("sub")) continue;
+            if (kind.equals("java") || kind.equals("type") || kind.equals("lua") || kind.equals("guide") || e.f().containsKey("sub")) continue;
             b.append('\n');
             int dot = e.id().indexOf('.');
             if (dot > 0 && tables.add(e.id().substring(0, dot))) b.append(e.id(), 0, dot).append(" = {}\n");

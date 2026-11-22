@@ -109,7 +109,10 @@ local RULES = {
 	bitset   = { vanilla = "BitSet, FixedBitSet", lua = "list of true/false" },
 	optional = { vanilla = "Optional<X>", lua = "the value, or nil" },
 	either   = { vanilla = "Either<A, B>", lua = "whichever of the two it is (told apart by its kind)" },
-	list     = { vanilla = "arrays, List<X>, Collection<X>", lua = "Lua list (1, 2, 3, ...)" },
+	list     = { vanilla = "arrays, List<X>, Collection<X>", lua = "Lua list (1, 2, 3, ...)",
+	             built = "2026-11-22 (event fields): the same Lua list on every read in a handler; a changed list "
+	                 .. "goes back into the event when the handler ends or first waits (Paper's setter, or Paper's "
+	                 .. "list emptied and filled again); a list Paper gives read only is a red error when changed" },
 	map      = { vanilla = "Map<K, V>", lua = "Lua table key = value" },
 	duration = { lua = "number of seconds, or text with one unit: t (tick), s, m, h, d (\"3t\", \"2s\")",
 	             gives = "milliseconds inside Lullaby; ticks where Minecraft wants ticks (rounded up, at least 1)",
@@ -288,6 +291,8 @@ T.profile = {
 	accepts = "profile, player name, table in codec shape (textures alone is enough for a head)",
 	codec = "ResolvableProfile.CODEC", stream = "ResolvableProfile.STREAM_CODEC", save = "codec",
 	note = "the tab list's full GameProfile (needs a uuid) is a field inside its packet, not this type",
+	built = "2026-11-22: read only, from event fields (Paper's PlayerProfile): name, uuid, textures, "
+		.. "textures_signature; other properties, skin and the codec shape above not yet",
 }
 T.dialog = {
 	kind = "value", impl = "lazy", vanilla = "net.minecraft.server.dialog.Dialog", later = true,
@@ -357,6 +362,16 @@ T.damage = {
 	accepts = "damage, damage type id, { type = , direct = , causing = , pos = }", save = false,
 	note = "vanilla has no codec for it: a small table of an id and objects, built in Lua",
 	built = "2026-11-15: read only, from event fields (no maker yet: comes with a damage action)",
+}
+T.block_snapshot = {
+	kind = "value", impl = "special (a plain Lua table holding a block object and a block_state)",
+	vanilla = "Bukkit BlockState (Paper's snapshot of a block that is about to change; vanilla has no such class)",
+	fields = { block = "block (the place)", state = "block_state (the state it has, would get or had)" },
+	accepts = "block_snapshot", save = false,
+	note = "only state can be changed, and only where the event's field can be changed: the change goes back into "
+		.. "Paper's snapshot when the handler ends or first waits; elsewhere it is a red error, never lost silently",
+	built = "2026-11-22: from event fields (e.new_state in BlockFormEvent, e.blocks in StructureGrowEvent, ...), "
+		.. "single and in lists; no maker",
 }
 
 -- =================================================================================================================
@@ -469,8 +484,8 @@ local EVENT_JAVA_TYPES = {
 	["org.bukkit.util.Vector"] = "vec3", ["org.bukkit.util.BoundingBox"] = "aabb",
 	["io.papermc.paper.math.BlockPosition"] = "block_pos",
 	["org.bukkit.block.data.BlockData"] = "block_state",
-	["org.bukkit.block.BlockState"] = "{ block = block, state = block_state } (Bukkit's snapshot of a block that "
-		.. "is about to change: the place plus the state it will get)",
+	["org.bukkit.block.BlockState"] = "block_snapshot (Bukkit's snapshot of a block that is about to change: "
+		.. "the place plus the state)",
 	["net.kyori.adventure.text.Component"] = "component", ["org.bukkit.potion.PotionEffect"] = "effect",
 	["org.bukkit.damage.DamageSource"] = "damage", ["com.destroystokyo.paper.profile.PlayerProfile"] = "profile",
 	["org.bukkit.inventory.MerchantRecipe"] = "merchant_offer",

@@ -105,12 +105,12 @@ details.pkt > summary .mono { margin-right: 10px; }
 details.pkt table { margin: 0 0 8px 18px; width: calc(100% - 18px); }
 details.pkt tr.word td:first-child { padding-left: 18px; }
 /* new or changed lately (Docs.java fresh): a small filled box. Level 1 (the newest change) is solid with white text;
-   older levels are the same box with a see-through fill that blends into the background, and their text has the
-   fill of the level before (jft 2026-11-22), so each step fades a little more, then the mark is gone. */
+   older levels are the same box with a see-through fill that blends into the background, then the mark is gone.
+   Text (jft 2026-11-22): level 2 yellow, level 3 the copper of level 1's fill; a color matching the fill was too faint. */
 .fresh { display: inline-block; background: var(--fresh); color: #fff; border-radius: 3px; padding: 0 5px;
   margin-left: 8px; font-size: 10.5px; line-height: 16px; font-weight: 600; white-space: nowrap; vertical-align: 1px; }
-.fresh.f2 { background: color-mix(in srgb, var(--fresh) 50%, transparent); color: var(--fresh); }
-.fresh.f3 { background: color-mix(in srgb, var(--fresh) 25%, transparent); color: color-mix(in srgb, var(--fresh) 50%, transparent); }
+.fresh.f2 { background: color-mix(in srgb, var(--fresh) 50%, transparent); color: var(--warn); }
+.fresh.f3 { background: color-mix(in srgb, var(--fresh) 25%, transparent); color: var(--fresh); }
 .item .fresh { margin-left: 6px; }
 /* Guide pages (kind guide): running text from text: in guide.txt, see prose() below */
 .prose { border-top: 1px solid var(--line); padding: 8px 28px 20px; }

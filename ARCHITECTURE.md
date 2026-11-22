@@ -61,6 +61,7 @@ never goes through it, so this rule stays true for Lullaby itself. Names are Moj
 | [ScriptCommands.java](src/main/java/io/github/kupfermeister/lullaby/nms/ScriptCommands.java) | Script commands on vanilla's Brigadier dispatcher, with per-player snapshots (see Threads). |
 | [SoundSeeds.java](src/main/java/io/github/kupfermeister/lullaby/nms/SoundSeeds.java) | `sound_seed()`: runs the game's own file pick over vanilla's `sounds.json` (downloaded at build) to find the seed for one exact file. |
 | [Entities.java](src/main/java/io/github/kupfermeister/lullaby/nms/Entities.java) | Entities: what an entity object's slot holds (its UUID and the vanilla entity last seen, found again by UUID after an unload or a world change), the entity field list (its owner), `set{}`, and the entities of a chunk. |
+| [Input.java](src/main/java/io/github/kupfermeister/lullaby/nms/Input.java) | Lullaby's own `input` event: owns the input packets, their fields and action words (startup checks them against vanilla); a hook in each player's network pipeline, only while a script listens; what a cancelled packet gets back (vanilla's own refusal). |
 | [Nms.java](src/main/java/io/github/kupfermeister/lullaby/nms/Nms.java) | Small vanilla reads and actions without a bigger class yet. |
 
 The library, in `src/main/resources/lullaby/lib/` (loaded in this order; each file starts with a comment saying
@@ -107,7 +108,7 @@ Other files:
    copies.)*
 4. Every class that runs work off the main thread says so in its Javadoc.
 
-Today two places meet other threads:
+Today three places meet other threads:
 
 - [Watchdog.java](src/main/java/io/github/kupfermeister/lullaby/lua/Watchdog.java) runs one thread that only compares
   two numbers and raises a flag; the main thread checks that flag at every library call into Java.
@@ -115,6 +116,9 @@ Today two places meet other threads:
   [ScriptCommands.java](src/main/java/io/github/kupfermeister/lullaby/nms/ScriptCommands.java) Brigadier's `requires`
   checks and suggestions never call Lua: they read a per-player snapshot that Lua computes on the main thread (on
   join, on reload, on `refresh_commands{}`).
+- [Input.java](src/main/java/io/github/kupfermeister/lullaby/nms/Input.java): while a script listens to `input`,
+  a hook on the network threads wraps the input packets (it reads one field and touches nothing else). Vanilla queues
+  them for the main thread as it queues every packet, in their order; the handlers run there.
 
 The raw Java door ([JavaDoor.java](src/main/java/io/github/kupfermeister/lullaby/lua/JavaDoor.java)) takes no Lua
 functions, so Java can never call a script back and Lullaby never hands a raw object to another thread. A script can
@@ -172,10 +176,10 @@ Lua's disagree, loading stops with a message starting `Lullaby bug:`. Nothing lo
   replaced is removed.
 - Dangerous Lua parts (`io`, `os`, `ffi`, `debug`, C modules) and the raw Java door are locked by default and unlocked in the config
   (README lists what each allows). Deliberate power needs an unlock; one script must not break another by accident.
-- Error format: `⚠ Error in <path> on line N` in red (warnings yellow, `Warning`), then gray lines: `via <event> →
-  <calls>`, the Lua message without its `file:line:` prefix, and `N times in 10s` for collapsed repeats. The console
-  gets no symbols (`->` instead of `→`, no `⚠`), because Windows consoles show them as garbage; console colors go
-  through Paper's component logger, log files stay plain. Details:
+- Error format: `Error in <path> on line N` (warnings: `Warning`), then the lines `via <event> -> <calls>`, the Lua
+  message without its `file:line:` prefix, and `N times in 10s` for collapsed repeats. Ops and the console get the
+  exact same text, all red for errors and all yellow for warnings. No symbols (`->`, no `⚠`), because Windows
+  consoles show them as garbage; console colors go through Paper's component logger, log files stay plain. Details:
   [ErrorReporter.java](src/main/java/io/github/kupfermeister/lullaby/error/ErrorReporter.java).
 - Every text players or the console see has a `// FORMAT:` comment (in Lua `-- FORMAT:`) right above it, so all of
   them can be found and polished: search for `FORMAT:`.
@@ -255,6 +259,12 @@ To let fields of a new Java type through (for example inventories):
    a docs page (entity, vec3, ...) links there by itself.
 5. `gradlew build`: the list is generated again with the new kind.
 
+Lullaby's own `input` event is not a Paper event: to add an input packet, add its line to `Kind` in
+[Input.java](src/main/java/io/github/kupfermeister/lullaby/nms/Input.java) (vanilla's packet type and its fields;
+a new field also goes into `Field` and `read`), say in `refusal` and `refuse` whether and how vanilla refuses it,
+and add its `tree:` lines to the input doc block in [events.lua](src/main/resources/lullaby/lib/events.lua). The docs
+build stops if the tree and `Kind` don't name the same packets, fields and action words.
+
 To mark an event (tested and measured: the dot gets its color; busy; may come off the main thread), add a line to
 [event-marks.txt](tools/docs/event-marks.txt).
 
@@ -289,7 +299,8 @@ when there is more than one packet, building each packet once for all receivers,
    again from the new Paper: commit it, so the docs site lists the new version's events.
 3. Fix what no longer compiles. It should all be in `nms`; anything outside is a change in Paper's own API.
 4. `gradlew runServer`. The startup checks stop loading with `Lullaby bug: ...` if vanilla renamed something Lullaby
-   reads (event getters and setters, wire kinds). Fix those in `nms` or `EventBridge`.
+   reads (event getters and setters, wire kinds, input packets and their action words). Fix those in `nms` or
+   `EventBridge` (new input actions also need their `tree:` lines in the input doc block).
 5. Sounds: `sound_seed()` follows by itself (the build downloads the new `sounds.json`). A seed a script wrote as a
    plain number now may give another file if Mojang changed that sound's list. If the game's file pick itself
    changed (the classes named in [SoundSeeds.java](src/main/java/io/github/kupfermeister/lullaby/nms/SoundSeeds.java)),

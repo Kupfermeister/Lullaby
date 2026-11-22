@@ -232,7 +232,7 @@ example:
   set{ entity = e, velocity = (p.pos - e.pos):normalize() * 0.5 + vec3(0, 0.5, 0) }
 expert: Thread | main thread, like every script
 expert: Cost | 5–30 µs, a teleport into another world more (guess, not measured)
-expert: Under the hood | one Lua → Java call; velocity: vanilla setDeltaMovement plus its needsSync flag, so every client gets it; location: vanilla teleportTo, the same steps as /tp; health: vanilla setHealth
+expert: Under the hood | one Lua → Java call; velocity: vanilla setDeltaMovement plus the flag knockback sets (markHurt), so every client gets it, the pushed player's own too; location: vanilla teleportTo, the same steps as /tp; health: vanilla setHealth
 expert: Can fail | an unknown field (the error lists the ones it takes), nothing to change, a value of the wrong kind, health on an entity without health, a location outside the world or in a world that isn't loaded
 expert: Reload | changes stay
 expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error

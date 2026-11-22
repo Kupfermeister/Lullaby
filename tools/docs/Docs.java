@@ -26,7 +26,10 @@ import java.util.stream.Stream;
  *   lines below continue it), status (confirmed | unconfirmed), words (extra search words), arg: name | types | text
  *   (repeatable), field: name | types | text (repeatable: the fields of the object or value the page is about),
  *   fields-from: <java file> <enum> (the field names' owner is that Java enum: the build checks that the field: lines
- *   name exactly its constants, lowercase, see checkFieldsFrom), is: <id> (the object is also that one and has all
+ *   name exactly its constants, lowercase, see checkFieldsFrom), tree: path | types | text (repeatable: the packets
+ *   of the input event as a tree; path is "packet", "packet.field" or "packet.action.word", types is empty for a packet
+ *   or a word), tree-from: <java file> <enum> (the tree's owner is that Java enum: the build checks that the tree:
+ *   lines name exactly its packets, fields and action words, see checkTreeFrom), is: <id> (the object is also that one and has all
  *   its fields: player has "is: entity"; VS Code's class inherits it), expert: key | value (repeatable), also (more ids that
  *   lead to this page, space-separated: Lua keywords, old page names). Topic pages without a function
  *   (tools/docs/guide.txt) give id:. Guide pages (kind guide, in guide.txt) are read in order and
@@ -43,7 +46,8 @@ import java.util.stream.Stream;
  * FORMAT of docs.json (version 1). New fields may be added at any time; builders ignore fields they don't know.
  *   { "version": 1, "minecraft": "...", "entries": [ { "id", "name", "kind", "group", "syntax", "lead", "note",
  *     "returns", "example", "status", "words", "args": [[name, types, text]], "expert": [[key, value]], "src": "file:line",
- *     "uses": [id], "usedBy": [id], "fields": [[name, type, text]] } ] }
+ *     "uses": [id], "usedBy": [id], "fields": [[name, type, text]], "tree": [[path, type, text]] (only if it has
+ *     one) } ] }
  *   Generated event pages also have "sub" (their sub group), "dot" (untested | changeable | readonly | unusable) and
  *   "paper" (the address of Paper's own page for the event); their status is "generated".
  *   Recently new or changed pages have "fresh" (1 | 2 | 3: 1 is the newest change), "freshAs" (new | changed) and
@@ -63,7 +67,7 @@ public final class Docs {
     private static final Map<String, Object[]> SPANS = new HashMap<>();
 
     record Entry(Map<String, String> f, List<String[]> args, List<String[]> expert, Set<String> uses,
-                 Set<String> usedBy, List<String[]> fields) {
+                 Set<String> usedBy, List<String[]> fields, List<String[]> tree) {
         String id() { return f.get("id"); }
     }
 
@@ -88,6 +92,7 @@ public final class Docs {
         for (Path file : files) read(file, "src/main/resources/lullaby/lib/" + file.getFileName(), entries, bodies);
         checkDocumented(files, entries);
         checkFieldsFrom(entries);
+        checkTreeFrom(entries);
         String minecraft = minecraftVersion();
         events(entries, minecraft);
         checkExpertRows(entries);
@@ -220,6 +225,61 @@ public final class Docs {
         System.exit(1);
     }
 
+    /**
+     * tree-from: the page's tree: lines must name exactly the packets of that Java enum, each packet's fields and the
+     * words of its action field, in the same order (the enum's owner shape: one constant per line,
+     * {@code NAME(GamePacketTypes.X, "field field", Some.Action.class, "word word")}, the last two only for a packet
+     * with an action field). Stops the docs build on a mismatch, so the tree can't miss or invent a packet.
+     */
+    private static void checkTreeFrom(Map<String, Entry> entries) throws IOException {
+        List<String> bad = new ArrayList<>();
+        Pattern constant = Pattern.compile("(?m)^\\s*([A-Z_]+)\\(GamePacketTypes\\.\\w+, \"([^\"]*)\"(?:, [\\w.]+\\.class, \"([^\"]*)\")?\\)[,;]");
+        for (Entry e : entries.values()) {
+            String from = e.f().get("tree-from");
+            if (from == null) continue;
+            String[] parts = from.trim().split("\\s+");
+            Path file = Path.of(parts[0]);
+            if (parts.length != 2 || !Files.exists(file)) {
+                bad.add(e.f().get("src") + "  tree-from: needs an existing Java file and an enum name, got \"" + from + "\"");
+                continue;
+            }
+            Matcher body = Pattern.compile("enum " + Pattern.quote(parts[1]) + "\\s*\\{(.*?)\\n\\s*}", Pattern.DOTALL)
+                    .matcher(Files.readString(file, StandardCharsets.UTF_8));
+            if (!body.find()) {
+                bad.add(e.f().get("src") + "  tree-from: " + parts[0] + " has no enum " + parts[1]);
+                continue;
+            }
+            // the paths Java says the tree must have, in order: packet, packet.field, packet.action.word
+            List<String> java = new ArrayList<>();
+            Matcher m = constant.matcher(body.group(1));
+            while (m.find()) {
+                String packet = m.group(1).toLowerCase(Locale.ROOT);
+                java.add(packet);
+                for (String field : m.group(2).split(" ")) {
+                    if (field.isEmpty()) continue;
+                    java.add(packet + "." + field);
+                    if (field.equals("action") && m.group(3) != null)
+                        for (String word : m.group(3).split(" ")) java.add(packet + ".action." + word);
+                }
+            }
+            List<String> doc = new ArrayList<>();
+            for (String[] row : e.tree()) doc.add(row[0]);
+            if (!doc.equals(java)) {
+                List<String> missing = new ArrayList<>(java), extra = new ArrayList<>(doc);
+                missing.removeAll(doc);
+                extra.removeAll(java);
+                bad.add(e.f().get("src") + "  tree: lines don't match " + parts[1] + " in " + parts[0]
+                        + (missing.isEmpty() ? "" : "; missing " + missing) + (extra.isEmpty() ? "" : "; not in Java " + extra)
+                        + (missing.isEmpty() && extra.isEmpty() ? " (same names, other order)" : ""));
+            }
+        }
+        if (bad.isEmpty()) return;
+        // FORMAT: docs build, tree lines that don't match their Java owner
+        System.err.println("docs: these pages' tree: lines don't match Java's list:");
+        for (String b : bad) System.err.println("  " + b);
+        System.exit(1);
+    }
+
     /** Warns (doesn't stop) about pages missing one of their kind's fixed expert rows, or having them out of order. */
     private static void checkExpertRows(Map<String, Entry> entries) {
         List<String> wrong = new ArrayList<>();
@@ -244,7 +304,8 @@ public final class Docs {
         Matcher m = BLOCK.matcher(text);
         while (m.find()) {
             Map<String, String> f = new LinkedHashMap<>();
-            List<String[]> args = new ArrayList<>(), expert = new ArrayList<>(), fields = new ArrayList<>();
+            List<String[]> args = new ArrayList<>(), expert = new ArrayList<>(), fields = new ArrayList<>(),
+                    tree = new ArrayList<>();
             // `key: value` per line; an indented line (tab or 2 spaces) or an empty line continues the key before it,
             // keeping the line break (for `example:` code).
             String last = null;
@@ -260,6 +321,7 @@ public final class Docs {
                 last = null;
                 if (key.equals("arg")) args.add(split(value, 3));
                 else if (key.equals("field")) fields.add(split(value, 3));
+                else if (key.equals("tree")) tree.add(split(value, 3));
                 else if (key.equals("expert")) expert.add(split(value, 2));
                 else { f.merge(key, value, (a, b) -> a + " " + b); last = key; }
             }
@@ -278,7 +340,7 @@ public final class Docs {
             // the doc block and the function line below it (a topic page: the block alone)
             int end = m.group(2) != null ? line : (int) text.substring(0, m.end()).chars().filter(c -> c == '\n').count();
             SPANS.put(id, new Object[]{src, first, end});
-            entries.put(id, new Entry(f, args, expert, new LinkedHashSet<>(), new LinkedHashSet<>(), fields));
+            entries.put(id, new Entry(f, args, expert, new LinkedHashSet<>(), new LinkedHashSet<>(), fields, tree));
             if (m.group(2) == null) continue; // a topic page: no code, no connections
             // Strings and comments are no calls.
             bodies.put(id, body(text, m.end()).replaceAll("--[^\\n]*", "")
@@ -311,7 +373,7 @@ public final class Docs {
         f.put("syntax", id + "( … )");
         f.put("status", "confirmed"); // generated, no handwritten text
         f.put("src", "src/main/java/io/github/kupfermeister/lullaby/lua/JavaFunctions.java");
-        return new Entry(f, new ArrayList<>(), new ArrayList<>(), new LinkedHashSet<>(), new LinkedHashSet<>(), new ArrayList<>());
+        return new Entry(f, new ArrayList<>(), new ArrayList<>(), new LinkedHashSet<>(), new LinkedHashSet<>(), new ArrayList<>(), new ArrayList<>());
     }
 
     private static String minecraftVersion() throws IOException {
@@ -478,7 +540,7 @@ public final class Docs {
         f.put("src", EVENTS_FILE + ":" + line);
         f.put("flags", p[3]);
         f.put("java", java);
-        return new Entry(f, new ArrayList<>(), new ArrayList<>(), new LinkedHashSet<>(), new LinkedHashSet<>(), new ArrayList<>());
+        return new Entry(f, new ArrayList<>(), new ArrayList<>(), new LinkedHashSet<>(), new LinkedHashSet<>(), new ArrayList<>(), new ArrayList<>());
     }
 
     /**
@@ -566,7 +628,9 @@ public final class Docs {
             }
             b.append(",\"args\":").append(rows(e.args())).append(",\"expert\":").append(rows(e.expert()));
             b.append(",\"uses\":").append(strings(e.uses())).append(",\"usedBy\":").append(strings(e.usedBy()));
-            b.append(",\"fields\":").append(rows(e.fields())).append('}');
+            b.append(",\"fields\":").append(rows(e.fields()));
+            if (!e.tree().isEmpty()) b.append(",\"tree\":").append(rows(e.tree()));
+            b.append('}');
         }
         return b.append("\n]}").toString();
     }
@@ -614,6 +678,16 @@ public final class Docs {
             if (!e.fields().isEmpty()) {
                 b.append("\n| field | type | |\n|---|---|---|\n");
                 for (String[] a : e.fields()) b.append("| `").append("event".equals(f.get("kind")) ? "e." : ".").append(a[0]).append("` | ").append(a[1]).append(" | ").append(a[2]).append(" |\n");
+            }
+            if (!e.tree().isEmpty()) {
+                b.append('\n');
+                for (String[] t : e.tree()) {
+                    String[] path = t[0].split("\\.");
+                    String name = path.length == 1 ? "e.packet == \"" + path[0] + "\"" : path.length == 2 ? "e." + path[1]
+                            : "e." + path[1] + " == \"" + path[2] + "\"";
+                    b.append("  ".repeat(path.length - 1)).append("- `").append(name).append('`')
+                            .append(t[1].isEmpty() ? "" : " (" + t[1] + ")").append(": ").append(t[2]).append('\n');
+                }
             }
             if (f.containsKey("returns")) b.append("\nReturns: ").append(f.get("returns")).append('\n');
             if (!e.uses().isEmpty()) b.append("\nUses: ").append(String.join(", ", e.uses())).append('\n');

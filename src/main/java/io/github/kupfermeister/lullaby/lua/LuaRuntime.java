@@ -2,6 +2,7 @@ package io.github.kupfermeister.lullaby.lua;
 
 import io.github.kupfermeister.lullaby.Engine;
 import io.github.kupfermeister.lullaby.event.EventBridge;
+import io.github.kupfermeister.lullaby.nms.Input;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -28,6 +29,7 @@ public final class LuaRuntime {
     private final EventBridge events;
     private final int internals; // registry reference to the I table
     private final int dispatch;  // registry reference to I.dispatch (called for every event: no lookup by name)
+    private final int dispatchInput; // the same for I.dispatch_input (Lullaby's own input event)
 
     public LuaRuntime(Engine engine) throws IOException {
         watchdog = engine.watchdog();
@@ -54,6 +56,8 @@ public final class LuaRuntime {
         call("setup", "setting up the library");
         pushInternal("dispatch");
         dispatch = lua.ref();
+        pushInternal("dispatch_input");
+        dispatchInput = lua.ref();
     }
 
     /** Loads every script; returns how many files loaded. */
@@ -141,6 +145,28 @@ public final class LuaRuntime {
             lua.push(listener);
             lua.push(slots.add(event));
             enterLua(events.listenerName(listener), 2, 0);
+        } finally {
+            lua.setTop(top);
+        }
+    }
+
+    /**
+     * Runs the input event's on (or after) handlers for one packet; returns true if an on handler cancelled it. Lua
+     * gets: after, the packet's number, the event's slot, the player's UUID and why it can't be cancelled (or nil).
+     */
+    public boolean dispatchInput(boolean after, Input.Event event) {
+        int top = lua.getTop();
+        try {
+            lua.refGet(dispatchInput);
+            lua.push(after);
+            lua.push(event.kind());
+            lua.push(slots.add(event));
+            lua.push(event.player().toString());
+            String refusal = event.refusal();
+            if (refusal == null) lua.pushNil();
+            else LuaText.push(lua, refusal);
+            enterLua(after ? "the input event (after)" : "the input event (on)", 5, 1);
+            return lua.toBoolean(-1);
         } finally {
             lua.setTop(top);
         }

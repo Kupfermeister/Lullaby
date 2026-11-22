@@ -97,6 +97,13 @@ summary { cursor: pointer; color: var(--dim); font-size: 13px; font-weight: 600;
 .subgroup .item { display: flex; align-items: baseline; font-size: 12.5px; overflow-wrap: anywhere; }
 .subgroup .item .dot { transform: translateY(-1px); }
 .status { color: var(--dim); font-size: 13px; margin: -8px 0 14px; }
+/* the tree of an event's packets (tree: lines, Docs.java): one fold per packet, its fields and their words inside */
+details.pkt { border-top: 1px solid var(--line); padding: 0; }
+details.pkt:first-of-type { border-top: 0; }
+details.pkt > summary { color: var(--text); font-size: 14.5px; font-weight: 400; padding: 8px 0; }
+details.pkt > summary .mono { margin-right: 10px; }
+details.pkt table { margin: 0 0 8px 18px; width: calc(100% - 18px); }
+details.pkt tr.word td:first-child { padding-left: 18px; }
 /* new or changed lately (Docs.java fresh): a small filled box. Level 1 (the newest change) is solid; older levels
    are the same box with a see-through fill that blends into the background, then the mark is gone. */
 .fresh { display: inline-block; background: var(--fresh); color: #fff; border-radius: 3px; padding: 0 5px;
@@ -239,6 +246,24 @@ function pager(e) {
   const a = (x, label) => x ? '<a class="go" href="#' + esc(x.id) + '" data-id="' + esc(x.id) + '">' + label + "</a>" : "<span></span>";
   return '<div class="pager">' + a(g[i - 1], "← " + esc(g[i - 1]?.name)) + a(g[i + 1], esc(g[i + 1]?.name) + " →") + "</div>";
 }
+// tree: rows [path, type, text] in order: "packet", then its "packet.field" rows, each followed by its
+// "packet.field.word" rows. One fold per packet; a packet without fields has nothing to unfold.
+function tree(rows) {
+  let out = "", open = false;
+  for (const [path, t, d] of rows) {
+    const p = path.split(".");
+    if (p.length === 1) {
+      if (open) out += "</table></details>";
+      out += `<details class="pkt"><summary><span class="mono c-field">e.packet == "${esc(p[0])}"</span>${esc(d)}</summary><table>`;
+      open = true;
+    } else if (p.length === 2) {
+      out += `<tr><td class="mono c-field">e.${esc(p[1])}</td><td>${BY[t] || TYPES.has(t) ? typed(t) : `<span class="c-dim mono">${esc(t)}</span>`}</td><td>${esc(d)}</td></tr>`;
+    } else {
+      out += `<tr class="word"><td class="mono"><span class="c-dim">== </span>"${esc(p[2])}"</td><td></td><td>${esc(d)}</td></tr>`;
+    }
+  }
+  return open ? out + "</table></details>" : out;
+}
 let current = null;
 function show(id) {
   const e = BY[id] || E[0];
@@ -259,6 +284,7 @@ function show(id) {
       `<tr><td class="mono c-field">${esc(n.replace(/\?$/, ""))}${n.endsWith("?") ? ' <span class="opt">optional</span>' : ""}</td><td>${typed(t)}</td><td>${esc(d)}</td></tr>`).join("")}</table></section>` : ""}
     ${e.fields?.length ? `<section><h2>Fields</h2><table>${e.fields.map(([n, t, d]) =>
       `<tr><td class="mono c-field">${e.kind === "event" ? "e." : "."}${esc(n)}</td><td>${BY[t] || TYPES.has(t) ? typed(t) : `<span class="c-dim mono">${esc(t)}</span>`}</td><td>${esc(d)}</td></tr>`).join("")}</table></section>` : ""}
+    ${e.tree ? `<section><h2>Packets</h2>${tree(e.tree)}</section>` : ""}
     ${e.returns ? `<section><h2>Returns</h2><div>${typed(e.returns)}</div></section>` : ""}
     ${e.example ? `<section><h2>Example</h2><div class="syntax mono" style="--c:var(--line)">${paint(e.example)}</div></section>` : ""}
     ${e.uses.length || e.usedBy.length ? `<section><h2>Connections</h2>

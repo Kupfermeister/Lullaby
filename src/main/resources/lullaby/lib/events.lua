@@ -10,6 +10,8 @@
 -- "reload" is Lullaby's own event: it runs after a /lullaby reload has loaded every script (and refreshed every
 -- online player's commands). Its e is read only: e.scripts (files loaded), e.errors, e.ms (how long it took),
 -- e.cause ("command": /lullaby reload) and e.player (who reloaded; nil from the console).
+-- "input" is Lullaby's own too: one event per input packet a player's game sends (nms/Input.java owns the packets
+-- and their fields; see the input doc block at the end of this file).
 local J, lib, I = ...
 
 local type, error, setmetatable, tostring, tonumber = type, error, setmetatable, tostring, tonumber
@@ -24,6 +26,7 @@ local STAGES, STAGE_LIST = {}, {}
 for stage in gmatch(J.event_info(), "%S+") do STAGES[stage] = true; STAGE_LIST[#STAGE_LIST + 1] = stage end
 local EVENT_FIELDS = {} -- event name -> { field name -> field number }, filled per event on first use
 local EVENT_LISTS = {}  -- event name -> { field name -> true } for its list fields
+local OWN = { reload = true, input = true } -- Lullaby's own events (not Paper's: no fields from EventBridge)
 
 -- '"a", "b" or "c"'
 local function quoted(list)
@@ -44,7 +47,10 @@ local function register(kind, a)
 	local what = kind .. "{}"
 	if type(name) ~= "string" then error(what .. ": the first value must be the event name, got " .. I.type_name(name), 3) end
 	if type(fn) ~= "function" then error(what .. ": the second value must be a function, got " .. I.type_name(fn), 3) end
-	if name ~= "reload" and not EVENT_FIELDS[name] then
+	-- FORMAT: a stage given for Lullaby's own input event
+	if name == "input" and stage ~= nil then error(what .. ": input has no stage (it is Lullaby's own event, other "
+		.. "plugins don't see it)", 3) end
+	if not OWN[name] and not EVENT_FIELDS[name] then
 		-- why (unknown, with close names; or off the main thread) is worded in EventBridge.java
 		local info, why = J.event_fields(name)
 		if not info then error(what .. ": " .. why, 3) end
@@ -74,7 +80,9 @@ local function register(kind, a)
 	if not list then
 		list = {}
 		handlers[key] = list
-		if name ~= "reload" then
+		if name == "input" then
+			J.input_listen(kind == "after")
+		elseif name ~= "reload" then
 			listeners[J.listen(name, kind, stage)] = { list = list, fields = EVENT_FIELDS[name],
 				lists = EVENT_LISTS[name], name = name,
 				kind = kind, origin = name .. " (" .. kind .. ")" }
@@ -95,7 +103,7 @@ group: Events
 words: listen hook before cancel
 syntax: on{ "EventName", function(e) ... end, order = number, stage = text }
 lead: Runs the function before the event happens; it may change e (e.cancelled = true, ...).
-arg: 1 | text | The event name, like "PlayerJoinEvent" (every Paper event: the Events list), or "reload".
+arg: 1 | text | The event name, like "PlayerJoinEvent" (every Paper event: the Events list), or Lullaby's own "reload" or "input".
 arg: 2 | function | Gets the event e.
 arg: order? | number | Lower runs first; ties by load order. Default 0.
 arg: stage? | text | Place among other plugins: lowest, low, normal, high, highest. Default normal.
@@ -117,7 +125,7 @@ group: Events
 words: listen hook monitor
 syntax: after{ "EventName", function(e) ... end, order = number }
 lead: Runs the function once the event happened and was not cancelled; e is read only. Every Paper event: the Events list.
-arg: 1 | text | The event name, or "reload".
+arg: 1 | text | The event name, or "reload" or "input".
 arg: 2 | function | Gets the event e.
 arg: order? | number | Lower runs first; ties by load order. Default 0.
 returns: nothing
@@ -394,6 +402,135 @@ function I.fire_reload(scripts, errors, ms, uuid)
 	end
 end
 
+-- The input event (Lullaby's own, see nms/Input.java). Java owns the packets and their fields: the key names come
+-- first (the bits of pressed and released), then "name field=number ..." per packet, in Java's order.
+local info_lines = gmatch(J.input_info(), "[^\n]+")
+local KEY_NAMES = {}
+for key in gmatch(info_lines(), "%S+") do KEY_NAMES[#KEY_NAMES + 1] = key end
+local KEY_LIST = concat(KEY_NAMES, ", ")
+local PACKETS = {} -- packet number (from 0, as Java counts) -> { name, fields = { name -> number }, names (for errors) }
+local packet_count = 0
+for line in info_lines do
+	local name, rest = line:match("^(%S+)%s*(.*)$")
+	local fields, names = {}, { "cancelled", "packet", "player" }
+	for field, number in gmatch(rest, "([%w_]+)=(%d+)") do
+		fields[field] = tonumber(number)
+		names[#names + 1] = field
+	end
+	sort(names)
+	-- not #PACKETS: Lua's length ignores index 0, so it would stay 0 and every packet would land on PACKETS[0]
+	PACKETS[packet_count] = { name = name, fields = fields, names = concat(names, ", ") }
+	packet_count = packet_count + 1
+end
+
+-- e.pressed / e.released: one read-only table per combination of keys (made the first time it is needed), so reading
+-- them makes no new table per event. A key name it doesn't have is an error, as for any field.
+local keysets = {}
+local function keyset(mask)
+	local set = keysets[mask]
+	if set then return set end
+	local values = {}
+	for i = 1, #KEY_NAMES do values[KEY_NAMES[i]] = mask % 2 ^ i >= 2 ^ (i - 1) end
+	set = setmetatable({}, {
+		__index = function(_, key)
+			local v = values[key]
+			if v == nil then I.no_field("the keys", key, KEY_LIST, 2) end
+			return v
+		end,
+		-- FORMAT: e.pressed or e.released changed
+		__newindex = function(_, key) error("the keys can't be changed (" .. tostring(key) .. ")", 2) end,
+		__metatable = false,
+	})
+	keysets[mask] = set
+	return set
+end
+
+-- One input event costs one table (e) plus entries in these weak tables; the packet's fields are read from Java on
+-- each access, by number. Like other events, e can't be read once every handler has ended without waiting.
+local input_packet = setmetatable({}, { __mode = "k" })    -- e -> its PACKETS entry
+local input_player = setmetatable({}, { __mode = "k" })    -- e -> the player's UUID
+local input_refusal = setmetatable({}, { __mode = "k" })   -- e -> why it can't be cancelled (absent: it can)
+local input_cancelled = setmetatable({}, { __mode = "k" }) -- e -> true once an on handler cancelled it
+local input_after = setmetatable({}, { __mode = "k" })     -- e -> true in after{ } (read only)
+
+local function input_ended(e, field)
+	-- FORMAT: an event read or changed after its handlers ended
+	error("the input event is over: e." .. tostring(field) .. " can only be used while its handler runs (keep the "
+		.. "values you need, not e)", 3)
+end
+
+local INPUT_META = {
+	__index = function(e, field)
+		local slot = slot_of[e]
+		if not slot then input_ended(e, field) end
+		local p = input_packet[e]
+		if field == "packet" then return p.name end
+		if field == "player" then return I.player_by_uuid(input_player[e]) end
+		if field == "cancelled" then return input_cancelled[e] == true end
+		local number = p.fields[field]
+		if not number then I.no_field(p.name, field, p.names, 2) end
+		if field == "pressed" or field == "released" then
+			local _, mask = J.input_get(slot, number)
+			return keyset(mask)
+		end
+		return I.from_java(J.input_get(slot, number))
+	end,
+	__newindex = function(e, field, value)
+		if not slot_of[e] then input_ended(e, field) end
+		local p = input_packet[e]
+		if field ~= "cancelled" then
+			-- FORMAT: a field the event doesn't have; an input field written
+			if not p.fields[field] and field ~= "packet" and field ~= "player" then
+				error(p.name .. " has no field e." .. tostring(field), 2)
+			end
+			error("e." .. tostring(field) .. " can't be changed (it is what the player's game sent)", 2)
+		end
+		if input_after[e] then error("after events can't be changed (e.cancelled)", 2) end
+		if over[e] then
+			I.warn("the event is already over, changing e.cancelled after a wait does nothing", 2)
+			return
+		end
+		-- FORMAT: e.cancelled set to something that isn't true or false
+		if type(value) ~= "boolean" then error("e.cancelled must be true or false, got " .. I.type_name(value), 2) end
+		local refusal = input_refusal[e]
+		if value and refusal then error(refusal, 2) end
+		input_cancelled[e] = value or nil
+	end,
+	__tostring = function() return "input" end,
+	__metatable = false,
+}
+I.kind_by_meta[INPUT_META] = "event"
+
+-- Called by Java for each input packet while a script listens (on handlers, then after handlers once vanilla handled
+-- the packet). Returns true if an on handler cancelled it.
+function I.dispatch_input(after, packet, slot, uuid, refusal)
+	local list = handlers[after and "input|after|monitor" or "input|on|normal"]
+	if not list then
+		I.free_slot(slot)
+		return false
+	end
+	local e = setmetatable({}, INPUT_META)
+	slot_of[e] = slot
+	input_packet[e] = PACKETS[packet]
+	input_player[e] = uuid
+	input_refusal[e] = refusal
+	input_after[e] = after or nil
+	local waited = false
+	local origin = after and "input (after)" or "input (on)"
+	for i = 1, #list do
+		if I.start_handler(list[i].fn, e, origin) then waited = true end
+	end
+	local cancelled = input_cancelled[e] == true
+	if waited then
+		over[e] = true
+		I.give_slot(e, slot) -- a waiting handler still holds e: freed when e is collected
+	else
+		slot_of[e] = nil
+		I.free_slot(slot)
+	end
+	return cancelled
+end
+
 --[[doc
 id: events
 name: event fields
@@ -426,6 +563,96 @@ expert: Cost | runs once per reload: as its handlers (guess, not measured)
 expert: Under the hood | Lullaby's own: fired after every script loaded and online players' commands were refreshed; e is a plain read-only table
 expert: Can fail | any write to e
 expert: Reload | it is the reload
+expert: Time limit | each handler is its own task; checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
+status: unconfirmed
+]]
+--[[doc
+id: input
+name: input
+kind: event
+group: Events
+words: keys keyboard mouse click press jump space sneak shift sprint punch swing attack hit right left use place break dig drop swap hotbar scroll middle pick fly elytra spear stab packet
+syntax: on{ "input", function(e) ... end, order = number }
+lead: Lullaby's own event for what a player's game sends when they press a key or click: one event per vanilla input packet, right before vanilla acts on it. e.packet says which packet; each packet has its own fields (Mojang's names), listed in the tree below with when it comes and how to tell it apart. on{ } may cancel it: vanilla never sees the packet, and the player's game gets what vanilla sends when it refuses that input itself (the block or the hotbar is shown again as it is). after{ } runs once vanilla has handled it (the block is placed, the item dropped); e is read only there.
+field: packet | text | Which packet: a name from the tree below.
+field: player | player | Who sent it.
+field: cancelled | boolean | true cancels the packet (on{ } only, before a wait). The tree says what can't be cancelled; trying is a red error.
+note: This is the raw input, before vanilla checks it: reach, game mode, cooldowns. A cheating client can send anything (an attack across the map), so for rules that must hold use the checked Paper events (BlockBreakEvent, PrePlayerAttackEntityEvent, ...). Some input never reaches the server, so no event sees it: E (own inventory), T, Tab, F3, Esc, and a right click on air with an empty hand. Reading a field another packet has is a red error (e.pressed on a punch): check e.packet first; e.packet == "player_input" and e.pressed.jump is safe, because Lua stops at the first false.
+example:
+  on{ "input", function(e)
+    -- double jump: space pressed in the air
+    if e.packet == "player_input" and e.pressed.jump and not e.player.on_ground then
+      set{ entity = e.player, velocity = vec3(0, 0.8, 0) }
+    end
+  end }
+tree-from: src/main/java/io/github/kupfermeister/lullaby/nms/Input.java Kind
+tree: player_input | | A movement key went down or up: W A S D, space, shift, sprint. Sent only when one of them changed, with all seven as they are now: tapping space gives two (down, then up). Can't be cancelled.
+tree: player_input.forward | boolean | W is down now.
+tree: player_input.backward | boolean | S is down now.
+tree: player_input.left | boolean | A is down now.
+tree: player_input.right | boolean | D is down now.
+tree: player_input.jump | boolean | Space is down now. The key, not a jump: also in water, flying or riding.
+tree: player_input.shift | boolean | Shift (sneak) is down now.
+tree: player_input.sprint | boolean | The sprint key is down now; whether they really sprint is player_command start_sprinting.
+tree: player_input.pressed | keys | The keys that went down with this packet, by the same seven names: e.pressed.jump is true only at the moment space goes down. Lullaby's own: it compares with the player's keys before.
+tree: player_input.released | keys | The keys that went up with this packet: e.released.shift when they stop sneaking.
+tree: punch | | A left click: the arm swing, on air, a block or an entity alike. Hitting an entity also sends attack; holding the button on a block sends punch again and again while it breaks (the breaking itself is player_action). Cancelled: no swing.
+tree: attack | | A left click on an entity: the hit. Not with a spear held (that is player_action stab). Cancelled: no hit.
+tree: attack.entity | entity · player · nil | Who was hit; nil if the game knows no such entity (gone meanwhile, or a cheating client).
+tree: interact | | A right click on an entity: trade, ride, shear, name tag, ... The player's game tries main_hand first and off_hand only if the main hand did nothing, so one click can send two (check e.hand). Cancelled: nothing happens, the player's inventory and the entity are shown again as they are.
+tree: interact.entity | entity · player · nil | What was clicked; nil if the game knows no such entity.
+tree: interact.hand | text | "main_hand" or "off_hand".
+tree: interact.location | vec3 | Where on the entity the click hit, measured from the entity's position (its feet).
+tree: interact.using_secondary_action | boolean | They sneak while clicking (vanilla's "secondary action").
+tree: use_item | | A right click that uses the held item itself: eat, drink, draw a bow, throw, raise a shield, ... Comes after use_item_on when clicking the block did nothing, and once per hand tried (main_hand first). Never with an empty hand. Holding the button sends it once; letting go is player_action release_use_item. Cancelled: the item isn't used.
+tree: use_item.hand | text | "main_hand" or "off_hand".
+tree: use_item.y_rot | number | Where they looked, sideways (vanilla's yRot, in degrees).
+tree: use_item.x_rot | number | Up and down (vanilla's xRot, in degrees: -90 is straight up, 90 straight down).
+tree: use_item_on | | A right click on a block: open a door or chest, place a block, use bone meal, ... Once per hand tried (main_hand first). Cancelled: nothing happens, the block and its neighbour on the clicked side are shown again as they are.
+tree: use_item_on.hand | text | "main_hand" or "off_hand".
+tree: use_item_on.block | block | The block clicked.
+tree: use_item_on.direction | text | The side clicked: "down", "up", "north", "south", "west" or "east".
+tree: use_item_on.location | vec3 | The exact point clicked, in world positions.
+tree: use_item_on.inside | boolean | The click started inside the block (vanilla's "inside": the player's eyes are in it).
+tree: use_item_on.world_border_hit | boolean | The click hit the world border.
+tree: player_action | | Breaking, dropping, swapping and letting go; e.action says which.
+tree: player_action.action | text | What they did:
+tree: player_action.action.start_destroy_block | | Left button held on a block: breaking starts (in creative the block breaks at once). Cancelled: no breaking, the block is shown again.
+tree: player_action.action.change_destroy_direction | | Still breaking the same block, now looking at another side of it.
+tree: player_action.action.abort_destroy_block | | Let go or looked away before the block broke.
+tree: player_action.action.stop_destroy_block | | Breaking finished: their game says the block is broken (vanilla checks the time it took). Cancelled: the block stays.
+tree: player_action.action.drop_all_items | | Ctrl+Q: the whole stack in hand. Cancelled: it stays in the hand.
+tree: player_action.action.drop_item | | Q: one item from the hand (dropping from an open inventory is a container click, not this). Cancelled: it stays.
+tree: player_action.action.release_use_item | | Let go of right click while using an item: the bow shoots, eating stops. Can't be cancelled.
+tree: player_action.action.swap_item_with_offhand | | F: swap the hands. Cancelled: nothing moves.
+tree: player_action.action.stab | | A left click with a spear (an item with the piercing_weapon component): the spear's hit. Vanilla ignores attack while one is held. Cancelled: no hit.
+tree: player_action.block | block | The block, for the destroy actions; for the others vanilla sends the block at 0 0 0.
+tree: player_action.direction | text | The side of the block, for the destroy actions; "down" for the others.
+tree: player_command | | A state their game switched; e.action says which.
+tree: player_command.action | text | What switched:
+tree: player_command.action.stop_sleeping | | "Leave Bed" clicked. Cancelled: they stay in bed.
+tree: player_command.action.start_sprinting | | Sprinting starts (sprint key, double-tap W). Can't be cancelled.
+tree: player_command.action.stop_sprinting | | Sprinting stops. Can't be cancelled.
+tree: player_command.action.start_riding_jump | | A jump on a mount that jumps (horse, camel, ...); e.data is its strength. Cancelled: no jump.
+tree: player_command.action.stop_riding_jump | | The mount's jump ended.
+tree: player_command.action.open_inventory | | E while riding a mount with an inventory (horse, llama, ...): its inventory, not their own. Cancelled: nothing opens.
+tree: player_command.action.start_fall_flying | | Space in the air with an elytra: gliding starts. Cancelled: they stop gliding (vanilla's own refusal).
+tree: player_command.data | number | The jump's strength for start_riding_jump (vanilla's number); 0 for the others.
+tree: set_carried_item | | A hotbar slot chosen: 1–9 or the mouse wheel. Cancelled: the old slot stays selected.
+tree: set_carried_item.slot | number | The new slot: 0 (left) to 8 (right), vanilla's count.
+tree: pick_item_from_block | | Middle click on a block. Cancelled: nothing is picked.
+tree: pick_item_from_block.block | block | The block.
+tree: pick_item_from_block.include_data | boolean | Ctrl was held too (creative: copy the block with its contents).
+tree: pick_item_from_entity | | Middle click on an entity. Cancelled: nothing is picked.
+tree: pick_item_from_entity.entity | entity · player · nil | The entity; nil if the game knows no such entity.
+tree: pick_item_from_entity.include_data | boolean | Ctrl was held too.
+tree: player_abilities | | Flying switched on or off: double-tap space where they may fly (creative, spectator, allowed flight). Cancelled: they keep their flying state.
+tree: player_abilities.flying | boolean | true: flying starts; false: it stops.
+expert: Thread | main thread, like every script; the packets arrive on the network threads and wait in vanilla's own queue, in the order they came
+expert: Cost | no handler: nothing in the network at all; with a handler: one event per input packet (a few per second per player), guess 10–40 µs each (not measured)
+expert: Under the hood | nms/Input.java: a hook in each player's network pipeline (only while a script listens) wraps the input packets; vanilla queues them for the main thread as always, where the on handlers run, then vanilla (unless cancelled), then the after handlers; fields are read from the packet by number. Paper's packet limiter counts them for its all-packets limit, but a limit set for one packet in paper-global.yml (packet-limiter overrides) doesn't see them while a script listens
+expert: Can fail | at load: a stage given; while running: a field the packet doesn't have (the error lists the ones it has), a field written (only cancelled can be), cancelling what can't be cancelled, e used after its handlers ended
+expert: Reload | the hook leaves every pipeline; scripts listen again while loading. Packets already waiting go to vanilla unchanged
 expert: Time limit | each handler is its own task; checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]

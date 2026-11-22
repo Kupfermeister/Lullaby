@@ -5,6 +5,7 @@ import io.github.kupfermeister.lullaby.event.EventBridge;
 import io.github.kupfermeister.lullaby.nms.Codecs;
 import io.github.kupfermeister.lullaby.nms.Entities;
 import io.github.kupfermeister.lullaby.nms.Fields;
+import io.github.kupfermeister.lullaby.nms.Input;
 import io.github.kupfermeister.lullaby.nms.Nms;
 import io.github.kupfermeister.lullaby.nms.Packets;
 import io.github.kupfermeister.lullaby.nms.ScriptCommands;
@@ -155,6 +156,16 @@ final class JavaFunctions {
                     (int) L.toInteger(5), (int) L.toInteger(6), (int) L.toInteger(7));
             return 0;
         });
+        // Lullaby's own input event (nms/Input.java): the packets and fields once at startup, then numbers only.
+        addFree(lua, "input_info", L -> {
+            push(L, Input.info());
+            return 1;
+        });
+        add(lua, "input_listen", L -> {
+            engine.listenInput(L.toBoolean(1));
+            return 0;
+        });
+        add(lua, "input_get", L -> ToLua.object(L, Input.read(slots.get(slot(L, 1)), (int) L.toInteger(2)), slots::add));
         // Slots (see Slots.java): objects are created in Lua, Java keeps what each number stands for.
         addFree(lua, "free_slots", L -> {
             slots.free(string(L, 1));

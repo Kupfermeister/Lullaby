@@ -5,6 +5,7 @@ import io.github.kupfermeister.lullaby.error.ErrorReporter;
 import io.github.kupfermeister.lullaby.event.EventBridge;
 import io.github.kupfermeister.lullaby.lua.LuaRuntime;
 import io.github.kupfermeister.lullaby.lua.Watchdog;
+import io.github.kupfermeister.lullaby.nms.Input;
 import io.github.kupfermeister.lullaby.nms.Nms;
 import io.github.kupfermeister.lullaby.nms.ScriptCommands;
 import io.papermc.paper.event.server.ServerResourcesReloadedEvent;
@@ -188,6 +189,7 @@ public final class Engine {
      */
     void unload() {
         events.unregisterAll();
+        Input.stop();
         HandlerList.unregisterAll(commandPlayers);
         if (runtime != null) {
             try {
@@ -222,6 +224,25 @@ public final class Engine {
             runtime.dispatch(listener, event);
         } catch (RuntimeException e) {
             internalError("the event " + events.listenerName(listener), e);
+        }
+    }
+
+    /**
+     * Turns Lullaby's own input event on (the library calls this for the first on handler, and with {@code after}
+     * true for the first after handler). A reload turns it off again (see {@link #unload}).
+     */
+    public void listenInput(boolean after) {
+        Input.listen(plugin, this::dispatchInput, after);
+    }
+
+    /** One input packet for the scripts; true if an on handler cancelled it. A Lullaby bug never cancels. */
+    private boolean dispatchInput(boolean after, Input.Event event) {
+        if (runtime == null) return false;
+        try {
+            return runtime.dispatchInput(after, event);
+        } catch (RuntimeException e) {
+            internalError("the input event", e);
+            return false;
         }
     }
 

@@ -205,7 +205,9 @@ public final class Entities {
         }
         if (velocity != null) {
             e.setDeltaMovement(velocity[0], velocity[1], velocity[2]);
-            e.needsSync = true; // vanilla's own flag after a velocity change: the tracker sends it to every client
+            // vanilla's flag of markHurt (knockback): the tracker sends the new velocity to everyone who sees the entity
+            // AND to the entity's own player, whose game moves them itself (needsSync would skip that player)
+            e.syncVelocity = true;
         }
         if (health != null) ((LivingEntity) e).setHealth((float) (double) health); // vanilla keeps it in 0..max
         return true;

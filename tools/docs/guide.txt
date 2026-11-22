@@ -2,8 +2,8 @@ The beginner guide of the docs site (read by Docs.java before lua.txt, same bloc
 with id:). Pages are read in this order: the site shows them first and links each to the previous and next one.
 Its first page is the site's landing page. Every line of text: is indented by two spaces; its small markup
 (## heading, - list, 1. numbered, > tip, ! warning, ``` code ```, `code`, **bold**, [words](#id)) is explained at
-prose() in site.html. Built like the Denizen beginner guide: one idea per page, why first, a running example that
-grows, try it on your own test server.
+prose() in site.html. Built like the Denizen beginner guide (why first, try it on a test server), but short
+(jft 2026-11-22: heavily compact). also: keeps the addresses of older, merged guide pages working.
 
 --[[doc
 id: guide
@@ -11,104 +11,40 @@ name: welcome
 kind: guide
 group: Guide
 words: guide tutorial beginner learn introduction what is lullaby why
-lead: A guide for people who have never written a script. Read it in order, page by page, and try every example on your own test server.
+lead: Lullaby runs Lua scripts inside your Paper server. This guide gets you from nothing to a working mini game. Read it in order and try every example.
 text:
-  ## What is Lullaby?
-  Lullaby is a Paper plugin that runs small programs, called **scripts**, inside your Minecraft server. A script can react when something happens in the game (a player joins, breaks a block, dies), add your own commands, send messages, play sounds and show particles, move and heal entities, and wait between steps.
+  A script is a `.lua` text file. It can react to events (a player joins, a block breaks), add commands, send messages, sounds and particles, and wait between steps. Save, type `/lullaby reload`, and the change is live. A mistake gives a red message with file and line; it never crashes the server.
 
-  Scripts are written in **Lua**, a small programming language made to be built into other programs. Lua is used in many games, so what you learn here is useful outside Minecraft too. Lullaby adds its own functions on top: `message{ }`, `on{ }`, `command{ }` and so on. This guide teaches both at once, only as much Lua as you need.
+  - **Type the examples yourself**, then change them and see what changes.
+  - **The rest of the side list is for looking things up.** The guide links there when needed.
 
-  ## Why not just a Java plugin?
-  A Java plugin needs a development setup, a build after every change, and a server restart to try it. A Lullaby script is one text file: you save it, type `/lullaby reload` and the change is live a moment later. Mistakes show up as a red message with the file and the line, they don't crash the server.
-
-  ## How to use this guide
-  - **Follow along, don't just read.** Every page has examples. Type them into a script on your test server and watch what happens. Typing them yourself (instead of copying) helps more than it seems.
-  - **Change the examples.** Once something works, change a word or a number and see what changes. Breaking things on purpose is the fastest way to learn what each part does.
-  - **One page at a time.** Each page builds on the ones before it. If something is unclear, go back a page.
-  - **The rest of the docs is for looking things up.** The side list has a page for every function, event and value. You don't need to read those now; the guide links to them where they matter.
-
-  ## The pages
-  1. [your test server](#guide_server): a private server on your own computer, to try things safely.
-  2. [your script editor](#guide_editor): a program that knows Lullaby and warns about mistakes while you type.
-  3. [your first script](#guide_first): a command that greets you.
-  4. [reading these docs](#guide_docs): what the colors and the parts of a page mean.
-  5. [when something goes wrong](#guide_problems): reading errors, and the mistakes everybody makes.
-  6. [remembering values](#guide_variables): variables and tables.
-  7. [changing the path](#guide_if): doing something only when it's true.
-  8. [reacting to the game](#guide_events): events.
-  9. [doing it again](#guide_loops): loops.
-  10. [your own commands](#guide_commands): arguments, permissions, sub commands.
-  11. [waiting](#guide_waiting): tasks that pause and go on later.
-  12. [reusing code](#guide_functions): functions and several files.
-  13. [long term memory](#guide_memory): what stays and what is lost on reload.
-  14. [putting it together](#guide_together): a small game mode, start to end.
-  15. [where next](#guide_next): the rest of the docs, and what Lullaby can't do yet.
-
-  ! Lullaby is not released yet and still changes. If an example here doesn't work the way the page says, the page may be out of date: the function's own page (in the side list) is always built from the code and is the one to trust.
+  ! Lullaby is not released yet. When the guide and a function's own page disagree, trust the function's page: it is built from the code.
 status: unconfirmed
 ]]
 
 --[[doc
-id: guide_server
-name: your test server
+id: guide_setup
+name: setup
 kind: guide
 group: Guide
-words: test server local install paper java setup localhost eula start bat op
-lead: Never try new scripts on the server your players are on. Run a second, private server on your own computer.
+also: guide_server guide_editor
+words: test server local install paper java setup localhost eula op editor vscode autocomplete lullaby.d.lua luarc
+lead: A private test server on your own computer, and an editor that knows Lullaby.
 text:
-  ## Why a test server?
-  Every scripter makes mistakes, all the time. That is normal and fine, as long as it happens where nobody is playing. On your own test server you can spam yourself with messages, kill yourself a hundred times and reload every ten seconds. When a script works there, you copy it to the real server.
+  ## Test server
+  Never test on the server your players use.
+  1. Install Java 25. Download Paper for the Minecraft version at the top of the side list, put it in an empty folder as `paper.jar`.
+  2. Start it with `java -Xms2G -Xmx2G -jar paper.jar nogui`. Set `eula=true` in `eula.txt`, start again.
+  3. Build Lullaby (`gradlew build`, jar in `build/libs`), put the jar in `plugins`, restart.
+  4. Join `localhost`, then type `op YourName` in the server window. Ops see script errors in chat.
 
-  A test server also starts in seconds and has nothing else installed, so when something breaks you know it was your script.
+  Scripts go in `plugins/lullaby/scripts`. Every `.lua` file there loads; a name starting with `--` switches a file or folder off. Settings are in `plugins/lullaby/config.lua`.
 
-  ## Setting it up
-  1. **Java 25.** Lullaby needs Java 25 or newer. Install a Java 25 JDK (for example from adoptium.net) and check it in a terminal: `java -version` should say 25.
-  2. **Paper.** Download Paper for the exact Minecraft version Lullaby is built for (the version is at the top of the side list) from papermc.io. Lullaby stays off on any other version and says so in the console.
-  3. **A folder.** Make an empty folder, for example `test-server`, and put the Paper jar in it. Rename it to `paper.jar`.
-  4. **A start file.** In that folder, make a text file `start.bat` (on Mac or Linux: `start.sh`) with this one line, then double-click it:
-  ```
-  java -Xms2G -Xmx2G -jar paper.jar nogui
-  ```
-  5. **The EULA.** The first start stops at once and makes `eula.txt`. Open it, change `eula=false` to `eula=true`, save, and start again.
-  6. **Lullaby.** Lullaby has no download yet: build it with `gradlew build` in the Lullaby project folder and take the jar from `build/libs`. Stop the server (type `stop` in its window), put the jar into the `plugins` folder and start again. The console now says that Lullaby loaded, and there is a new folder `plugins/lullaby`.
-  7. **Join.** Start Minecraft (the same version), Multiplayer, Direct Connection, and type `localhost`.
-  8. **Make yourself op.** In the server window type `op YourName`. Ops see script errors in chat and may use `/lullaby reload`.
-
-  ## What's in plugins/lullaby
-  - `scripts/`: your scripts. Every `.lua` file in here and in its folders loads. A file or folder whose name starts with `--` is on standby: it doesn't load. Rename a file to `--name.lua` to switch it off without deleting it.
-  - `scripts/lullaby.lua`: examples, all switched off. Read them later.
-  - `config.lua`: settings, such as the [locked libraries](#locked) and the time limit for scripts.
-
-  > Keep the server window where you can see it. print( ) writes there, and every error shows up there too.
-status: unconfirmed
-]]
-
---[[doc
-id: guide_editor
-name: your script editor
-kind: guide
-group: Guide
-words: editor vscode visual studio code autocomplete extension lua language server luarc lullaby.d.lua setup
-lead: A script is plain text, so any text editor works. A good one knows every Lullaby function, completes names for you and underlines mistakes before you even reload.
-text:
-  ## Visual Studio Code with the Lua extension
-  1. Install **Visual Studio Code** (code.visualstudio.com, free).
-  2. In VS Code, open Extensions (the four squares on the left), search for **Lua** and install the one by **sumneko** (it is called "Lua" and is the language server most Lua coders use).
-  3. File, Open Folder, and pick your server's `plugins/lullaby` folder. Now you see `config.lua` and `scripts/` on the left.
-
-  ## Teaching it Lullaby
-  The editor knows Lua, but not yet Lullaby's own functions. The docs site has a file for that, built from the same text as these pages:
-  1. Download `lullaby.d.lua` from the docs site (the same address as this page, with `lullaby.d.lua` at the end instead of the `#...` part).
-  2. Put it into `plugins/lullaby`, **next to** the `scripts` folder, not inside it (inside, Lullaby would try to run it as a script).
-  3. In `plugins/lullaby`, make a file `.luarc.json` with this text, so the editor speaks the same Lua as Lullaby (LuaJIT):
-  ```
-  { "runtime.version": "LuaJIT" }
-  ```
-  Now type `mes` in a script: the editor offers `message`, and when you write `message{ ` it lists the fields it takes. A wrong name gets a yellow or red wavy line.
-
-  > After a Lullaby update, download `lullaby.d.lua` again: it only knows the functions of the version it was made for.
-
-  ! The editor only guesses. It can't know which events exist on your server or whether a player is online. A script that looks fine in the editor can still give a red error on reload; that message is the real answer.
+  ## Editor
+  1. Install VS Code and its **Lua** extension (by sumneko). Open the folder `plugins/lullaby`.
+  2. Download `lullaby.d.lua` from this site (its address with `lullaby.d.lua` instead of `#...`) and put it in `plugins/lullaby`, **not** in `scripts`.
+  3. Add a file `.luarc.json` there with `{ "runtime.version": "LuaJIT" }`.
+  Now the editor completes Lullaby's names and underlines mistakes. Download the file again after a Lullaby update.
 status: unconfirmed
 ]]
 
@@ -117,397 +53,166 @@ id: guide_first
 name: your first script
 kind: guide
 group: Guide
-words: first script hello world command reload try
-lead: A command that greets you: five lines, and every one of them explained.
+also: guide_docs
+words: first script hello world command reload try colors syntax legend doing reading braces brackets
+lead: A command that greets you, and how to read the docs.
 text:
-  ## Make the file
-  In `plugins/lullaby/scripts`, make a new file `hello.lua` and type this:
+  Make `scripts/hello.lua`:
   ```
-  -- my first script: /hello greets whoever types it
+  -- /hello greets whoever types it
   command{ "hello", function(c)
     message{ player = c.player, text = "Hello, " .. c.player.name .. "!" }
   end }
   ```
-  Save it. In the game, type `/lullaby reload`. Lullaby reads every script again and answers in green with how many scripts it loaded (in red, with the number of errors, if something went wrong). Now type `/hello`.
+  Type `/lullaby reload` (green: loaded; red: an error), then `/hello`.
+  - `--` starts a comment: ignored by Lullaby.
+  - `command{ "hello", function(c) ... end }` adds /hello; the function runs each time someone types it. `c.player` is who typed it.
+  - `message{ player = ..., text = ... }` sends a chat message. `..` joins texts.
+  The file's top level runs once while loading; functions inside run later, when something happens.
 
-  ## What each line does
-  - `-- my first script ...` is a **comment**. Everything after `--` on a line is for people, Lullaby skips it. Use comments to say why a piece of code is there.
-  - `command{ "hello", function(c) ... end }` adds a command named hello. The part between `function(c)` and `end` is what happens when someone types it. `c` holds the details: who typed it (`c.player`) and what they typed after it.
-  - `message{ player = ..., text = ... }` sends a chat message. It gets two things: **who** gets it and **what** it says.
-  - `"Hello, "` is text: everything between the quotes is taken as it is. `..` glues two texts together. `c.player.name` reads the name of the player who typed the command.
-
-  ## When does it run?
-  Code at the top of a file runs **once**, while the file loads (on server start and on every reload). Here that is the `command{ }` line itself: it sets up the command. The function inside it runs **later**, every time someone types `/hello`. This split is the same everywhere in Lullaby: you set things up while loading, and the game calls your functions when something happens.
-
-  ## Try it
-  - Change the text, save, `/lullaby reload`, and type `/hello` again.
-  - Add a second `message{ }` line under the first, with another text.
-  - Change `"hello"` to `"hi"`. After the reload, `/hello` is gone and `/hi` works.
-  - Type `/hello` in the server window instead of the game. You get a red error: the console is no player, so `c.player` is empty (nil). The next pages show how to handle that.
-status: unconfirmed
-]]
-
---[[doc
-id: guide_docs
-name: reading these docs
-kind: guide
-group: Guide
-words: colors syntax legend page parts doing reading braces brackets curly round arguments fields optional
-lead: Every page in the side list looks the same, and every color means one thing. Once you know them, you can read any page at a glance.
-text:
-  ## { } does, ( ) reads
-  Lullaby's functions come in two sorts, and you can tell them apart by their brackets:
-  - **Doing** functions change something in the game: send a message, play a sound, add a command. They take **curly braces** with named fields: `message{ player = p, text = "Hi" }`. The names say what each value is for, and their order doesn't matter. They are copper in the docs.
-  - **Reading** functions only look something up and give back a value: `player("Notch")`, `vec3(0, 64, 0)`. They take **round brackets**, with the values in a fixed order. Reading a field with a dot, `p.name`, or a method with a colon, `pos:length()`, is reading too. They are teal in the docs.
-  So when you read `{ }`, something happens; when you read `( )`, `.` or `:`, nothing changes.
-
-  ## The other colors
-  - **lua** words in bold are Lua's own: `if`, `then`, `end`, `local`, `function`, `for`.
-  - **gold** is a type, the sort of a value: `player`, `vec3`, `text`, `number`.
-  - **violet** is an event: something that happens in the game, like `PlayerJoinEvent`.
-  - **pale blue** is a field or argument name, like `player =` in `message{ player = p }`.
-  - Gray text is a comment or a text in quotes.
-  Every colored name is a link: click it to go to its page.
-
-  ## The parts of a page
-  - The box at the top is the **syntax**: how a call looks.
-  - **Arguments** are what you give the function. One marked *optional* may be left out. Arguments named 1, 2, ... have no name and come first, in that order (like `"hello"` and the function in `command{ "hello", function(c) ... end }`).
-  - **Fields** are what you can read from a value with a dot: `p.name`, `e.player`.
-  - **Returns** is what a reading function gives back.
-  - **For experts** at the bottom: speed, threads, what happens on reload. Skip it for now.
-  - The small box marks pages that were added or changed lately: solid is the newest change, see-through ones are older.
-  - A yellow ⚠ box means the text was written by an AI and not yet checked by a person. It is usually right, but if the game does something else, believe the game.
-
-  ## Finding things
-  The search box above the side list finds pages by name and by related words, and it forgives typos: `joinn` still finds `PlayerJoinEvent`. Put a search in slashes, like `/^Player.*Event$/`, for a regex.
+  ## Reading the docs
+  - `{ }` **does** something (copper): `message{ player = p, text = "Hi" }`, fields by name.
+  - `( )`, `.` and `:` only **read** (teal): `player("Notch")`, `p.name`.
+  - Gold is a type, violet an event, pale blue a field name, bold is Lua itself. Every colored name is a link.
+  - On a page: **Arguments** is what you give, **Fields** what you can read, **For experts** can be skipped.
 status: unconfirmed
 ]]
 
 --[[doc
 id: guide_problems
-name: when something goes wrong
+name: when it goes wrong
 kind: guide
 group: Guide
 words: error errors mistake mistakes debug debugging problem help fix red message line nil attempt to index concatenate common
-lead: Errors are not failures, they are the server telling you exactly where to look. Learn to read them and most problems take a minute.
+lead: Every error names the file and the line. Go there, read the message, check the values on that line.
 text:
-  ## Reading an error
-  When a script makes a mistake, ops see a red message in chat and the console gets the same. It always names the **file** and the **line**, then what went wrong. If it happened inside an event or a command, a gray line says which one led there ("via PlayerJoinEvent"). When the same error comes again and again, it is shown once with a count instead of flooding the chat.
+  Not sure what a value is? `print(x)` writes it to the server window, `print(type_of(x))` says what sort it is. One file's error stops only that file.
 
-  The steps are always the same:
-  1. Open the file it names and go to that line.
-  2. Read the message slowly. It usually says what was expected and what was there instead: `count must be a whole number, got 2.5`.
-  3. Look at the values on that line. Which one could be different from what you think?
-  4. Not sure what a value is? Print it: `print(x)` writes it to the server window, `print(type_of(x))` says what sort it is.
+  ## Common mistakes
+  - **Missing end**: every `function`, `if`, `for`, `while` needs one. The error then points to the end of the file.
+  - `=` stores, `==` compares, `~=` is "not equal".
+  - **attempt to index a nil value**: a dot on something empty, like `c.player.name` from the console. Check `if p then` first.
+  - **attempt to concatenate a nil value**: `..` got nil.
+  - **Capitals matter**: `PlayerJoinEvent`, not `playerjoinevent`.
+  - **{ } vs ( )**: `message(p, "Hi")` fails, `message{ player = p, text = "Hi" }` works.
+  - **No reload**: saving alone does nothing.
 
-  One file's error stops only that file. Every other script keeps working.
-
-  ## The mistakes everybody makes
-  - **A missing end.** Every `function`, `if`, `for` and `while` needs its own `end`. The error then points to the end of the file (or "'end' expected"), not to the place where the end is missing. Indent the inside of each block, and a missing end becomes easy to see.
-  - **= and ==.** One `=` puts a value into a name: `count = 5`. Two `==` compare: `if count == 5 then`. Not equal is `~=`, not `!=`.
-  - **attempt to index a nil value.** You used a dot on something that is empty (nil): `c.player.name` when typed from the console, `player("Notch").name` when nobody of that name exists. Check first: `if p then ... end`.
-  - **attempt to concatenate a nil value.** `..` got something empty. `"Hi " .. nil` can't work; find out why the value is nil.
-  - **Capital letters matter.** `PlayerJoinEvent` works, `playerjoinevent` doesn't. `Message{ }` is not `message{ }`.
-  - **{ } and ( ) mixed up.** Doing functions take braces, reading functions take round brackets (see [reading these docs](#guide_docs)). `message(p, "Hi")` is an error; `message{ player = p, text = "Hi" }` works.
-  - **A forgotten local.** A name without `local` in front belongs to the whole file and can be changed by accident from anywhere in it. Write `local` the first time you use a name.
-  - **Forgot to reload.** Saving the file does nothing on its own. `/lullaby reload` after every change.
-  - **Wrong file name.** A file must end in `.lua` and must not start with `--`, or it doesn't load.
-
-  ## When a script runs too long
-  A loop that never ends would freeze the whole server, so Lullaby stops any script that runs longer than `script_time_limit` seconds (5 by default, in `config.lua`) with a normal red error. A loop that only does math and never touches the game can't be stopped this way; the console then names what is stuck, and you have to restart. To run something for a long time, let it wait between rounds ([waiting](#guide_waiting)).
-  > Lua errors never crash the server. The worst a beginner's mistake does is stop one file or, with an endless math loop, make you restart.
+  A script running longer than `script_time_limit` (5 seconds, config) is stopped with an error. To run long, wait between rounds ([waiting](#guide_waiting)).
 status: unconfirmed
 ]]
 
 --[[doc
-id: guide_variables
-name: remembering values
+id: guide_lua
+name: lua basics
 kind: guide
 group: Guide
-words: variable variables local remember store value table list number text nil true false definitions short term memory
-lead: A variable is a name for a value, so you can use it again later. A table holds many values at once.
+also: guide_variables guide_if guide_loops
+words: variable local value table list number text nil true false if then else elseif condition loop for while ipairs pairs break
+lead: Variables, tables, if and loops: the Lua you need for most scripts.
 text:
-  ## Variables
   ```
-  local name = "Steve"
-  local coins = 10
-  coins = coins + 5                    -- now 15
-  print(name .. " has " .. coins .. " coins")
+  local coins = 10                     -- a variable; always write local the first time
+  coins = coins + 5
+  local name = "Steve"                 -- text; .. joins, # is the length
+  local list = { "a", "b", "c" }       -- a list, counted from 1: list[1], #list
+  local spawn = { x = 0, y = 64 }      -- named fields: spawn.y
+  local kills = {}
+  kills[p] = (kills[p] or 0) + 1       -- per player; "x or 0": x, or 0 when x is nil
   ```
-  `local name = value` makes a new variable and puts a value in it. Later, `name = other` puts a new value into the same variable. Always write `local` the first time: the variable then belongs to the block it is written in (the file, a function, an if or a loop) and nobody else can change it by accident.
+  `nil` means "nothing here". Only `nil` and `false` count as false; `0` counts as true.
 
-  ## The sorts of values
-  - **Text**, in quotes: `"Hello"`. Join texts with `..`; `#text` is its length.
-  - **Numbers**: `5`, `2.5`, `-3`. Math works as expected: `+ - * /`, `%` is the remainder, `^` the power.
-  - **true** and **false**, for yes and no.
-  - **nil**, which means "nothing here". A variable that was never set is nil, and so is a field that doesn't exist.
-  - **Game values** from Lullaby: a `player`, a `vec3` (a position), a `block`, an `item_stack` and more. They have fields you read with a dot: `p.name`, `p.health`, `p.pos`.
-  More on each: [values](#values).
-
-  ## Tables
-  A table holds many values. Written as a list, its values are counted from 1:
+  ## if
   ```
-  local colors = { "red", "green", "blue" }
-  print(colors[1])                     -- red
-  print(#colors)                       -- 3, the length
-  colors[#colors + 1] = "gold"         -- add at the end
-  ```
-  Written with names, it holds named fields, like a little form:
-  ```
-  local spawn = { x = 0, y = 64, z = 0 }
-  print(spawn.y)                       -- 64
-  spawn.y = 70
-  ```
-  A table can also use any value as a key, for example a player. That is how you remember something per player:
-  ```
-  local kills = {}                     -- an empty table
-  kills[p] = (kills[p] or 0) + 1       -- one more for p; "or 0" when p has none yet
-  ```
-  You have used a table already: everything in `message{ ... }` is one, with the fields player and text.
-
-  > `x or default` is the Lua way to say "x, or this when x is nil". You will see it everywhere.
-
-  ## Try it
-  Put the lines above at the top of a script, reload, and watch the server window: print( ) writes there. Then print a value that doesn't exist, like `print(spawn.w)`: you get nil.
-status: unconfirmed
-]]
-
---[[doc
-id: guide_if
-name: changing the path
-kind: guide
-group: Guide
-words: if then else elseif condition compare and or not equal check branch decision
-lead: if runs a piece of code only when something is true. It is how a script makes decisions.
-text:
-  ## if, then, end
-  ```
-  command{ "hello", function(c)
-    if c.player == nil then
-      print("This command is for players")
-      return                           -- stop here
-    end
-    message{ player = c.player, text = "Hello, " .. c.player.name .. "!" }
-  end }
-  ```
-  Now `/hello` from the console prints a line instead of an error. `return` ends the function right there; the lines below it don't run. Checking for the bad case first and leaving early keeps the rest of the code simple.
-
-  ## else and elseif
-  ```
-  local hp = c.player.health
   if hp >= 15 then
-    message{ player = c.player, text = "You look healthy" }
+    message{ player = p, text = "healthy" }
   elseif hp >= 5 then
-    message{ player = c.player, text = "You look hurt" }
+    message{ player = p, text = "hurt" }
   else
-    message{ player = c.player, text = "You need help!" }
+    message{ player = p, text = "help!" }
   end
   ```
-  Lua checks from the top and runs the **first** part that is true, then skips the rest. else runs when none was true. Both are optional.
+  Compare with `== ~= < > <= >=`, combine with `and`, `or`, `not`. `return` leaves a function early.
 
-  ## Comparing
-  - `==` equal, `~=` not equal, `<` `>` `<=` `>=` smaller and bigger.
-  - `a and b` is true when both are true; `a or b` when at least one is; `not a` turns it around.
-  - Brackets group like in math: `if (hp < 5 or hungry) and not creative then`.
-  - Only `nil` and `false` count as false. `0` and `""` count as true, unlike in some other languages. So `if p then` means "if there is a p".
-
-  ## Try it
-  Use `set{ entity = c.player, health = 4 }` once to hurt yourself, then type `/hello` and see the text change. [set{ }](#set) can change health, position and motion.
+  ## Loops
+  ```
+  for _, p in ipairs(online_players()) do   -- once per online player
+    message{ player = p, text = "Hi all" }
+  end
+  for i = 1, 5 do print(i) end              -- 1 to 5
+  for p, n in pairs(kills) do print(p.name, n) end
+  ```
+  `break` leaves a loop. More: [values](#values), [tables](#local), [if and loops](#if).
 status: unconfirmed
 ]]
 
 --[[doc
 id: guide_events
-name: reacting to the game
+name: events
 kind: guide
 group: Guide
-words: event events on after world script listener join break block cancel cancelled handler e fields happen
-lead: An event is something that happens in the game: a player joins, a block breaks, a zombie dies. Your script can run code every time it does, and can even change or stop it.
+words: event events on after listener join break block cancel cancelled handler e fields happen
+lead: Run code when something happens in the game, and change or stop it.
 text:
-  ## Your first event
   ```
   after{ "PlayerJoinEvent", function(e)
-    message{ player = e.player, text = "Welcome back, " .. e.player.name .. "!" }
+    message{ player = e.player, text = "Welcome, " .. e.player.name }
   end }
-  ```
-  Reload and rejoin. `after{ }` takes the event's name and a function, and runs that function every time the event happens. The function gets `e`, the event, with everything about it: here `e.player`, who joined.
 
-  ## Which events are there?
-  Every event Paper has: the **Events** group in the side list, sorted into Player, Block, Entity and more. Each event's page lists its fields: what you can read from `e`. The name is the event's Paper name, with capitals, like `BlockBreakEvent`.
-  The dot in front of each event says how far it is tested: gray is not tested yet (it should work, but nobody checked), copper is tested and can be changed, teal is tested and read only, and an empty ring can't be used yet.
-
-  ## on{ }: before it happens
-  `after{ }` runs once the event happened; it can only look. `on{ }` runs **before** it happens, and can change it:
-  ```
   on{ "BlockBreakEvent", function(e)
     if e.block.state == block_state("diamond_ore") then
-      e.cancelled = true               -- the block stays
-      message{ player = e.player, text = "Not these!" }
+      e.cancelled = true                 -- the block stays
     end
   end }
   ```
-  `e.block` is the block, `.state` what is there (a [block_state](#block_state)); `block_state("diamond_ore")` makes the state to compare with. `e.cancelled = true` stops the event: the block doesn't break. Most fields can be changed in on{ } the same way: `e.drop_items = false`, `e.exp_to_drop = 50`. Which ones can, the event's page says.
-
-  ## on or after?
-  - Want to change or stop it? **on{ }**.
-  - Only want to react (a message, a sound, counting)? **after{ }**: it only runs when the event really happened, so if another plugin or script cancels it, your after{ } doesn't run.
-  Several handlers for the same event are fine; they run in the order the files load (or by `order =`, see [on{ }](#on)).
-
-  ! A field the event doesn't have is an error, not nil: `e.playr` lists the fields the event does have. A typo shows up right away.
-
-  ## Try it
-  - Play a sound when someone joins: add `sound{ player = e.player, sound = "entity.player.levelup", source = "player", entity = e.player }` to the join handler. [sound{ }](#sound) lists the rest.
-  - Write an `on{ "PlayerToggleSneakEvent", ... }` that sends `"sneaking: " .. tostring(e.sneaking)`.
-  - Show particles where a block broke: `particle{ player = e.player, particle = "flame", pos = e.block.pos:vec3() + vec3(0.5, 0.5, 0.5), count = 10, dist = vec3(0.3, 0.3, 0.3) }` in an after{ "BlockBreakEvent", ... }. `:vec3()` turns the block position (its corner) into an exact position; adding a half block in each direction gives its middle.
-status: unconfirmed
-]]
-
---[[doc
-id: guide_loops
-name: doing it again
-kind: guide
-group: Guide
-words: loop loops for while repeat ipairs pairs each every all players broadcast count break
-lead: A loop runs the same code many times: once for every player, ten times in a row, or as long as something is true.
-text:
-  ## Once for every player
-  ```
-  command{ "announce", function(c)
-    for _, p in ipairs(online_players()) do
-      message{ player = p, text = "The event starts in 5 minutes!" }
-    end
-  end }
-  ```
-  `online_players()` gives a list of every player online. `for _, p in ipairs(list) do ... end` runs the inside once per entry, with `p` being the next player each round. (`_` is the position in the list, 1, 2, 3, ...; the name `_` says "not used".)
-  This is also how you send something to everyone: there is no "broadcast", you go through the players.
-
-  ## Counting
-  ```
-  for i = 1, 5 do
-    print("round " .. i)               -- round 1 ... round 5
-  end
-  for i = 10, 0, -2 do print(i) end    -- 10 8 6 4 2 0
-  ```
-  `for i = first, last do` counts from first to last, both included. A third number is the step.
-
-  ## While something is true
-  ```
-  local n = 1
-  while n < 1000 do
-    n = n * 2
-  end
-  print(n)                             -- 1024
-  ```
-  `while` checks before each round. Make sure the condition becomes false some day.
-
-  ## Leaving early
-  `break` leaves the loop at once:
-  ```
-  for _, p in ipairs(online_players()) do
-    if p.name == "Notch" then
-      message{ player = p, text = "Found you!" }
-      break
-    end
-  end
-  ```
-  `pairs(t)` goes through every field of a table with names, like the kills table from [remembering values](#guide_variables): `for p, n in pairs(kills) do ... end`. More: [if and loops](#if).
-
-  ! A loop runs all at once, the game stands still until it ends. A loop that never ends is stopped after the time limit with an error. To do something every few seconds, don't loop faster: wait inside the loop ([waiting](#guide_waiting)).
+  - **after{ }** runs once it happened; it can only look.
+  - **on{ }** runs before; it can change fields (`e.cancelled = true`, `e.exp_to_drop = 50`).
+  - `e` holds the event's fields. Each event's page (the **Events** group) lists them. A wrong field name is an error that lists the right ones.
+  - The dot before an event: gray untested, copper tested and changeable, teal tested read only, ring not usable yet.
 status: unconfirmed
 ]]
 
 --[[doc
 id: guide_commands
-name: your own commands
+name: commands
 kind: guide
 group: Guide
-words: command commands arguments args permission branches sub subcommand player integer text suggest tab complete
-lead: Commands with arguments, number limits, tab completion, permissions and sub commands, without parsing a single word yourself.
+words: command commands arguments args permission branches sub subcommand player integer text suggest tab complete optional
+lead: Arguments, permissions and sub commands; Lullaby checks every value before your code runs.
 text:
-  ## Arguments
-  ```
-  command{ "heal", function(c)
-    local target = c.args.target
-    set{ entity = target, health = target.max_health }
-    message{ player = target, text = "You were healed" }
-  end, args = {
-    { name = "target", type = "player" },
-  } }
-  ```
-  `args` lists what is typed after the command, in order. Each has a `name` (you read it as `c.args.<name>`) and a `type`. Lullaby checks it before your function runs: `/heal nobody` gets the game's own error, your code never sees a wrong value, and tab completion lists online players by itself.
-
-  ## The types
-  - `word`: one word. `text`: the whole rest of the line (only as the last argument).
-  - `integer`: a whole number, `number`: any number. Both take `min =` and `max =`.
-  - `bool`: true or false. `player`: an online player.
-  - `optional = true` lets the player leave it out (only at the end); it is then nil, so use `c.args.x or default`.
-  - `suggest = { "a", "b" }` offers words for tab completion; `check = function(value, p) ... end` can refuse a value.
   ```
   command{ "dice", function(c)
     local sides = c.args.sides or 6
     message{ player = c.player, text = "You rolled " .. math.random(1, sides) }
-  end, args = { { name = "sides", type = "integer", min = 2, max = 100, optional = true } } }
+  end, args = { { name = "sides", type = "integer", min = 2, max = 100, optional = true } },
+  permission = "fun.dice" }
   ```
-
-  ## Who may use it
-  `permission = "myserver.heal"` needs that permission (ops have all). `show = function(p) return p.name == "Notch" end` decides per player; whoever may not use it doesn't even see it in the list.
-
-  ## Sub commands
-  `/shop buy <item>` and `/shop sell <item>` are **branches**: a word to type, each with its own function and arguments.
-  ```
-  command{ "shop", branches = {
-    buy = { function(c) message{ player = c.player, text = "Buying " .. c.args.item } end,
-            args = { { name = "item", type = "word", suggest = { "apple", "bread" } } } },
-    sell = { function(c) message{ player = c.player, text = "Selling " .. c.args.item } end,
-             args = { { name = "item", type = "word" } } },
-  } }
-  ```
-  A branch takes the same fields as the command itself, so branches can have branches. Everything else is on the page of [command{ }](#command).
-
-  > c.player is nil when the command is typed in the console. A command meant only for players should check that first (see [changing the path](#guide_if)).
+  - Argument types: `word`, `text` (rest of the line, last only), `integer`, `number`, `bool`, `player`. Read them as `c.args.<name>`.
+  - `optional = true` (only at the end), `suggest = { ... }` for tab completion.
+  - `branches = { buy = { function(c) ... end, args = { ... } } }` makes `/shop buy ...`.
+  - `c.player` is nil in the console.
+  Everything else: [command{ }](#command).
 status: unconfirmed
 ]]
 
 --[[doc
 id: guide_waiting
-name: waiting
+name: waiting and tasks
 kind: guide
 group: Guide
-words: wait delay later seconds ticks task tasks run stop final queue schedule timer repeat every countdown cooldown
-lead: wait( ) pauses your code and goes on later, while the game keeps running. A piece of code that can wait is a task.
+also: guide_memory
+words: wait delay later seconds ticks task tasks run stop final schedule timer repeat every countdown cooldown save memory reload lost
+lead: wait( ) pauses your code while the game goes on. Handlers and commands may wait; run{ } starts more.
 text:
-  ## Pausing a handler
-  ```
-  after{ "PlayerJoinEvent", function(e)
-    message{ player = e.player, text = "Welcome!" }
-    wait("3s")
-    message{ player = e.player, text = "Type /help if you're new." }
-  end }
-  ```
-  `wait("3s")` pauses this handler for three seconds; the server and every other script go on meanwhile. A number alone is seconds; with a unit: `"10t"` ticks (20 ticks are one second), `"2s"`, `"5m"`, `"1h"`, `"1d"`.
-  Every event handler and every command function is already a task, so it may wait.
-
-  ## Starting a task of your own
-  `run{ }` starts a function as its own task, next to the code that started it:
   ```
   local function countdown(p)
     for i = 3, 1, -1 do
       message{ player = p, text = tostring(i) }
-      wait(1)
+      wait(1)                            -- 1 second; also "10t", "2s", "5m"
     end
-    message{ player = p, text = "Go!" }
   end
+  command{ "go", function(c) run{ countdown, args = { c.player }, id = c.player } end }
 
-  command{ "go", function(c)
-    run{ countdown, args = { c.player } }
-    message{ player = c.player, text = "Countdown started" }   -- comes first: run{ } doesn't wait
-  end }
-  ```
-
-  ## Something every few seconds
-  A loop that waits each round runs forever without hitting the time limit:
-  ```
-  run{ function()
+  run{ function()                        -- every 2 seconds, forever
     while true do
       for _, p in ipairs(online_players()) do
         particle{ player = p, particle = "heart", pos = p.pos + vec3(0, 2.2, 0) }
@@ -516,48 +221,23 @@ text:
     end
   end }
   ```
-  Written at the top of a file, it starts on load. Reload ends every task and the file starts it again, so there is never a second copy.
+  - `id =` allows one running task per id: a simple cooldown.
+  - `final = function() ... end` runs whenever the task ends; `stop{ task = t }` ends one.
+  - After a wait, check `p.online`.
 
-  ## Stopping and cleaning up
-  run{ } gives back the task; `stop{ task = t }` ends it. `final = function() ... end` runs when a task ends for any reason (done, stopped, an error, reload): the place to undo what it did. `id =` keeps one task per id: `run{ countdown, args = { p }, id = p }` starts nothing while that player's countdown is still running. That makes a simple cooldown, too. More: [run{ }](#run), [wait( )](#wait), [stop{ }](#stop).
-
-  ! After a wait, the world may have changed: the player may have left. Check `p.online` before using a player again after a long wait.
+  ## Reload forgets
+  Reload and restart run every file from the top again: variables reset and tasks end. Scripts can't save their own data yet.
 status: unconfirmed
 ]]
 
 --[[doc
 id: guide_functions
-name: reusing code
+name: functions and files
 kind: guide
 group: Guide
-words: function functions reuse return import file files module folder shared library procedure helper
-lead: A function gives a piece of code a name, so you write it once and use it everywhere. import( ) shares functions between files.
+words: function functions reuse return import file files module folder shared library helper
+lead: Write code once, use it everywhere.
 text:
-  ## Your own functions
-  ```
-  local function greet(p, word)
-    message{ player = p, text = word .. ", " .. p.name .. "!" }
-  end
-
-  after{ "PlayerJoinEvent", function(e) greet(e.player, "Welcome") end }
-  command{ "hi", function(c) greet(c.player, "Hi") end }
-  ```
-  `local function name(a, b) ... end` makes a function; a and b are the values you give it when you call it. Write it above the place that uses it.
-
-  ## Giving a value back
-  `return` hands a value back to whoever called the function:
-  ```
-  local function health_word(p)
-    if p.health >= 15 then return "healthy" end
-    if p.health >= 5 then return "hurt" end
-    return "dying"
-  end
-  print(health_word(player("Steve")))
-  ```
-  A function that only works something out and gives it back, without changing the game, is easy to test and to reuse. Many small ones beat one huge one.
-
-  ## Several files
-  Each file has its own variables: a name in one file is invisible in the others, so two scripts can never break each other by accident. To share, a file **returns** a table of what it offers, and another file **imports** it:
   ```
   -- scripts/shared/util.lua
   local util = {}
@@ -571,111 +251,47 @@ text:
   local util = import("shared/util")
   after{ "PlayerJoinEvent", function(e) util.greet(e.player, "Welcome") end }
   ```
-  The path is from the scripts folder, with `/` between folders and without `.lua`. A file loads only once, no matter how many files import it. More: [import( )](#import), [functions](#function).
-
-  > Sort your scripts into folders by topic, like `scripts/shop/` and `scripts/minigame/`. To switch a whole topic off, rename its folder to start with `--`.
-status: unconfirmed
-]]
-
---[[doc
-id: guide_memory
-name: long term memory
-kind: guide
-group: Guide
-words: save store persist remember data flags database file reload restart memory keep forever variable table lost
-lead: Variables live as long as the script is loaded. A reload or a restart starts every file fresh, and its variables with it.
-text:
-  ## What stays and what goes
-  ```
-  local joins = 0                      -- starts at 0 on every load
-  after{ "PlayerJoinEvent", function(e)
-    joins = joins + 1
-    message{ player = e.player, text = "Joins since the last reload: " .. joins }
-  end }
-  ```
-  Type `/lullaby reload` and the count is back at 0. On every load, each file runs from the top again, and every variable and table starts as written. The same goes for tasks: reload ends them all (their final still runs) and the file starts them again.
-
-  What the game itself keeps stays, of course: a player's health, a block you changed through an event, an entity you moved.
-
-  ## Keeping values longer
-  Lullaby has **no way yet for scripts to save their own data** across a reload or a restart (Denizen calls this flags). Until it does:
-  - Keep counts and per-player data in tables, and accept that they reset on reload. For many things (a cooldown, a running round of a game) that is fine.
-  - Avoid reloading the live server while a game is running.
-  - With the io library unlocked (config, see [locked libraries](#locked)) a script can write files itself; that is powerful and dangerous for every script on the server, so only for scripts you trust.
-
-  ! Very long waits (more than a day) are a warning sign: a restart ends the task, and nothing remembers that it was waiting.
+  `local function name(a, b) ... return x end` makes a function. Each file has its own variables, so files can't break each other; share by returning a table and using `import( )` (path from `scripts`, no `.lua`). More: [functions](#function), [import( )](#import).
 status: unconfirmed
 ]]
 
 --[[doc
 id: guide_together
-name: putting it together
+name: a mini game
 kind: guide
 group: Guide
 words: example project minigame complete full script kill counter zombie hunt game round
-lead: A small game mode from start to end, using every page of the guide: a zombie hunt with a timer, a score per player and a command to start it.
+lead: A 60-second zombie hunt, using every page before.
 text:
-  ## The plan
-  - `/hunt` starts a round of 60 seconds (only one round at a time).
-  - Every zombie a player kills during the round is one point.
-  - Ten seconds before the end everyone gets a warning; at the end the best player is named.
-  - The scores reset with each round.
-
-  ## The script
   ```
-  -- scripts/hunt.lua: a zombie hunt
-  local running = false
-  local score = {}                     -- player -> points
+  -- scripts/hunt.lua
+  local running, score = false, {}
 
   local function tell_all(text)
     for _, p in ipairs(online_players()) do message{ player = p, text = text } end
   end
 
   local function round()
-    running = true
-    score = {}
+    running, score = true, {}
     tell_all("Zombie hunt! 60 seconds, go!")
-    wait("50s")
-    tell_all("10 seconds left")
-    wait("10s")
-    local best, best_points = nil, 0
-    for p, points in pairs(score) do
-      if points > best_points then best, best_points = p, points end
-    end
-    if best then tell_all(best.name .. " wins with " .. best_points .. " zombies!")
-    else tell_all("Nobody got a zombie.") end
+    wait("60s")
+    local best, most = nil, 0
+    for p, n in pairs(score) do if n > most then best, most = p, n end end
+    tell_all(best and (best.name .. " wins with " .. most) or "Nobody got a zombie")
   end
 
   command{ "hunt", function(c)
-    if running then
-      if c.player then message{ player = c.player, text = "A hunt is already running" } end
-      return
-    end
-    run{ round, final = function() running = false end }
+    if not running then run{ round, final = function() running = false end } end
   end, permission = "hunt.start" }
 
   after{ "EntityDeathEvent", function(e)
     if not running or e.entity_type ~= "zombie" then return end
     local killer = e.damage_source.causing
-    if killer and type_of(killer) == "player" then
-      score[killer] = (score[killer] or 0) + 1
-      sound{ player = killer, sound = "entity.experience_orb.pickup", source = "player", entity = killer }
-    end
+    if killer and type_of(killer) == "player" then score[killer] = (score[killer] or 0) + 1 end
   end }
   ```
-
-  ## What to notice
-  - `running` and `score` are at the top, so every function in the file can use them; they are local, so no other file can.
-  - The round is a task (run{ }), so it can wait while the game goes on. Its **final** sets running back to false even if the round ends by an error or a reload; without it, a broken round would block /hunt until the next reload.
-  - `tell_all` is written once and used four times.
-  - The death handler leaves early when it has nothing to do: the common case costs almost nothing.
-  - `e.entity_type` is compared with `"zombie"`; if your server says `"minecraft:zombie"`, print it once with `print(e.entity_type)` and use what it prints. Checking what a value really is beats guessing.
-
-  ## Make it yours
-  - Count skeletons as two points.
-  - Show the scores with `/hunt score` (a branch, see [your own commands](#guide_commands)).
-  - Give the winner a sound and particles.
-  - Let `/hunt <seconds>` choose the length (an optional integer argument).
+  `final` resets `running` even after an error or reload. Not counting? `print(e.entity_type)` shows the real name.
+  Try: skeletons for two points, `/hunt score`, a sound for the winner.
 status: unconfirmed
 ]]
 
@@ -685,32 +301,17 @@ name: where next
 kind: guide
 group: Guide
 words: next more reference what now missing limits cannot not yet future planned roadmap java door
-lead: You know enough now to write real scripts. The rest of the docs is a reference for everything scripts can use, and this page says honestly what isn't there yet.
+lead: The side list has every function, event and value. Here is what Lullaby can't do yet.
 text:
-  ## The rest of the docs
-  - **Lua**: the language itself, in more depth: [values](#values), [variables and tables](#local), [if and loops](#if), [functions](#function), [string, table, math](#string_lib).
-  - **Commands, Text, Effects, Tasks**: the doing functions you used here, with every field they take.
-  - **Players, Entities, Worlds, Blocks, Items, Values**: the game values and what you can read from them.
-  - **Events**: every event Paper has, with its fields.
-  - **Java door**: for experts. With `unlock.java` in the config, scripts reach any Java directly. Powerful, unsafe, and it breaks on Minecraft updates.
-
-  ## Not possible yet
-  Lullaby is young. These are things a beginner will look for and not find yet; each is planned or being thought about, none has a date:
-  - **Saving data** across a reload or restart (Denizen's flags). See [long term memory](#guide_memory).
-  - **Trying a line in the game** without a file, like Denizen's /ex. For now: a small test file and `/lullaby reload`.
-  - **Items and inventories**: `item_stack( )` can describe an item, but no function gives it to a player, takes one away or opens a menu (inventory GUI).
-  - **Changing blocks**: blocks can be read, and changed through events (`e.cancelled`, a block snapshot), but not placed or broken directly.
-  - **Spawning** entities, and changing more than position, motion and health of an entity (`set{ }` takes those three).
-  - **Titles, the action bar, boss bars and tab list**: only chat messages so far.
-  - **Chat**: the chat event comes off the main thread and can't be used yet.
-  - **The time and date**: the os library is locked, so scripts can't read the clock; for "in 5 minutes", use wait( ).
-  - **Running a vanilla command** (like `/give`) from a script.
-  - **Player details** such as game mode, permissions, food and experience as fields of a player.
-  - **Named places and areas**, and events for entering an area.
-  - **NPCs**: not planned for now (Denizen uses another plugin, Citizens, for them).
-  Some of these can be done today through the Java door, if you know Paper's Java API; it is not meant for beginners.
-
-  ## Getting help
-  When a page and the game disagree, the game is right: tell the project on GitHub (the file link at the top right of every page leads there), with the script and the red message.
+  - Save data across reload or restart (Denizen's flags)
+  - Run one line in the game without a file (Denizen's /ex)
+  - Give or take items, inventory menus
+  - Place or break blocks directly; spawn entities
+  - Titles, action bar, boss bars
+  - Chat events (they run off the main thread)
+  - Read the clock; run vanilla commands
+  - Player details: game mode, permissions, hunger, experience
+  - Named areas and entering them
+  Experts can reach some of it through the [Java door](#java).
 status: unconfirmed
 ]]

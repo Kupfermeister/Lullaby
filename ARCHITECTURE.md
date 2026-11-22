@@ -88,9 +88,8 @@ Other files:
   their kinds and setters. GENERATED at build by [EventList.java](tools/events/EventList.java) from Paper's API jar
   (Gradle task `events`), which owns the rules (what an event and a field is, the naming rule, the kinds); the format
   is in the file's header. It is in the repo because the docs site reads it too. Never edited by hand.
-- [tools/docs/](tools/docs/Docs.java): the docs site builder (`Docs.java`, `site.html`, the beginner guide in
-  [guide.txt](tools/docs/guide.txt), the Lua pages in
-  [lua.txt](tools/docs/lua.txt)). Not part of the plugin. It makes one page per event from `events.txt` and the hand
+- [tools/docs/](tools/docs/Docs.java): the docs site builder (`Docs.java`, `site.html`, the guide, Lua included, in
+  [guide.txt](tools/docs/guide.txt)). Not part of the plugin. It makes one page per event from `events.txt` and the hand
   marks in [event-marks.txt](tools/docs/event-marks.txt) (tested, busy, thread), which give the status dot.
 - [types.lua](tools/docs/design/types.lua): the agreed list of every value type, a design page, not loaded.
 - [build.gradle.kts](build.gradle.kts) and [gradle.properties](gradle.properties): the build; `minecraftVersion`

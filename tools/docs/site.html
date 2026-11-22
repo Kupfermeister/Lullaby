@@ -195,10 +195,12 @@ function linkList(ids) {
 }
 // Guide pages: text: is running text. Blank lines split paragraphs; "## " starts a heading; "- " a list item, "1. " a
 // numbered one (indented lines continue it); "> " a tip box, "! " a warning box; lines between ``` are code, colored
-// like syntax. Inside text: `code` (colored; names with a page link there), **bold** and [words](#id) for a link.
+// like syntax. Inside text: `code` (colored; names with a page link there), **bold**, [words](#id) for a link to a page
+// and [words](file) for a file the site publishes next to itself; it downloads (lullaby.d.lua).
 function inline(s) {
   return s.split(/(`[^`]+`)/).map(part => part.startsWith("`") && part.length > 1 ? "<code>" + paint(part.slice(1, -1)) + "</code>"
     : esc(part).replace(/\[([^\]]+)\]\(#([^)]+)\)/g, (m, t, id) => '<a class="go" href="#' + id + '" data-id="' + id + '">' + t + '</a>')
+      .replace(/\[([^\]]+)\]\(([\w.-]+)\)/g, '<a href="$2" download>$1</a>')
       .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")).join("");
 }
 function prose(text) {

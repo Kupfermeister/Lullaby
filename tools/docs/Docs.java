@@ -29,7 +29,7 @@ import java.util.stream.Stream;
  *   name exactly its constants, lowercase, see checkFieldsFrom), is: <id> (the object is also that one and has all
  *   its fields: player has "is: entity"; VS Code's class inherits it), expert: key | value (repeatable), also (more ids that
  *   lead to this page, space-separated: Lua keywords, old page names). Topic pages without a function
- *   (tools/docs/guide.txt, tools/docs/lua.txt) give id:. Guide pages (kind guide, in guide.txt) are read in order and
+ *   (tools/docs/guide.txt) give id:. Guide pages (kind guide, in guide.txt) are read in order and
  *   have text: (running text over many indented lines; its small markup is explained at prose() in site.html).
  * Every kind has fixed expert rows (EXPERT_ROWS), in that order, so readers always find the same things in the same
  * place; a missing row is a warning in the build. A speed nobody measured is written as a guess with a range
@@ -52,7 +52,7 @@ import java.util.stream.Stream;
 public final class Docs {
 
     // A block ends at a line that is just "]]". Right after it may come `function lib.NAME(` (the block's id); a block
-    // without that names itself with `id:` (topic pages, e.g. the Lua pages in tools/docs/lua.txt).
+    // without that names itself with `id:` (topic pages, e.g. the guide pages in tools/docs/guide.txt).
     private static final Pattern BLOCK = Pattern.compile("--\\[\\[doc\\n(.*?)\\n]]\\n(?:function lib\\.(\\w+)\\()?",
             Pattern.DOTALL);
     // Library files run with the real _G as globals, so a plain `tostring(` is Lua's own: only `lib.name(` is lib's.
@@ -83,9 +83,8 @@ public final class Docs {
         Map<String, String> bodies = new HashMap<>();
         List<Path> files;
         try (Stream<Path> s = Files.list(lib)) { files = s.filter(p -> p.toString().endsWith(".lua")).sorted().toList(); }
-        // First the guide (its first page is the site's landing page), then the Lua pages: they lead the sidebar.
+        // First the guide (its first page is the site's landing page; Lua is explained in it): it leads the sidebar.
         read(here.resolve("guide.txt"), "tools/docs/guide.txt", entries, bodies);
-        read(here.resolve("lua.txt"), "tools/docs/lua.txt", entries, bodies);
         for (Path file : files) read(file, "src/main/resources/lullaby/lib/" + file.getFileName(), entries, bodies);
         checkDocumented(files, entries);
         checkFieldsFrom(entries);
@@ -161,7 +160,7 @@ public final class Docs {
     }
 
     // A library function scripts see: `function lib.NAME(` at the start of a line. Lua's own functions handed through
-    // (`lib.pairs = ...` in core.lua) are not matched; the Lua pages in lua.txt cover them.
+    // (`lib.pairs = ...` in core.lua) are not matched; the Lua page in guide.txt covers them.
     private static final Pattern LIB_FUNCTION = Pattern.compile("(?m)^function lib\\.(\\w+)\\(");
 
     /**

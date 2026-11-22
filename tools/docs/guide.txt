@@ -1,9 +1,11 @@
-The beginner guide of the docs site (read by Docs.java before lua.txt, same block format; each block names itself
-with id:). Pages are read in this order: the site shows them first and links each to the previous and next one.
-Its first page is the site's landing page. Every line of text: is indented by two spaces; its small markup
-(## heading, - list, 1. numbered, > tip, ! warning, ``` code ```, `code`, **bold**, [words](#id)) is explained at
-prose() in site.html. Built like the Denizen beginner guide (why first, try it on a test server), but short
-(jft 2026-11-22: heavily compact). also: keeps the addresses of older, merged guide pages working.
+The guide of the docs site: the beginner pages and all of Lua in one group (read by Docs.java first, same block
+format as lib/*.lua; each block names itself with id:). Pages are read in this order: the site shows them first and
+links each to the previous and next one. Its first page is the site's landing page. Every line of text: is indented
+by two spaces; its small markup (## heading, - list, 1. numbered, > tip, ! warning, ``` code ```, `code`, **bold**,
+[words](#id) for a page, [words](file) for a file of the site) is explained at prose() in site.html.
+Lua syntax is explained once, on the page "lua for scratch users"; the other pages link there instead of repeating it
+(jft 2026-11-22: heavily compact, no repeats). also: keeps the addresses of older, merged pages working (the old Lua
+pages, old guide pages) and makes Lua's keywords in code link to the Lua page.
 
 --[[doc
 id: guide
@@ -11,12 +13,11 @@ name: welcome
 kind: guide
 group: Guide
 words: guide tutorial beginner learn introduction what is lullaby why
-lead: Lullaby runs Lua scripts inside your Paper server. This guide gets you from nothing to a working mini game. Read it in order and try every example.
+lead: Lullaby runs Lua scripts inside your Paper server. This guide takes you from nothing to a working mini game. Read it in order and type every example yourself.
 text:
-  A script is a `.lua` text file. It can react to events (a player joins, a block breaks), add commands, send messages, sounds and particles, and wait between steps. Save, type `/lullaby reload`, and the change is live. A mistake gives a red message with file and line; it never crashes the server.
+  A script is a `.lua` text file. It reacts to events (a player joins, a block breaks), adds commands, sends messages, sounds and particles, and waits between steps. Save, type `/lullaby reload`, and the change is live. A mistake gives a red message with file and line; it never crashes the server.
 
-  - **Type the examples yourself**, then change them and see what changes.
-  - **The rest of the side list is for looking things up.** The guide links there when needed.
+  The rest of the side list is for looking things up; the guide links there when needed.
 
   ! Lullaby is not released yet. When the guide and a function's own page disagree, trust the function's page: it is built from the code.
 status: unconfirmed
@@ -28,8 +29,8 @@ name: setup
 kind: guide
 group: Guide
 also: guide_server guide_editor
-words: test server local install paper java setup localhost eula op editor vscode autocomplete lullaby.d.lua luarc
-lead: A private test server on your own computer, and an editor that knows Lullaby.
+words: test server local install paper java setup localhost eula op editor vscode visual studio code autocomplete lullaby.d.lua luarc extension sumneko download
+lead: A private test server on your own computer, and an editor that knows every Lullaby name.
 text:
   ## Test server
   Never test on the server your players use.
@@ -40,11 +41,15 @@ text:
 
   Scripts go in `plugins/lullaby/scripts`. Every `.lua` file there loads; a name starting with `--` switches a file or folder off. Settings are in `plugins/lullaby/config.lua`.
 
-  ## Editor
-  1. Install VS Code and its **Lua** extension (by sumneko). Open the folder `plugins/lullaby`.
-  2. Download `lullaby.d.lua` from this site (its address with `lullaby.d.lua` instead of `#...`) and put it in `plugins/lullaby`, **not** in `scripts`.
-  3. Add a file `.luarc.json` there with `{ "runtime.version": "LuaJIT" }`.
-  Now the editor completes Lullaby's names and underlines mistakes. Download the file again after a Lullaby update.
+  ## Editor (VS Code)
+  With this, the editor suggests Lullaby's names while you type, shows a function's page when you point at it, and underlines mistakes before you reload.
+  1. Install **VS Code** from code.visualstudio.com and open it.
+  2. Press `Ctrl+Shift+X` (the four squares on the left). Search **Lua**, pick the one by **sumneko**, click **Install**.
+  3. **File → Open Folder…** and choose `plugins/lullaby` inside your server folder. The left side now lists `config.lua` and `scripts`.
+  4. Click [download lullaby.d.lua](lullaby.d.lua). Your browser saves it to Downloads; move it into `plugins/lullaby`, next to `config.lua`, **not** into `scripts` (there it would run as a script).
+  5. In VS Code, right-click the empty space in the left list, **New File**, name it `.luarc.json` (with the dot), paste `{ "runtime.version": "LuaJIT" }`, save with `Ctrl+S`. This tells the editor which Lua Lullaby speaks.
+  6. Test it: open a file in `scripts` and type `mess`. `message` should be suggested; point at it to see its page. Nothing? `Ctrl+Shift+P`, type **Reload Window**, Enter.
+  After a Lullaby update, download the file again and replace the old one.
 status: unconfirmed
 ]]
 
@@ -53,8 +58,8 @@ id: guide_first
 name: your first script
 kind: guide
 group: Guide
-also: guide_docs
-words: first script hello world command reload try colors syntax legend doing reading braces brackets
+also: guide_docs start
+words: first script hello world command reload try colors syntax legend doing reading braces brackets file
 lead: A command that greets you, and how to read the docs.
 text:
   Make `scripts/hello.lua`:
@@ -65,16 +70,106 @@ text:
   end }
   ```
   Type `/lullaby reload` (green: loaded; red: an error), then `/hello`.
-  - `--` starts a comment: ignored by Lullaby.
   - `command{ "hello", function(c) ... end }` adds /hello; the function runs each time someone types it. `c.player` is who typed it.
-  - `message{ player = ..., text = ... }` sends a chat message. `..` joins texts.
-  The file's top level runs once while loading; functions inside run later, when something happens.
+  - `message{ player = ..., text = ... }` sends a chat message.
+  The file's top level runs once while loading; functions inside run later, when something happens. Every symbol here (`--`, `..`, `function`, `end`) is explained on the next page.
 
   ## Reading the docs
   - `{ }` **does** something (copper): `message{ player = p, text = "Hi" }`, fields by name.
   - `( )`, `.` and `:` only **read** (teal): `player("Notch")`, `p.name`.
   - Gold is a type, violet an event, pale blue a field name, bold is Lua itself. Every colored name is a link.
   - On a page: **Arguments** is what you give, **Fields** what you can read, **For experts** can be skipped.
+status: unconfirmed
+]]
+
+--[[doc
+id: lua
+name: lua for scratch users
+kind: guide
+group: Guide
+also: guide_lua guide_variables guide_if guide_loops comments values nil true false numbers strings and or not local tables methods if then else elseif while repeat until for in do break goto function return end varargs closures error string_lib table_lib math_lib metatables locked io os ffi debug require
+words: lua syntax scratch blocks basics variable local value table list number text string nil true false if then else elseif condition loop for while repeat until forever ipairs pairs break goto continue function return comment operator equal join length string table math random floor format insert remove sort concat metatable setmetatable
+lead: All of Lua's grammar, for people who know Scratch. You already know the logic (if, loops, variables, lists); here is how to write it as text.
+text:
+  ## Text instead of blocks
+  - Scratch's C-shaped blocks become a start word and `end`: `if ... then` ... `end`. Every `if`, `for`, `while` and `function` needs its own `end`; a missing one is the most common error (it points to the end of the file).
+  - Indent the inside by two spaces so you see what belongs where. Lua ignores it; you won't.
+  - Capitals matter: `Message` is not `message`. Text needs quotes: `"hello"`, `'hello'` (or `[[...]]` over many lines). `\n` is a line break.
+  - `--` starts a comment to the end of the line (`--[[ ... ]]` over many lines). Lua skips it; write notes there.
+
+  ## Variables
+  ```
+  local coins = 10            -- make a variable (Scratch: "make a variable" + "set to")
+  coins = coins + 5           -- change it (no "local" again)
+  local a, b = 1, 2           -- several at once
+  ```
+  Always write `local` the first time: the variable then belongs to the block it is in (file, function, if, loop). `nil` means "nothing here": an unset variable is `nil`.
+
+  ## Operators
+  - Math: `+ - * /`, `%` remainder, `^` power. `7 / 2` is `3.5`; `math.floor(7 / 2)` is `3`.
+  - Compare: `==` equal, `~=` not equal, `< > <= >=`. **One `=` stores, two compare**: `if x = 5` is an error.
+  - Logic: `and`, `or`, `not`. Only `nil` and `false` count as false; `0` and `""` are true. `x or 5` gives x, or 5 when x is nil: a default.
+  - Text: `..` joins (Scratch "join"), `#` is the length.
+
+  ## Lists and tables
+  ```
+  local list = { "a", "b", "c" }     -- a list; counted from 1, like Scratch
+  print(list[1], #list)              -- item 1 of list, length of list
+  list[#list + 1] = "d"              -- add to the end
+  local spawn = { x = 0, y = 64 }    -- named fields
+  spawn.z = 0                        -- same as spawn["z"] = 0
+  local kills = {}
+  kills[p] = (kills[p] or 0) + 1     -- anything can be a key, even a player
+  ```
+  `v:offset(1, 0, 0)` with `:` calls a method on a value; it is short for `v.offset(v, 1, 0, 0)`.
+
+  ## if
+  ```
+  if hp >= 15 then
+    print("healthy")
+  elseif hp >= 5 then                -- optional, as many as you like
+    print("hurt")
+  else                               -- optional
+    print("help!")
+  end
+  ```
+
+  ## Loops
+  ```
+  for i = 1, 10 do print(i) end              -- repeat 10, i counts 1 to 10
+  for i = 10, 1, -1 do print(i) end          -- count down (third number: the step)
+  for i, p in ipairs(online_players()) do    -- each item of a list, in order
+    print(i, p.name)
+  end
+  for key, value in pairs(spawn) do end      -- each field of a table, any order
+  while x < 10 do x = x + 1 end              -- checks first, like "repeat until" turned around
+  repeat x = x - 1 until x <= 0              -- checks after: runs at least once
+  ```
+  Scratch's "forever" is `while true do ... wait(1) ... end`: always wait inside, or the script is stopped. `break` leaves a loop. Lua has no `continue`: write `goto continue` and put `::continue::` right before the loop's `end`.
+
+  ## Functions (Scratch "My Blocks")
+  ```
+  local function add(a, b)           -- define
+    return a + b                     -- give a value back and leave
+  end
+  local sum = add(2, 3)              -- use: 5
+  local function two() return 1, 2 end
+  local x, y = two()                 -- several results at once
+  local function all(...) return #{ ... } end   -- ... takes any number of values
+  ```
+  A function is a value: `on{ }`, `command{ }` and `run{ }` take one, usually written right there as `function(e) ... end`. A function inside another still sees that one's local variables later. `error("text")` stops with a red message; [pcall( )](#pcall) catches it.
+
+  ## Ready-made functions
+  - Text: `s:upper()`, `s:lower()`, `s:sub(1, 5)` (letters 1 to 5), `s:find("x")`, `s:gsub("a", "b")` (replace), `s:rep(3)`, `string.format("%d coins", 5)`, `tostring(5)`, `tonumber("5")`.
+  - Lists: `table.insert(t, v)`, `table.remove(t, i)`, `table.sort(t)`, `table.concat(t, ", ")` (list to one text).
+  - Math: `math.random(1, 6)` (pick random), `math.floor`, `math.ceil`, `math.abs`, `math.min`, `math.max`, `math.sqrt`, `math.pi`.
+  - Other: `print(x)` (to the server window), `type(x)`, `pairs`, `ipairs`, `select`, `unpack`, `setmetatable` (own classes; most scripts never need it).
+  Locked for safety, so they don't exist in scripts: `io`, `os`, `ffi`, `debug`, `require`. They can be unlocked in `config.lua` under `unlock`; use [import( )](#import) for your own files.
+expert: LuaJIT | Lullaby runs LuaJIT, which speaks Lua 5.1 plus goto. Newer Lua (//, bit operators like &, utf8, <const>) doesn't exist; bit.band and friends do. Numbers are doubles, whole numbers exact up to 2^53. # counts bytes: "ä" has length 2. Lua patterns (find, match, gsub) are not regex: %d digit, %a letter, %s space, % escapes, no | and no {n}.
+expert: Isolation | every script file has its own globals and its own copy of string, table, math, coroutine and bit. getmetatable on a Lullaby value (player, vec3, ...) gives false, so no script can change how everyone's values behave. load and loadstring take Lua text only, never bytecode (broken bytecode can crash LuaJIT).
+expert: Unlock | unlock.debug also brings jit, collectgarbage, gcinfo, getfenv, setfenv and newproxy: they reach into the Lua state all scripts share. unlock.java opens the [Java door](#java). config.lua is read again on /lullaby reload.
+expert: Time limit | a loop running longer than script_time_limit (config) stops with a red error at its next call into the game (message{ }, p.name, ...); final still runs. A loop that never calls into the game (pure math) can't be stopped; after twice the limit the console names what is stuck. A loop that waits never hits the limit.
+expert: Cost | arithmetic and one round of a compiled loop: about 1 ns (measured: 1,000,000,000 additions in 0.8–1.1 s). The time-limit check costs nothing per round. A new table or closure: guess 50–300 ns plus garbage collection (not measured). table.concat is the fast way to join many texts; .. in a loop is slow.
 status: unconfirmed
 ]]
 
@@ -87,61 +182,12 @@ words: error errors mistake mistakes debug debugging problem help fix red messag
 lead: Every error names the file and the line. Go there, read the message, check the values on that line.
 text:
   Not sure what a value is? `print(x)` writes it to the server window, `print(type_of(x))` says what sort it is. One file's error stops only that file.
-
-  ## Common mistakes
-  - **Missing end**: every `function`, `if`, `for`, `while` needs one. The error then points to the end of the file.
-  - `=` stores, `==` compares, `~=` is "not equal".
   - **attempt to index a nil value**: a dot on something empty, like `c.player.name` from the console. Check `if p then` first.
   - **attempt to concatenate a nil value**: `..` got nil.
-  - **Capitals matter**: `PlayerJoinEvent`, not `playerjoinevent`.
   - **{ } vs ( )**: `message(p, "Hi")` fails, `message{ player = p, text = "Hi" }` works.
+  - **Event names**: `PlayerJoinEvent`, exactly so.
   - **No reload**: saving alone does nothing.
-
-  A script running longer than `script_time_limit` (5 seconds, config) is stopped with an error. To run long, wait between rounds ([waiting](#guide_waiting)).
-status: unconfirmed
-]]
-
---[[doc
-id: guide_lua
-name: lua basics
-kind: guide
-group: Guide
-also: guide_variables guide_if guide_loops
-words: variable local value table list number text nil true false if then else elseif condition loop for while ipairs pairs break
-lead: Variables, tables, if and loops: the Lua you need for most scripts.
-text:
-  ```
-  local coins = 10                     -- a variable; always write local the first time
-  coins = coins + 5
-  local name = "Steve"                 -- text; .. joins, # is the length
-  local list = { "a", "b", "c" }       -- a list, counted from 1: list[1], #list
-  local spawn = { x = 0, y = 64 }      -- named fields: spawn.y
-  local kills = {}
-  kills[p] = (kills[p] or 0) + 1       -- per player; "x or 0": x, or 0 when x is nil
-  ```
-  `nil` means "nothing here". Only `nil` and `false` count as false; `0` counts as true.
-
-  ## if
-  ```
-  if hp >= 15 then
-    message{ player = p, text = "healthy" }
-  elseif hp >= 5 then
-    message{ player = p, text = "hurt" }
-  else
-    message{ player = p, text = "help!" }
-  end
-  ```
-  Compare with `== ~= < > <= >=`, combine with `and`, `or`, `not`. `return` leaves a function early.
-
-  ## Loops
-  ```
-  for _, p in ipairs(online_players()) do   -- once per online player
-    message{ player = p, text = "Hi all" }
-  end
-  for i = 1, 5 do print(i) end              -- 1 to 5
-  for p, n in pairs(kills) do print(p.name, n) end
-  ```
-  `break` leaves a loop. More: [values](#values), [tables](#local), [if and loops](#if).
+  - **Stopped after 5 seconds**: longer than `script_time_limit` (config). To run long, wait between rounds ([waiting](#guide_waiting)).
 status: unconfirmed
 ]]
 
@@ -200,7 +246,7 @@ name: waiting and tasks
 kind: guide
 group: Guide
 also: guide_memory
-words: wait delay later seconds ticks task tasks run stop final schedule timer repeat every countdown cooldown save memory reload lost
+words: wait delay later seconds ticks task tasks run stop final schedule timer repeat every countdown cooldown save memory reload lost forever
 lead: wait( ) pauses your code while the game goes on. Handlers and commands may wait; run{ } starts more.
 text:
   ```
@@ -224,19 +270,17 @@ text:
   - `id =` allows one running task per id: a simple cooldown.
   - `final = function() ... end` runs whenever the task ends; `stop{ task = t }` ends one.
   - After a wait, check `p.online`.
-
-  ## Reload forgets
-  Reload and restart run every file from the top again: variables reset and tasks end. Scripts can't save their own data yet.
+  - Reload and restart run every file from the top again: variables reset and tasks end. Scripts can't save their own data yet.
 status: unconfirmed
 ]]
 
 --[[doc
 id: guide_functions
-name: functions and files
+name: sharing between files
 kind: guide
 group: Guide
 words: function functions reuse return import file files module folder shared library helper
-lead: Write code once, use it everywhere.
+lead: Each file has its own variables, so files can't break each other. To share, return a table and import( ) it.
 text:
   ```
   -- scripts/shared/util.lua
@@ -251,7 +295,7 @@ text:
   local util = import("shared/util")
   after{ "PlayerJoinEvent", function(e) util.greet(e.player, "Welcome") end }
   ```
-  `local function name(a, b) ... return x end` makes a function. Each file has its own variables, so files can't break each other; share by returning a table and using `import( )` (path from `scripts`, no `.lua`). More: [functions](#function), [import( )](#import).
+  The path starts at `scripts`, without `.lua`. More: [import( )](#import).
 status: unconfirmed
 ]]
 
@@ -300,7 +344,7 @@ id: guide_next
 name: where next
 kind: guide
 group: Guide
-words: next more reference what now missing limits cannot not yet future planned roadmap java door
+words: next more reference what now missing limits cannot not yet future planned roadmap java door locked unlock sandbox
 lead: The side list has every function, event and value. Here is what Lullaby can't do yet.
 text:
   - Save data across reload or restart (Denizen's flags)
@@ -312,6 +356,6 @@ text:
   - Read the clock; run vanilla commands
   - Player details: game mode, permissions, hunger, experience
   - Named areas and entering them
-  Experts can reach some of it through the [Java door](#java).
+  Experts can reach some of it through the [Java door](#java). Locked Lua libraries: end of [lua for scratch users](#lua).
 status: unconfirmed
 ]]

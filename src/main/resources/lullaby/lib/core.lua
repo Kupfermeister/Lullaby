@@ -211,7 +211,7 @@ end
 
 -- Refuses every key of a doing function's { } that it doesn't take, so a typo (stage = "hihg" is checked, but
 -- stgae = "high" would be ignored) is an error instead of doing nothing. The wording is Java's (Fields.unknownField),
--- so these errors read exactly like those of the actions Java checks (particle{}, set{}, ...). level: as error().
+-- so these errors read exactly like those of the actions Java checks (particle{}, modify_entity{}, ...). level: as error().
 local raw_next = next
 function I.only(a, what, takes, level)
 	local set, positional = takes.set, takes.positional

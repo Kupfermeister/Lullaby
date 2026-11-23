@@ -114,7 +114,7 @@ expert: Cost | unused events cost zero; one event with a handler reading two fie
 expert: Under the hood | EventBridge.java: the event's class and methods are looked up the first time a script uses it; one Bukkit listener per event, kind and stage, made only when a script uses it; fields go by number, never by name; the event is freed at once when no handler waited; an event that comes off the main thread is skipped (said once in the console)
 expert: Can fail | an unknown field (the error lists the ones it takes), at load: unknown event (the error names close ones), an event Paper fires off the main thread, bad order or stage; while running: an unknown field written, a field Lullaby can't read or set yet, a wrong value type, e used after its handlers ended
 expert: Reload | every listener is removed; scripts register again while loading
-expert: Time limit | each handler is its own task with its own clock, except for an event a script's own call fires (set{ } teleporting, a Java door call): that handler runs inside the call and shares the caller's clock; checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
+expert: Time limit | each handler is its own task with its own clock, except for an event a script's own call fires (teleport{ } teleporting, a Java door call): that handler runs inside the call and shares the caller's clock; checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 function lib.on(a) register("on", a) end
@@ -582,7 +582,7 @@ example:
   on{ "input", function(e)
     -- double jump: space pressed in the air
     if e.packet == "player_input" and e.pressed.jump and not e.player.on_ground then
-      set{ entity = e.player, velocity = vec3(0, 0.8, 0) }
+      velocity{ entity = e.player, velocity = vec3(0, 0.8, 0) }
     end
   end }
 tree-from: src/main/java/io/github/kupfermeister/lullaby/nms/Input.java Kind

@@ -19,6 +19,8 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.NeutralMob;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -26,8 +28,8 @@ import org.bukkit.Location;
 import org.bukkit.util.Vector;
 
 /**
- * Entities for scripts: what an entity object's slot holds, the fields scripts read, set{ } and the entities of a
- * chunk. A player is an entity too: a player object's slot holds its UUID (see objects.lua), every other entity's slot
+ * Entities for scripts: what an entity object's slot holds, the fields scripts read, the actions that change an entity
+ * (modify_entity{ }, teleport{ }, velocity{ }, set_health{ }) and the entities of a chunk. A player is an entity too: a player object's slot holds its UUID (see objects.lua), every other entity's slot
  * a {@link Ref}. Main thread only (vanilla's entities are not thread-safe).
  *
  * <p>Identity is the UUID, as in vanilla's /tp and saves: the same Lua object stays valid when its chunk unloads and
@@ -51,14 +53,168 @@ public final class Entities {
      * ({@link #fieldList}) and asks for a field by its number, never by name. The entity's doc block in objects.lua
      * describes each one; the docs build checks that both name the same fields.
      */
-    enum Field { UUID, TYPE, ALIVE, WORLD, POS, LOCATION, VELOCITY, ON_GROUND, HEALTH, MAX_HEALTH, CUSTOM_NAME, VEHICLE }
+    enum Field { UUID, TYPE, ALIVE, WORLD, POS, LOCATION, VELOCITY, ON_GROUND, HEALTH, MAX_HEALTH, ABSORPTION, CUSTOM_NAME,
+        CUSTOM_NAME_VISIBLE, VEHICLE, GLOWING, SILENT, GRAVITY, INVULNERABLE, PERSISTENT, VISIBLE, COLLIDABLE, FIRE_TIME,
+        FREEZE_TIME, FALL_DISTANCE, NO_DAMAGE_TIME, AIR, AI, AWARE, TARGET, CAN_PICKUP_ITEMS, ANGRY, LEFT_HANDED, FOOD,
+        SATURATION, EXHAUSTION, XP, XP_LEVEL }
 
     private static final Field[] FIELDS = Field.values();
 
-    /** The fields set{ } takes besides entity, in the order it applies them (teleport first: /tp zeroes y speed). */
-    private static final List<String> SETTABLE = List.of("location", "velocity", "health");
-    private static final List<String> TAKES = java.util.stream.Stream.concat(java.util.stream.Stream.of("entity"),
-            SETTABLE.stream()).toList();
+    private static final String MODIFY = "modify_entity{}";
+
+    /**
+     * What modify_entity{ } changes, owned here: the field name is the constant's name in lowercase, and each one is
+     * also a {@link Field} of the same name, so a script reads back what it changed (e.fire_time). prepare checks the
+     * value and the entity's kind and returns the change, which runs only after every field was checked.
+     */
+    private enum Change {
+        CUSTOM_NAME { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
+            Object v = a.raw(f);
+            Component name;
+            if (v instanceof String s) name = Component.literal(s); // literal text, as /tellraw "Hi"
+            else if (v instanceof Wire.Table) name = Codecs.componentFromTable(v, slots); // the library sent a component
+            else if (Boolean.FALSE.equals(v)) name = null; // no name
+            else throw a.wrong(f, "text, a component or false", v);
+            return () -> e.setCustomName(name);
+        } },
+        CUSTOM_NAME_VISIBLE { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
+            boolean on = a.bool(f, false);
+            return () -> e.setCustomNameVisible(on);
+        } },
+        GLOWING { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
+            boolean on = a.bool(f, false);
+            return () -> e.setGlowingTag(on);
+        } },
+        SILENT { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
+            boolean on = a.bool(f, false);
+            return () -> e.setSilent(on);
+        } },
+        GRAVITY { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
+            boolean on = a.bool(f, true);
+            return () -> e.setNoGravity(!on);
+        } },
+        INVULNERABLE { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
+            boolean on = a.bool(f, false);
+            return () -> e.setPermanentlyInvulnerable(on); // vanilla's Invulnerable tag
+        } },
+        PERSISTENT { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
+            boolean on = a.bool(f, false);
+            Mob m = mob(e, f);
+            return () -> m.persistenceRequired = on; // vanilla's PersistenceRequired tag
+        } },
+        VISIBLE { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
+            boolean on = a.bool(f, true);
+            return () -> e.setInvisible(!on);
+        } },
+        COLLIDABLE { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
+            boolean on = a.bool(f, true);
+            if (!(e instanceof LivingEntity living)) throw only(f, e, "living entities");
+            return () -> living.collides = on; // CraftBukkit's flag, read by vanilla's push code on the server
+        } },
+        FIRE_TIME { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
+            int t = a.whole(f, 0);
+            return () -> e.setRemainingFireTicks(t);
+        } },
+        FREEZE_TIME { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
+            int t = a.whole(f, 0);
+            return () -> e.setTicksFrozen(t);
+        } },
+        FALL_DISTANCE { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
+            double d = finite(a, f);
+            return () -> e.fallDistance = d;
+        } },
+        NO_DAMAGE_TIME { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
+            int t = a.whole(f, 0);
+            return () -> e.setInvulnerableTime(t);
+        } },
+        AIR { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
+            int t = a.whole(f, 0);
+            return () -> e.setAirSupply(t);
+        } },
+        AI { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
+            boolean on = a.bool(f, true);
+            Mob m = mob(e, f);
+            return () -> m.setNoAi(!on);
+        } },
+        AWARE { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
+            boolean on = a.bool(f, true);
+            Mob m = mob(e, f);
+            return () -> m.aware = on;
+        } },
+        TARGET { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
+            Object v = a.raw(f);
+            Mob m = mob(e, f);
+            LivingEntity target = null;
+            // the library checked the value: an entity arrives as its slot number, no target as false
+            if (v instanceof Number n) {
+                Entity t = entity(slots.apply(n.intValue()));
+                // FORMAT: modify_entity{} target that is gone
+                if (t == null) throw new IllegalArgumentException(MODIFY + ": target is gone (dead, removed or unloaded)");
+                if (!(t instanceof LivingEntity living))
+                    throw Fields.wrong(MODIFY, f, "a living entity or false", "a " + EntityType.getKey(t.getType()));
+                target = living;
+            }
+            LivingEntity to = target;
+            return () -> m.setTarget(to);
+        } },
+        CAN_PICKUP_ITEMS { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
+            boolean on = a.bool(f, false);
+            Mob m = mob(e, f);
+            return () -> m.setCanPickUpLoot(on);
+        } },
+        ANGRY { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
+            boolean on = a.bool(f, false);
+            if (!(e instanceof NeutralMob n)) throw only(f, e, "wolves, bees, endermen and other mobs that can turn angry");
+            return on ? n::startPersistentAngerTimer : n::stopBeingAngry; // vanilla's own anger time
+        } },
+        LEFT_HANDED { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
+            boolean on = a.bool(f, false);
+            Mob m = mob(e, f);
+            return () -> m.setLeftHanded(on);
+        } },
+        FOOD { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
+            int food = a.whole(f, 0);
+            ServerPlayer p = player(e, f);
+            return () -> p.getFoodData().setFoodLevel(food);
+        } },
+        SATURATION { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
+            float s = (float) finite(a, f);
+            ServerPlayer p = player(e, f);
+            return () -> p.getFoodData().setSaturation(s);
+        } },
+        EXHAUSTION { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
+            float x = (float) finite(a, f);
+            ServerPlayer p = player(e, f);
+            return () -> p.getFoodData().exhaustionLevel = x;
+        } },
+        XP { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
+            int xp = a.whole(f, 0);
+            ServerPlayer p = player(e, f);
+            return () -> p.setExperiencePoints(xp); // as /xp set <n> points: kept inside the current level
+        } },
+        XP_LEVEL { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
+            int level = a.whole(f, 0);
+            ServerPlayer p = player(e, f);
+            return () -> p.setExperienceLevels(level); // as /xp set <n> levels
+        } };
+
+        final String key = name().toLowerCase(Locale.ROOT);
+
+        abstract Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots);
+    }
+
+    private static final Change[] CHANGES = Change.values();
+
+    static {
+        for (Change c : CHANGES) {
+            try {
+                Field.valueOf(c.name());
+            } catch (IllegalArgumentException missing) {
+                throw new IllegalStateException("Lullaby bug: modify_entity{ } changes " + c.key
+                        + " but entities have no field of that name to read it back");
+            }
+        }
+    }
 
     private Entities() {
     }
@@ -144,72 +300,177 @@ public final class Entities {
             case ON_GROUND -> e.onGround();
             case HEALTH -> e instanceof LivingEntity living ? (Object) (double) living.getHealth() : null;
             case MAX_HEALTH -> e instanceof LivingEntity living ? (Object) (double) living.getMaxHealth() : null;
+            case ABSORPTION -> e instanceof LivingEntity living ? (Object) (double) living.getAbsorptionAmount() : null;
             case CUSTOM_NAME -> {
                 Component name = e.getCustomName();
                 yield name == null ? null : PaperAdventure.asAdventure(name);
             }
+            case CUSTOM_NAME_VISIBLE -> e.isCustomNameVisible();
             case VEHICLE -> {
                 Entity vehicle = e.getVehicle();
                 yield vehicle == null ? null : vehicle.getBukkitEntity();
             }
+            case GLOWING -> e.hasGlowingTag();
+            case SILENT -> e.isSilent();
+            case GRAVITY -> !e.isNoGravity();
+            case INVULNERABLE -> e.isPermanentlyInvulnerable();
+            case PERSISTENT -> e instanceof Mob m ? (Object) m.isPersistenceRequired() : null;
+            case VISIBLE -> !e.isInvisible();
+            case COLLIDABLE -> e instanceof LivingEntity living ? (Object) living.collides : null;
+            case FIRE_TIME -> e.getRemainingFireTicks();
+            case FREEZE_TIME -> e.getTicksFrozen();
+            case FALL_DISTANCE -> e.fallDistance;
+            case NO_DAMAGE_TIME -> e.getInvulnerableTime();
+            case AIR -> e.getAirSupply();
+            case AI -> e instanceof Mob m ? (Object) !m.isNoAi() : null;
+            case AWARE -> e instanceof Mob m ? (Object) m.aware : null;
+            case TARGET -> {
+                LivingEntity target = e instanceof Mob m ? m.getTarget() : null;
+                yield target == null ? null : target.getBukkitEntity();
+            }
+            case CAN_PICKUP_ITEMS -> e instanceof Mob m ? (Object) m.canPickUpLoot() : null;
+            case ANGRY -> e instanceof NeutralMob n ? (Object) n.isAngry() : null;
+            case LEFT_HANDED -> e instanceof Mob m ? (Object) m.isLeftHanded() : null;
+            case FOOD -> e instanceof ServerPlayer p ? (Object) p.getFoodData().getFoodLevel() : null;
+            case SATURATION -> e instanceof ServerPlayer p ? (Object) (double) p.getFoodData().getSaturationLevel() : null;
+            case EXHAUSTION -> e instanceof ServerPlayer p ? (Object) (double) p.getFoodData().exhaustionLevel : null;
+            case XP -> e instanceof ServerPlayer p ? (Object) Math.round(p.experienceProgress * p.getXpNeededForNextLevel()) : null;
+            case XP_LEVEL -> e instanceof ServerPlayer p ? (Object) p.experienceLevel : null;
         };
     }
 
+    /** The entity an action names: the library sends it as its slot number. null if it is gone. */
+    private static Entity named(Fields a, IntFunction<Object> slots) {
+        return entity(slots.apply(((Number) a.raw("entity")).intValue()));
+    }
+
+    private static double finite(Fields a, String f) {
+        double d = a.number(f, 0);
+        if (!Double.isFinite(d)) throw a.wrong(f, "a finite number", a.raw(f));
+        return d;
+    }
+
+    private static Mob mob(Entity e, String f) {
+        if (e instanceof Mob m) return m;
+        throw only(f, e, "mobs");
+    }
+
+    private static ServerPlayer player(Entity e, String f) {
+        if (e instanceof ServerPlayer p) return p;
+        throw only(f, e, "players");
+    }
+
+    private static IllegalArgumentException only(String f, Entity e, String who) {
+        // FORMAT: modify_entity{} field on an entity that doesn't have it
+        return new IllegalArgumentException(MODIFY + ": " + f + ": a " + EntityType.getKey(e.getType())
+                + " doesn't have it (only " + who + ")");
+    }
+
     /**
-     * set{ entity = e, location = ..., velocity = ..., health = ... }: every value is checked before anything changes,
-     * so a wrong one never leaves half a change. The library sends entity as its slot number and location as
-     * { world slot, x, y, z, yaw, pitch } (Java can't see a world object's identity on the wire). Returns false if
-     * the entity is gone or vanilla refused the teleport (another plugin can cancel it).
+     * modify_entity{ entity = e, fire_time = ..., ai = ..., food = ..., ... }: every value and the entity's kind are
+     * checked before anything changes, so a wrong one never leaves half a change. Returns false if the entity is gone.
      */
-    public static boolean set(Object wire, IntFunction<Object> slots) {
-        Fields a = new Fields("set{}", wire);
-        a.only(TAKES);
-        Object slotValue = slots.apply(((Number) a.raw("entity")).intValue());
-        Entity e = entity(slotValue);
+    public static boolean modify(Object wire, IntFunction<Object> slots) {
+        Fields a = new Fields(MODIFY, wire);
+        Entity e = named(a, slots);
+        List<Change> given = new ArrayList<>();
+        for (Change c : CHANGES) if (a.has(c.key)) given.add(c);
+        a.done(); // refuses unknown fields (the error lists what modify_entity takes)
         if (e == null) return false;
-        if (SETTABLE.stream().noneMatch(a::has)) {
-            // FORMAT: set{} with nothing to change
-            throw new IllegalArgumentException("set{}: nothing to change (give " + Fields.names(SETTABLE) + ")");
+        if (given.isEmpty()) {
+            List<String> all = new ArrayList<>();
+            for (Change c : CHANGES) all.add(c.key);
+            // FORMAT: modify_entity{} with nothing to change
+            throw new IllegalArgumentException(MODIFY + ": nothing to change (give " + Fields.names(all) + ")");
         }
+        List<Runnable> changes = new ArrayList<>();
+        for (Change c : given) changes.add(c.prepare(a, c.key, e, slots));
+        for (Runnable change : changes) change.run();
+        return true;
+    }
 
-        ServerLevel level = null;
-        double[] at = null;
-        if (a.has("location")) {
-            List<Object> l = a.list("location");
-            @SuppressWarnings("unchecked")
-            ResourceKey<Level> world = (ResourceKey<Level>) slots.apply(((Number) l.get(0)).intValue());
-            level = server().getLevel(world);
-            // FORMAT: set{} location in a world that isn't loaded
-            if (level == null) throw new IllegalArgumentException("set{}: location's world isn't loaded");
-            at = new double[]{a.number(l.get(1), "location"), a.number(l.get(2), "location"),
-                    a.number(l.get(3), "location"), a.number(l.get(4), "location"), a.number(l.get(5), "location")};
-            // FORMAT: set{} location outside vanilla's teleport limit (the same check as /tp)
-            if (!Level.isInSpawnableBounds(BlockPos.containing(at[0], at[1], at[2])))
-                throw new IllegalArgumentException("set{}: location is outside the world (/tp refuses it too)");
-        }
-        double[] velocity = a.has("velocity") ? a.vec3("velocity") : null;
-        Double health = null;
-        if (a.has("health")) {
-            double h = a.number("health", 0);
-            // FORMAT: set{} health on an entity without health
-            if (!(e instanceof LivingEntity)) throw new IllegalArgumentException("set{}: health: a "
-                    + EntityType.getKey(e.getType()) + " has no health");
-            if (!Double.isFinite(h)) throw a.wrong("health", "a finite number", a.raw("health"));
-            health = h;
-        }
+    /**
+     * teleport{ entity = e, location = l }: as vanilla's /tp. The library sends location as
+     * { world slot, x, y, z, yaw, pitch } (Java can't see a world object's identity on the wire). Returns false if the
+     * entity is gone or vanilla refused the teleport (another plugin can cancel it).
+     */
+    public static boolean teleport(Object wire, IntFunction<Object> slots) {
+        Fields a = new Fields("teleport{}", wire);
+        Entity e = named(a, slots);
+        a.required("location", "a location");
+        List<Object> l = a.list("location");
+        a.done();
+        @SuppressWarnings("unchecked")
+        ResourceKey<Level> world = (ResourceKey<Level>) slots.apply(((Number) l.get(0)).intValue());
+        ServerLevel level = server().getLevel(world);
+        // FORMAT: teleport{} location in a world that isn't loaded
+        if (level == null) throw new IllegalArgumentException("teleport{}: location's world isn't loaded");
+        double[] at = {a.number(l.get(1), "location"), a.number(l.get(2), "location"),
+                a.number(l.get(3), "location"), a.number(l.get(4), "location"), a.number(l.get(5), "location")};
+        // FORMAT: teleport{} location outside vanilla's teleport limit (the same check as /tp)
+        if (!Level.isInSpawnableBounds(BlockPos.containing(at[0], at[1], at[2])))
+            throw new IllegalArgumentException("teleport{}: location is outside the world (/tp refuses it too)");
+        return e != null && teleport(e, level, at);
+    }
 
-        if (at != null) {
-            if (!teleport(e, level, at)) return false;
-            e = entity(slotValue); // a dimension change gives vanilla a new entity object
-            if (e == null) return false;
+    /** velocity{ entity = e, velocity = v }: its new motion. Returns false if the entity is gone. */
+    public static boolean velocity(Object wire, IntFunction<Object> slots) {
+        Fields a = new Fields("velocity{}", wire);
+        Entity e = named(a, slots);
+        a.required("velocity", "a vec3");
+        double[] v = a.vec3("velocity");
+        a.done();
+        if (e == null) return false;
+        e.setDeltaMovement(v[0], v[1], v[2]);
+        // vanilla's flag of markHurt (knockback): the tracker sends the new velocity to everyone who sees the entity
+        // AND to the entity's own player, whose game moves them itself (needsSync would skip that player)
+        e.syncVelocity = true;
+        return true;
+    }
+
+    /**
+     * set_health{ entity = e, health | add | full, max_health, absorption }: applied in that order of meaning: first
+     * max_health, then the health itself, then absorption. Returns false if the entity is gone.
+     */
+    public static boolean setHealth(Object wire, IntFunction<Object> slots) {
+        String what = "set_health{}";
+        Fields a = new Fields(what, wire);
+        Entity e = named(a, slots);
+        Double max = a.has("max_health") ? finite(a, "max_health") : null;
+        Double health = a.has("health") ? finite(a, "health") : null;
+        Double add = a.has("add") ? finite(a, "add") : null;
+        boolean full = a.bool("full", false);
+        Double absorption = a.has("absorption") ? finite(a, "absorption") : null;
+        a.done();
+        if ((health != null ? 1 : 0) + (add != null ? 1 : 0) + (full ? 1 : 0) > 1) {
+            // FORMAT: set_health{} with more than one of health, add and full
+            throw new IllegalArgumentException(what + ": give only one of health, add or full");
         }
-        if (velocity != null) {
-            e.setDeltaMovement(velocity[0], velocity[1], velocity[2]);
-            // vanilla's flag of markHurt (knockback): the tracker sends the new velocity to everyone who sees the entity
-            // AND to the entity's own player, whose game moves them itself (needsSync would skip that player)
-            e.syncVelocity = true;
+        if (max == null && health == null && add == null && !full && absorption == null) {
+            // FORMAT: set_health{} with nothing to change
+            throw new IllegalArgumentException(what + ": nothing to change (give health, add, full, max_health or absorption)");
         }
-        if (health != null) ((LivingEntity) e).setHealth((float) (double) health); // vanilla keeps it in 0..max
+        // FORMAT: set_health{} absorption below 0
+        if (absorption != null && absorption < 0) throw a.wrong("absorption", "0 or more (0: no yellow hearts)", a.raw("absorption"));
+        if (e == null) return false;
+        // FORMAT: set_health{} on an entity without health
+        if (!(e instanceof LivingEntity living)) throw new IllegalArgumentException(what + ": a "
+                + EntityType.getKey(e.getType()) + " has no health");
+
+        if (max != null) {
+            var attribute = living.getAttribute(Attributes.MAX_HEALTH);
+            if (attribute != null) attribute.setBaseValue(max); // vanilla keeps it in the attribute's range, health under it
+        }
+        if (health != null) living.setHealth((float) (double) health); // vanilla keeps it in 0..max
+        if (add != null) living.setHealth(living.getHealth() + (float) (double) add);
+        if (full) living.setHealth(living.getMaxHealth());
+        if (absorption != null) {
+            // vanilla keeps absorption under the max_absorption attribute (0 unless an effect raises it): raise its base
+            // just enough, so the hearts stay until they are hit away, as with a golden apple
+            var cap = living.getAttribute(Attributes.MAX_ABSORPTION);
+            if (cap != null && cap.getValue() < absorption) cap.setBaseValue(cap.getBaseValue() + absorption - cap.getValue());
+            living.setAbsorptionAmount((float) (double) absorption);
+        }
         return true;
     }
 

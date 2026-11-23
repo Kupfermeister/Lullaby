@@ -432,7 +432,7 @@ text:
     copy_world{ from = "arena_map", to = "arena" } -- waits; the server keeps running
     local arena = load_world{ id = "arena" }
     for _, p in ipairs(online_players()) do
-      modify_entity{ entity = p, location = location(arena, vec3(0.5, 65, 0.5)) }
+      teleport{ entity = p, location = location(arena, vec3(0.5, 65, 0.5)) }
     end
   end
 

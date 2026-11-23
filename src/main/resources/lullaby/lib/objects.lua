@@ -8,7 +8,8 @@
 --                                           and every entity field (a player is an entity; offline they read nil)
 --   entity(uuid text)                    -> entity (or player) or nil if none is loaded    e.uuid e.type e.pos ... (the
 --                                           field list is Java's: nms/Entities.java)
---   set{ entity = e, location = , velocity = , health = }   changes an entity -> true, false if it is gone
+--   modify_entity{ entity = e, fire_time = , ai = , food = , ... }   changes an entity -> true, false if it is gone
+--   teleport{ entity = e, location = }  velocity{ entity = e, velocity = }  set_health{ entity = e, health = , ... }
 --   world("overworld")                   -> world ("minecraft:overworld") or nil
 --   chunk(world, chunk_pos) / location:chunk()  -> chunk (a PLACE: world + chunk_pos)  c.world c.pos c.loaded c.entities
 --   damage (from events: e.damage_source)  d.type  d.direct  d.causing  d.pos
@@ -60,12 +61,12 @@ local function entity_field(o, key, kind, has)
 	return I.from_java(J.entity_get(slot_of[o], number))
 end
 
--- Entities and players change only through actions (set{ } uses the field names): e.velocity = v is an error.
+-- Entities and players change only through actions (they use the field names): e.velocity = v is an error.
 local function no_assign(letter)
 	return function(_, key)
 		-- FORMAT: an entity or player field assigned with = instead of an action
-		error("entity fields can't be changed with = (." .. tostring(key) .. "): use an action, like set{ entity = "
-			.. letter .. ", " .. tostring(key) .. " = ... }", 2)
+		error("entity fields can't be changed with = (." .. tostring(key) .. "): use an action: modify_entity{ entity = "
+			.. letter .. ", ... }, teleport{ }, velocity{ } or set_health{ }", 2)
 	end
 end
 
@@ -103,7 +104,7 @@ kind: reading
 group: Players
 words: get find user name uuid
 syntax: player( text ) → player | nil
-lead: A player by name or UUID: online, or one who has played on this server before. nil if none. Each player exists once, so == works, online and offline. A player is an entity too: every field of entity( ) works on p (p.pos, p.health, ...) and reads nil while the player is offline; set{ entity = p, ... } changes an online player.
+lead: A player by name or UUID: online, or one who has played on this server before. nil if none. Each player exists once, so == works, online and offline. A player is an entity too: every field of entity( ) works on p (p.pos, p.health, ...) and reads nil while the player is offline; modify_entity{ entity = p, ... } changes an online player.
 arg: x | text · player | Name or UUID (a player is returned as is).
 returns: player · nil
 is: entity
@@ -178,7 +179,7 @@ group: Entities
 words: mob creature animal item uuid find living
 fields-from: src/main/java/io/github/kupfermeister/lullaby/nms/Entities.java Field
 syntax: entity( uuid ) → entity | player | nil
-lead: An entity by its UUID, if it is in a loaded chunk right now: a mob, an item on the ground, an arrow, a minecart, ... (an online player gives the player). nil if there is none. Every sort of entity is one entity: a field a sort doesn't have reads nil (an item has no health). Each entity exists once, so == works, and it stays the same object when its chunk unloads and loads again or it changes world. Entities also come from events (e.entity, e.damager, ...) and from chunks (c.entities). Change one with set{ }.
+lead: An entity by its UUID, if it is in a loaded chunk right now: a mob, an item on the ground, an arrow, a minecart, ... (an online player gives the player). nil if there is none. Every sort of entity is one entity: a field a sort doesn't have reads nil (an item has no health). Each entity exists once, so == works, and it stays the same object when its chunk unloads and loads again or it changes world. Entities also come from events (e.entity, e.damager, ...) and from chunks (c.entities). Change one with modify_entity{ }, teleport{ }, velocity{ } and set_health{ }.
 arg: x | text · entity | A UUID like "069a79f4-44e9-4726-a5be-fca90e38aaf5" (an entity or player is returned as is).
 returns: entity · player · nil
 field: uuid | text | The UUID, lowercase with dashes. Also when the entity is gone.
@@ -187,12 +188,37 @@ field: alive | boolean | false once it is dead or gone (removed, in an unloaded 
 field: world | world | The world it is in.
 field: pos | vec3 | Where its feet are.
 field: location | location | World, position and direction (yaw, pitch) at once.
-field: velocity | vec3 | Its motion in blocks per tick (vanilla's delta movement). set{ } changes it.
+field: velocity | vec3 | Its motion in blocks per tick (vanilla's delta movement). velocity{ } changes it.
 field: on_ground | boolean | Whether it stands on something.
-field: health | number · nil | Health points (2 per heart); nil for entities without health (items, arrows, minecarts, ...). set{ } changes it.
-field: max_health | number · nil | Its highest health; nil for entities without health.
-field: custom_name | component · nil | The name given with a name tag or a command; nil if it has none.
+field: health | number · nil | Health points (2 per heart); nil for entities without health (items, arrows, minecarts, ...). set_health{ } changes it.
+field: max_health | number · nil | Its highest health; nil for entities without health. set_health{ } changes it.
+field: absorption | number · nil | Yellow extra hearts, in health points; nil for entities without health. set_health{ } changes it.
+field: custom_name | component · nil | The name given with a name tag or a command; nil if it has none. modify_entity{ } changes it.
+field: custom_name_visible | boolean | Whether the name shows always, not only when someone looks at it up close. modify_entity{ } changes it.
 field: vehicle | entity · player · nil | What it rides (a boat, a horse, ...); nil if nothing.
+field: glowing | boolean | Whether it has the white outline seen through walls (vanilla's Glowing tag; the glowing effect is apart). modify_entity{ } changes it, and so do all the fields below.
+field: silent | boolean | Whether it makes no sounds.
+field: gravity | boolean | false: it doesn't fall (vanilla's NoGravity tag).
+field: invulnerable | boolean | Whether nothing hurts it except /kill, the void and creative players (vanilla's Invulnerable tag).
+field: persistent | boolean · nil | Whether the mob never despawns (vanilla's PersistenceRequired; a name tag sets it too). nil for entities that aren't mobs.
+field: visible | boolean | false: invisible, like the potion but without particles; armor and held items still show.
+field: collidable | boolean · nil | false: other entities don't push it and it doesn't push them. nil for entities without health.
+field: fire_time | number | Ticks it keeps burning; 0 or less: not burning (vanilla counts below 0 after a fire).
+field: freeze_time | number | Ticks it has been freezing in powder snow (140 and more: frozen, it takes damage).
+field: fall_distance | number | Blocks fallen since it last stood on something; landing hurts from about 3.
+field: no_damage_time | number | Ticks it can't be hurt again after a hit (vanilla sets 20 on a hit; above 10 only a harder hit counts).
+field: air | number | Air left in ticks (300 is a full bar for most); below 0 it drowns.
+field: ai | boolean · nil | false: the mob does nothing at all, not even fall or turn its head. nil for entities that aren't mobs (players, items, ...).
+field: aware | boolean · nil | false: the mob makes no own choices (no walking, no attacking) but still falls and gets pushed. nil if no mob.
+field: target | entity · player · nil | Who the mob is after; nil if nobody or no mob. Mobs with a brain (villagers, piglins, wardens, ...) may pick their own again.
+field: can_pickup_items | boolean · nil | Whether the mob picks up items and armor from the ground. nil if no mob.
+field: angry | boolean · nil | Whether a mob that can turn angry is angry right now (wolves, bees, endermen, zombified piglins, iron golems, polar bears, ...); nil for other entities.
+field: left_handed | boolean · nil | Whether the mob holds and swings with its left hand. nil if no mob.
+field: food | number · nil | Player's food bar, 0 to 20 (each drumstick is 2). nil for other entities.
+field: saturation | number · nil | Player's hidden food buffer, used up before the food bar. nil if no player.
+field: exhaustion | number · nil | Player's hidden hunger counter: at 4 it takes one saturation or food point and starts over. nil if no player.
+field: xp | number · nil | Player's XP points inside the current level (the green bar). nil if no player.
+field: xp_level | number · nil | Player's XP level (the green number). nil if no player.
 note: A gone entity (dead, removed, in an unloaded chunk) reads nil everywhere except uuid and alive (false); it comes back by itself when its chunk loads again. Fields are read from the game each time: keep the value (local p = e.pos) when you need it twice. A name an entity doesn't have at all (e.helth) is an error that lists the fields.
 example:
   local e = entity("069a79f4-44e9-4726-a5be-fca90e38aaf5")
@@ -213,51 +239,172 @@ function lib.entity(x)
 	return I.from_java(J.entity_find(x))
 end
 
--- set{ } takes the fields Java lists as changeable; Java checks the names and values (Entities.java). Lua checks only
--- what Java can't see: the entity object, and a location's world (an object's identity doesn't cross the wire).
---[[doc
-name: set{ }
-kind: doing
-group: Entities
-words: change teleport tp move velocity motion push launch knockback health heal
-syntax: set{ entity = entity | player, location = location, velocity = vec3, health = number }
-lead: Changes an entity or an online player. Give the entity and one or more of the fields below: the same names as the fields you read (e.velocity, e.health, e.location). Every value is checked before anything changes.
-arg: entity | entity · player | What to change.
-arg: location? | location | Teleports it there, as /tp does (also into another world): its fall speed is reset unless it is gliding, and a mob stops walking its path.
-arg: velocity? | vec3 | Its new motion in blocks per tick (1 block per tick is 20 blocks per second). Applied after location.
-arg: health? | number | Its new health, kept between 0 and its max_health as vanilla does; 0 kills it. Only for entities with health.
-returns: boolean (false if the entity is gone or the teleport was refused, for example by another plugin)
-example:
-  -- throw e up and towards p
-  set{ entity = e, velocity = (p.pos - e.pos):normalize() * 0.5 + vec3(0, 0.5, 0) }
-expert: Thread | main thread, like every script
-expert: Cost | 5–30 µs, a teleport into another world more (guess, not measured)
-expert: Under the hood | one Lua → Java call; velocity: vanilla setDeltaMovement plus the flag knockback sets (markHurt), so every client gets it, the pushed player's own too; location: vanilla teleportTo, the same steps as /tp; health: vanilla setHealth
-expert: Can fail | an unknown field (the error lists the ones it takes), nothing to change, a value of the wrong kind, health on an entity without health, a location outside the world or in a world that isn't loaded
-expert: Reload | changes stay
-expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
-status: unconfirmed
-]]
-function lib.set(a)
-	-- FORMAT: set called without { }
-	if type(a) ~= "table" then error("set needs { }: set{ entity = e, velocity = vec3(0, 1, 0) }", 2) end
+-- The entity actions below: Java checks the names and values (Entities.java owns what each takes). Lua checks only what
+-- Java can't see: the entity object (sent as its slot number), and objects inside the values (a location's world, a
+-- target), since an object's identity doesn't cross the wire.
+-- level 3: the script line (entity_action <- the action <- script)
+local function entity_action(name, a, example)
+	-- FORMAT: an entity action called without { }
+	if type(a) ~= "table" then error(name .. " needs { }: " .. example, 3) end
 	local e = a.entity
 	local kind = kind_of[e]
-	-- FORMAT: set{} without an entity or player
+	-- FORMAT: an entity action without an entity or player
 	if kind ~= "entity" and kind ~= "player" then
-		error("set{}: entity must be an entity or a player, got " .. I.type_name(e), 2)
+		error(name .. "{}: entity must be an entity or a player, got " .. I.type_name(e), 3)
 	end
 	local t = {}
 	for key, value in raw_next, a do t[key] = value end
 	t.entity = slot_of[e]
+	return t
+end
+
+--[[doc
+name: modify_entity{ }
+kind: doing
+group: Entities
+words: set change modify adjust name nametag glow outline silent sound gravity float invulnerable god despawn persistent invisible hidden collide push fire burn freeze fall air drown ai brain aware target attack pickup angry left hand food hunger saturation exhaustion xp experience level
+syntax: modify_entity{ entity = entity | player, glowing = boolean, fire_time = number, ai = boolean, food = number, ... }
+lead: Changes an entity or an online player. Give the entity and one or more of the fields below: the same names as the fields you read (entity.glowing, entity.ai, entity.food). Every value, and whether the entity has that field at all, is checked before anything changes. Teleporting, motion and health have their own actions: teleport{ }, velocity{ } and set_health{ }.
+arg: entity | entity · player | What to change.
+arg: custom_name? | text · component · false | The name above it: text is shown as it is, a component (component("<red>Boss")) can have colors; false removes it. A player's own name doesn't change (only what some plugins show).
+arg: custom_name_visible? | boolean | true: the name shows always, not only up close.
+arg: glowing? | boolean | The white outline seen through walls (its color follows the scoreboard team).
+arg: silent? | boolean | true: it makes no sounds.
+arg: gravity? | boolean | false: it doesn't fall and stays in the air.
+arg: invulnerable? | boolean | true: nothing hurts it except /kill, the void and creative players.
+arg: persistent? | boolean | Mobs only. true: never despawns.
+arg: visible? | boolean | false: invisible, like the potion but without particles.
+arg: collidable? | boolean | Entities with health only. false: no pushing between it and other entities (a player's own game may still push it a little).
+arg: fire_time? | number | Ticks it keeps burning (20 is one second); 0 puts it out.
+arg: freeze_time? | number | Ticks of powder-snow freezing; 140 and more freezes it (blue hearts, damage). It thaws by itself out of powder snow.
+arg: fall_distance? | number | Blocks it has fallen so far: 0 saves it from fall damage, 20 makes the next landing hurt as from 20 blocks.
+arg: no_damage_time? | number | Ticks it can't be hurt again; 0 lets the next hit through at once (fast hits, no cooldown).
+arg: air? | number | Air left in ticks; 300 is a full bar for most, below 0 it drowns.
+arg: ai? | boolean | Mobs only. false: it does nothing at all (no moving, falling or turning), like vanilla's NoAI tag.
+arg: aware? | boolean | Mobs only. false: no own choices (walking, attacking), but it still falls and can be pushed.
+arg: target? | entity · player · false | Mobs only. Who it goes after; false: nobody. Must be a living entity. Mobs with a brain (villagers, piglins, wardens, ...) may pick their own again.
+arg: can_pickup_items? | boolean | Mobs only. Whether it picks up items and armor from the ground.
+arg: angry? | boolean | Mobs that can turn angry only (wolves, bees, endermen, zombified piglins, iron golems, polar bears, ...). true: angry for vanilla's usual time; false: calm at once.
+arg: left_handed? | boolean | Mobs only. Holds and swings with the left hand.
+arg: food? | number | Players only. The food bar, a whole number; 20 is full.
+arg: saturation? | number | Players only. The hidden food buffer (vanilla goes up to the food level).
+arg: exhaustion? | number | Players only. The hidden hunger counter (at 4 it costs a point).
+arg: xp? | number | Players only. XP points inside the current level, as /xp set ... points: kept between 0 and what the level needs.
+arg: xp_level? | number | Players only. The XP level, as /xp set ... levels.
+returns: boolean (false if the entity is gone)
+example:
+  -- freeze a mob in place and put out the fire
+  modify_entity{ entity = mob, ai = false, fire_time = 0 }
+  -- a glowing boss that never despawns
+  modify_entity{ entity = boss, custom_name = component("<red>Boss"), custom_name_visible = true, glowing = true, persistent = true }
+  -- a full food bar
+  modify_entity{ entity = player, food = 20, saturation = 5 }
+expert: Thread | main thread, like every script
+expert: Cost | 5–30 µs (guess, not measured)
+expert: Under the hood | one Lua → Java call; each field is vanilla's own setter (setCustomName, setGlowingTag, setNoGravity, setPermanentlyInvulnerable, setInvisible, setRemainingFireTicks, setTicksFrozen, setNoAi, Mob.setTarget, NeutralMob.startPersistentAngerTimer / stopBeingAngry, FoodData, setExperiencePoints, setExperienceLevels, ...); the client gets the change the way vanilla sends it
+expert: Can fail | an unknown field (the error lists the ones it takes), nothing to change, a value of the wrong kind, a field the entity doesn't have (ai on a player, food on a zombie: the error says who has it), a target that is gone or not living
+expert: Reload | changes stay
+expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
+status: unconfirmed
+]]
+function lib.modify_entity(a)
+	local t = entity_action("modify_entity", a, "modify_entity{ entity = mob, ai = false }")
+	local target = a.target
+	if target ~= nil and target ~= false then
+		local kind = kind_of[target]
+		-- FORMAT: modify_entity{} target that isn't an entity, a player or false
+		if kind ~= "entity" and kind ~= "player" then
+			error("modify_entity{}: target must be an entity, a player or false, got " .. I.type_name(target), 2)
+		end
+		t.target = slot_of[target]
+	end
+	return J.entity_modify(I.wire(t))
+end
+
+--[[doc
+name: teleport{ }
+kind: doing
+group: Entities
+words: tp move warp location place world travel
+syntax: teleport{ entity = entity | player, location = location }
+lead: Teleports an entity or an online player, as /tp does, also into another world: its fall speed is reset unless it is gliding, and a mob stops walking its path.
+arg: entity | entity · player | What to teleport.
+arg: location | location | Where to, with the direction it then looks (yaw, pitch).
+returns: boolean (false if the entity is gone or the teleport was refused, for example by another plugin)
+example:
+  teleport{ entity = player, location = location(world("overworld"), vec3(0.5, 70, 0.5)) }
+expert: Thread | main thread, like every script
+expert: Cost | 5–30 µs, into another world more (guess, not measured)
+expert: Under the hood | one Lua → Java call; vanilla teleportTo, the same steps as /tp
+expert: Can fail | an unknown field, location missing or not a location, a location outside the world (/tp refuses it too) or in a world that isn't loaded
+expert: Reload | changes stay
+expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
+status: unconfirmed
+]]
+function lib.teleport(a)
+	local t = entity_action("teleport", a, "teleport{ entity = player, location = place }")
 	local l = a.location
 	if l ~= nil then
-		-- FORMAT: set{} location of the wrong kind
-		if I.type_name(l) ~= "location" then error("set{}: location must be a location, got " .. I.type_name(l), 2) end
+		-- FORMAT: teleport{} location of the wrong kind
+		if I.type_name(l) ~= "location" then error("teleport{}: location must be a location, got " .. I.type_name(l), 2) end
 		local pos, rot = l[2], l[3]
 		t.location = { slot_of[l[1]], pos[1], pos[2], pos[3], rot[1], rot[2] }
 	end
-	return J.entity_set(I.wire(t))
+	return J.entity_teleport(I.wire(t))
+end
+
+--[[doc
+name: velocity{ }
+kind: doing
+group: Entities
+words: motion move push launch throw knockback speed fly jump
+syntax: velocity{ entity = entity | player, velocity = vec3 }
+lead: Sets the motion of an entity or an online player: it then flies that way, slowed by air and gravity as usual. It replaces the motion it had.
+arg: entity | entity · player | What to move.
+arg: velocity | vec3 | The new motion in blocks per tick (1 block per tick is 20 blocks per second).
+returns: boolean (false if the entity is gone)
+example:
+  -- throw entity up and towards player
+  velocity{ entity = entity, velocity = (player.pos - entity.pos):normalize() * 0.5 + vec3(0, 0.5, 0) }
+expert: Thread | main thread, like every script
+expert: Cost | 5–30 µs (guess, not measured)
+expert: Under the hood | one Lua → Java call; vanilla setDeltaMovement plus the flag knockback sets (markHurt), so every client gets it, the pushed player's own too
+expert: Can fail | an unknown field, velocity missing or not a vec3
+expert: Reload | changes stay
+expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
+status: unconfirmed
+]]
+function lib.velocity(a)
+	return J.entity_velocity(I.wire(entity_action("velocity", a, "velocity{ entity = player, velocity = vec3(0, 1, 0) }")))
+end
+
+--[[doc
+name: set_health{ }
+kind: doing
+group: Entities
+words: health heal hurt hearts kill max absorption yellow golden life
+syntax: set_health{ entity = entity | player, health = number | add = number | full = true, max_health = number, absorption = number }
+lead: Changes the health of an entity or an online player. Give one of health, add or full, and/or max_health and absorption. It is no hit: no armor, no knockback, no red flash, no death message from a hit (hurt{ } will do that later). max_health changes first, then the health, then absorption.
+arg: entity | entity · player | Whose health. Only entities with health (no items, arrows, minecarts, ...).
+arg: health? | number | The new health, kept between 0 and max_health as vanilla does; 0 kills it.
+arg: add? | number | Health to add; below 0 takes some away. Kept between 0 and max_health too.
+arg: full? | boolean | true: back to max_health.
+arg: max_health? | number | The new highest health (the max_health attribute, vanilla allows 1 to 1024). Health above it drops to it.
+arg: absorption? | number | Yellow extra hearts in health points (4 is two hearts), 0 or more; 0 removes them. They stay until hits use them up, as with a golden apple.
+returns: boolean (false if the entity is gone)
+example:
+  set_health{ entity = player, full = true, absorption = 8 }
+  set_health{ entity = boss, max_health = 200, full = true }
+expert: Thread | main thread, like every script
+expert: Cost | 5–30 µs (guess, not measured)
+expert: Under the hood | one Lua → Java call; vanilla setHealth, the max_health attribute's base value; absorption: vanilla keeps it under the max_absorption attribute (0 unless an effect raises it), so Lullaby raises that attribute's base just enough first, then calls setAbsorptionAmount
+expert: Can fail | an unknown field, nothing to change, more than one of health, add and full, a value of the wrong kind, absorption below 0, an entity without health
+expert: Reload | changes stay
+expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
+status: unconfirmed
+]]
+function lib.set_health(a)
+	return J.entity_set_health(I.wire(entity_action("set_health", a, "set_health{ entity = player, health = 20 }")))
 end
 
 -- ---------------------------------------------------------------------------------------------------------------

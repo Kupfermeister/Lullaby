@@ -60,7 +60,7 @@ never goes through it, so this rule stays true for Lullaby itself. Names are Moj
 | [LuaOps.java](src/main/java/io/github/kupfermeister/lullaby/nms/LuaOps.java) | Vanilla's `DynamicOps` over Lua data, so every vanilla codec reads Lua tables; refuses 2.5 where a whole number is needed. |
 | [ScriptCommands.java](src/main/java/io/github/kupfermeister/lullaby/nms/ScriptCommands.java) | Script commands on vanilla's Brigadier dispatcher, with per-player snapshots (see Threads). |
 | [SoundSeeds.java](src/main/java/io/github/kupfermeister/lullaby/nms/SoundSeeds.java) | `sound_seed()`: runs the game's own file pick over vanilla's `sounds.json` (downloaded at build) to find the seed for one exact file. |
-| [Entities.java](src/main/java/io/github/kupfermeister/lullaby/nms/Entities.java) | Entities: what an entity object's slot holds (its UUID and the vanilla entity last seen, found again by UUID after an unload or a world change), the entity field list (its owner), `set{}`, and the entities of a chunk. |
+| [Entities.java](src/main/java/io/github/kupfermeister/lullaby/nms/Entities.java) | Entities: what an entity object's slot holds (its UUID and the vanilla entity last seen, found again by UUID after an unload or a world change), the entity field list and what `modify_entity{}` changes (their owner), `teleport{}`, `velocity{}`, `set_health{}`, and the entities of a chunk. |
 | [Input.java](src/main/java/io/github/kupfermeister/lullaby/nms/Input.java) | Lullaby's own `input` event: owns the input packets, their fields and action words (startup checks them against vanilla); a hook in each player's network pipeline, only while a script listens; what a cancelled packet gets back (vanilla's own refusal). |
 | [SavedData.java](src/main/java/io/github/kupfermeister/lullaby/nms/SavedData.java) | One saved data file: `server.data` (`plugins/lullaby/data/server.snbt`) or one world's `w.data` (`data/lullaby.snbt` in the world's folder), through vanilla's SNBT printer and parser, codecs and data fixer; also the value conversion ChunkData uses. A hand edit wins, a file that didn't load cleanly is never saved over, past `data_max_size` nothing is saved. One per file, living as long as the plugin, so it outlasts reloads. |
 | [ChunkData.java](src/main/java/io/github/kupfermeister/lullaby/nms/ChunkData.java) | `c.data` inside each chunk (one entry in the chunk's plugin data, saved by the server with the chunk): read when a script first touches it, written when the chunk unloads and when its world saves, only when changed. Remembers what it wrote for the tables of unloaded chunks, which Lua keeps until the next reload ("keep alive") and loads the chunk to write a later change. |
@@ -76,7 +76,7 @@ what it holds and gets three tables: `J` Java functions, `lib` what scripts see 
 | [values.lua](src/main/resources/lullaby/lib/values.lua) | Positions, rotations, boxes, location. Pure Lua, never calls Java. |
 | [tasks.lua](src/main/resources/lullaby/lib/tasks.lua) | `run`, `wait`, `stop` and the scheduler that resumes waiting tasks (coroutines) each tick. |
 | [events.lua](src/main/resources/lullaby/lib/events.lua) | `on`, `after`, event objects. |
-| [objects.lua](src/main/resources/lullaby/lib/objects.lua) | Player, entity, world, block, chunk, block state, damage; `set{}`, `message`, `particle{}`, `sound{}`, `stop_sound{}`. |
+| [objects.lua](src/main/resources/lullaby/lib/objects.lua) | Player, entity, world, block, chunk, block state, damage; `modify_entity{}`, `teleport{}`, `velocity{}`, `set_health{}`, `message`, `particle{}`, `sound{}`, `stop_sound{}`. |
 | [lazy.lua](src/main/resources/lullaby/lib/lazy.lua) | The wire, item stacks, components, `from_json`, Lullaby's own `pairs`/`next` (LuaJIT ignores `__pairs`). |
 | [commands.lua](src/main/resources/lullaby/lib/commands.lua) | `command{}`, `refresh_commands{}`, `online_players()`. |
 | [data.lua](src/main/resources/lullaby/lib/data.lua) | `server.data`, `w.data` and `c.data`: plain Lua tables while running, turned into save trees for SavedData.java and ChunkData.java and back; the kept tables of unloaded chunks; locked tables. |
@@ -155,10 +155,10 @@ components; messages go out as vanilla's System Chat Message packet. As few depe
   plain table in codec shape.
 - Game objects (player, entity, world, block, chunk, ...) exist once each, so `==` works. Reading functions turn
   text into objects (`player("Notch")`, `world("overworld")`) and give nil if there is none. A player is an entity
-  too: every entity field and `set{}` work on players.
+  too: every entity field and entity action work on players.
 - Reading a name a value, object or event doesn't have is an error that lists what it has (`I.no_field` in
   core.lua), never nil, so a typo can't hide. A field that exists but has nothing reads nil (an item's health).
-  Objects change only through actions: `set{ entity = e, velocity = v }` uses the same names as the fields read.
+  Objects change only through actions: `velocity{ entity = e, velocity = v }`, `modify_entity{ entity = e, ai = false }` use the same names as the fields read.
 - Event fields come from Paper's getters and setters by one rule (`getJoinMessage()` → `e.join_message`,
   `isCancelled()` → `e.cancelled`), writable in `on`, read only in `after`.
 - A change goes where the value lives. A list field (`e.drops`) reads as a plain Lua list, a block snapshot

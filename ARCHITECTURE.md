@@ -33,17 +33,17 @@ Java, under `src/main/java/io/github/kupfermeister/lullaby/`:
 | File | What it does |
 |---|---|
 | [Lullaby.java](src/main/java/io/github/kupfermeister/lullaby/Lullaby.java) | Plugin entry: the version lock, the per-tick job, `/lullaby` registration. |
-| [Engine.java](src/main/java/io/github/kupfermeister/lullaby/Engine.java) | One load of the scripts: Lua state, listeners, files in `plugins/lullaby`. A reload saves `server.data`, every `w.data` and `c.data`, throws it all away and builds it new. It also decides when saved data is saved (world saves, world and chunk unloads). |
+| [Engine.java](src/main/java/io/github/kupfermeister/lullaby/Engine.java) | One load of the scripts: Lua state, listeners, files in `plugins/lullaby`. A reload saves `server.data`, every `w.data`, `c.data` and `entity.data`, throws it all away and builds it new. It also decides when saved data is saved (world saves, world, chunk and entity unloads, player saves and quits). |
 | [LullabyCommand.java](src/main/java/io/github/kupfermeister/lullaby/LullabyCommand.java) | `/lullaby reload`, `/lullaby version`, `/lullaby data server|world <world>|chunk [path]` (with tab completion of the keys; chunk: the one you stand in) and `/lul` (exactly `/lullaby reload`), the built-in commands. In Java so it works when every script is broken. |
 | [lua/LuaRuntime.java](src/main/java/io/github/kupfermeister/lullaby/lua/LuaRuntime.java) | The LuaJIT state; loads the library files in a fixed order (`LIBRARY`). |
-| [lua/JavaFunctions.java](src/main/java/io/github/kupfermeister/lullaby/lua/JavaFunctions.java) | The raw Java functions the library calls (table `J`). Scripts never see them. |
+| [lua/JavaFunctions.java](src/main/java/io/github/kupfermeister/lullaby/lua/JavaFunctions.java) | The raw Java functions the library calls (table `J`); scripts never see them. Holds `add` (every J function goes through it) and the functions of core.lua, values.lua, loader.lua and java.lua. Each other library file's functions are in the file of the same topic next to it: events.lua → [EventFunctions](src/main/java/io/github/kupfermeister/lullaby/lua/EventFunctions.java), entities.lua → [EntityFunctions](src/main/java/io/github/kupfermeister/lullaby/lua/EntityFunctions.java), blocks.lua → [BlockFunctions](src/main/java/io/github/kupfermeister/lullaby/lua/BlockFunctions.java), effects.lua → [EffectFunctions](src/main/java/io/github/kupfermeister/lullaby/lua/EffectFunctions.java), lazy.lua → [LazyFunctions](src/main/java/io/github/kupfermeister/lullaby/lua/LazyFunctions.java), commands.lua → [CommandFunctions](src/main/java/io/github/kupfermeister/lullaby/lua/CommandFunctions.java), data.lua → [DataFunctions](src/main/java/io/github/kupfermeister/lullaby/lua/DataFunctions.java), worlds.lua → [WorldFunctions](src/main/java/io/github/kupfermeister/lullaby/lua/WorldFunctions.java). They stay out of `nms`, so `nms` never handles the Lua stack. |
 | [lua/Wire.java](src/main/java/io/github/kupfermeister/lullaby/lua/Wire.java) | Lua tables as bytes in LuaJIT's own `string.buffer` format, so a whole table crosses in one call. |
 | [lua/Slots.java](src/main/java/io/github/kupfermeister/lullaby/lua/Slots.java) | Lua objects carry a slot number; this holds what the number stands for (a UUID, a world, an event). |
 | [lua/LuaText.java](src/main/java/io/github/kupfermeister/lullaby/lua/LuaText.java) | Text as real UTF-8 (LuaJava's own string conversion breaks emoji). |
 | [lua/JavaDoor.java](src/main/java/io/github/kupfermeister/lullaby/lua/JavaDoor.java) | The raw Java door (`unlock.java`): loads classes, picks the method that fits the arguments, turns Java values into Lua ones. Made only when unlocked. |
 | [lua/Watchdog.java](src/main/java/io/github/kupfermeister/lullaby/lua/Watchdog.java) | `script_time_limit`: stops scripts that run too long. Runs a thread (see Threads). |
 | [event/EventBridge.java](src/main/java/io/github/kupfermeister/lullaby/event/EventBridge.java) | Every Paper event: reads the generated list (`events.txt`, see Other files), looks an event's class and methods up the first time a script uses it, reads and sets its fields, keeps other threads away from Lua. |
-| [lua/ToLua.java](src/main/java/io/github/kupfermeister/lullaby/lua/ToLua.java) | The one place that turns a Java value (player, entity, world, block, chunk, location, vector, box, block data, damage source, item stack, text, plain values) into a Lullaby value for Lua; event fields, entity fields and `java.wrap( )` use it. Its Lua half is `I.from_java` in objects.lua. |
+| [lua/ToLua.java](src/main/java/io/github/kupfermeister/lullaby/lua/ToLua.java) | The one place that turns a Java value (player, entity, world, block, chunk, location, vector, box, block data, damage source, item stack, text, plain values) into a Lullaby value for Lua; event fields, entity fields and `java.wrap( )` use it. Its Lua half is `I.from_java` in entities.lua. |
 | [error/ErrorReporter.java](src/main/java/io/github/kupfermeister/lullaby/error/ErrorReporter.java) | Error and warning format, repeat collapsing, console and ops. |
 | [nms/](src/main/java/io/github/kupfermeister/lullaby/nms/package-info.java) | Everything that touches Minecraft's own code, see below. |
 
@@ -60,10 +60,13 @@ never goes through it, so this rule stays true for Lullaby itself. Names are Moj
 | [LuaOps.java](src/main/java/io/github/kupfermeister/lullaby/nms/LuaOps.java) | Vanilla's `DynamicOps` over Lua data, so every vanilla codec reads Lua tables; refuses 2.5 where a whole number is needed. |
 | [ScriptCommands.java](src/main/java/io/github/kupfermeister/lullaby/nms/ScriptCommands.java) | Script commands on vanilla's Brigadier dispatcher, with per-player snapshots (see Threads). |
 | [SoundSeeds.java](src/main/java/io/github/kupfermeister/lullaby/nms/SoundSeeds.java) | `sound_seed()`: runs the game's own file pick over vanilla's `sounds.json` (downloaded at build) to find the seed for one exact file. |
-| [Entities.java](src/main/java/io/github/kupfermeister/lullaby/nms/Entities.java) | Entities: what an entity object's slot holds (its UUID and the vanilla entity last seen, found again by UUID after an unload or a world change), the entity field list and what `modify_entity{}` changes (their owner), `teleport{}`, and the entities of a chunk. |
+| [Entities.java](src/main/java/io/github/kupfermeister/lullaby/nms/Entities.java) | Entities: what an entity object's slot holds (its UUID and the vanilla entity last seen, found again by UUID after an unload or a world change), the entity field list and what `modify_entity{}` changes (their owner; also what a blueprint holds), `teleport{}`, `remove_entity{}`, `summon{}`, the check of `blueprint{}`, and the entities of a chunk. |
+| [ClientEntities.java](src/main/java/io/github/kupfermeister/lullaby/nms/ClientEntities.java) | `clientside_summon{}`: entities only their viewers' games know. Each keeps a vanilla entity that is never put into a world (so the same code changes and reads it as a real one) and sends its viewers vanilla's spawn packets, then only what changed; lifetime, `persist` (sent again after a viewer's game forgot it: chunk, world, rejoin; its listeners exist only while one persists), removal at reload. |
+| [DisplayData.java](src/main/java/io/github/kupfermeister/lullaby/nms/DisplayData.java) | `display_data`: the settings of text, item and block displays as one table, written (modify_entity, blueprints, summons) and read back in the same shape (owner of that shape). |
 | [Input.java](src/main/java/io/github/kupfermeister/lullaby/nms/Input.java) | Lullaby's own `input` event: owns the input packets, their fields and action words (startup checks them against vanilla); a hook in each player's network pipeline, only while a script listens; what a cancelled packet gets back (vanilla's own refusal). |
 | [SavedData.java](src/main/java/io/github/kupfermeister/lullaby/nms/SavedData.java) | One saved data file: `server.data` (`plugins/lullaby/data/server.snbt`) or one world's `w.data` (`data/lullaby.snbt` in the world's folder), through vanilla's SNBT printer and parser, codecs and data fixer; also the value conversion ChunkData uses. A hand edit wins, a file that didn't load cleanly is never saved over, past `data_max_size` nothing is saved. One per file, living as long as the plugin, so it outlasts reloads. |
 | [ChunkData.java](src/main/java/io/github/kupfermeister/lullaby/nms/ChunkData.java) | `c.data` inside each chunk (one entry in the chunk's plugin data, saved by the server with the chunk): read when a script first touches it, written when the chunk unloads and when its world saves, only when changed. Remembers what it wrote for the tables of unloaded chunks, which Lua keeps until the next reload ("keep alive") and loads the chunk to write a later change. |
+| [EntityData.java](src/main/java/io/github/kupfermeister/lullaby/nms/EntityData.java) | `entity.data` and `player.data` (the same field) inside each entity (one entry in its plugin data, saved by the server with the entity): a player's in the player file, also read and written there while the player is offline. Written when the entity's chunk unloads (then Lua locks the table) and at world saves; a player's right before Paper saves the player (its own timer, checked at the tick's start), at quit, reload and stop. An entity that dies takes its data with it. |
 | [Worlds.java](src/main/java/io/github/kupfermeister/lullaby/nms/Worlds.java) | Worlds as folders: `worlds()`, `create_world{}`, `load_world{}`, `unload_world{}`, `copy_world{}`, `delete_world{}`. Creating and loading go through Paper's WorldCreator on purpose (Paper rewrites world loading, so vanilla's own classes would break with every update); vanilla's dimension folders, registries and seed rule. Copies are built in `plugins/lullaby/temp` and moved into place, so a crash never leaves half a world; a deleted world is moved there whole and kept as a last chance until the next start, which empties temp. Lives as long as the plugin, so a copy outlasts a reload. |
 | [Nms.java](src/main/java/io/github/kupfermeister/lullaby/nms/Nms.java) | Small vanilla reads and actions without a bigger class yet. |
 
@@ -73,13 +76,15 @@ what it holds and gets three tables: `J` Java functions, `lib` what scripts see 
 | File | What it holds |
 |---|---|
 | [core.lua](src/main/resources/lullaby/lib/core.lua) | Error reports, config, the sandbox (what is locked), `type_of`. |
-| [values.lua](src/main/resources/lullaby/lib/values.lua) | Positions, rotations, boxes, location. Pure Lua, never calls Java. |
+| [values.lua](src/main/resources/lullaby/lib/values.lua) | Positions, rotations, boxes, location. Pure Lua; calls Java only to turn a dimension name into its id (`J.dimension_id`). |
 | [tasks.lua](src/main/resources/lullaby/lib/tasks.lua) | `run`, `wait`, `stop` and the scheduler that resumes waiting tasks (coroutines) each tick. |
 | [events.lua](src/main/resources/lullaby/lib/events.lua) | `on`, `after`, event objects. |
-| [objects.lua](src/main/resources/lullaby/lib/objects.lua) | Player, entity, world, block, chunk, block state, damage; `modify_entity{}`, `teleport{}`, `message`, `particle{}`, `sound{}`, `stop_sound{}`. |
+| [entities.lua](src/main/resources/lullaby/lib/entities.lua) | Player, entity, client_entity, damage, profile, effect, blueprint; `modify_entity{}`, `teleport{}`, `remove_entity{}`, `blueprint{}`, `summon{}`, `clientside_summon{}`. Also what every object kind shares (`I.object_meta`, `I.object_kind`) and `I.from_java` (with its "tree": a table of values from Java, e.g. `display_data`). |
+| [blocks.lua](src/main/resources/lullaby/lib/blocks.lua) | World objects (`world()`), block, block state, block snapshot, chunk. |
+| [effects.lua](src/main/resources/lullaby/lib/effects.lua) | `message{}`, `particle{}`, `sound{}`, `stop_sound{}`, `sound_seed()`, the played sound value. |
 | [lazy.lua](src/main/resources/lullaby/lib/lazy.lua) | The wire, item stacks, components, `from_json`, Lullaby's own `pairs`/`next` (LuaJIT ignores `__pairs`). |
 | [commands.lua](src/main/resources/lullaby/lib/commands.lua) | `command{}`, `refresh_commands{}`, `online_players()`. |
-| [data.lua](src/main/resources/lullaby/lib/data.lua) | `server.data`, `w.data` and `c.data`: plain Lua tables while running, turned into save trees for SavedData.java and ChunkData.java and back; the kept tables of unloaded chunks; locked tables. |
+| [data.lua](src/main/resources/lullaby/lib/data.lua) | `server.data`, `w.data`, `c.data` and `entity.data` (`player.data` is the same field): plain Lua tables while running, turned into save trees for SavedData.java, ChunkData.java and EntityData.java and back; the kept tables of unloaded chunks; locked tables. |
 | [worlds.lua](src/main/resources/lullaby/lib/worlds.lua) | World folders: list, create, load, unload, copy (waits for the worker), delete. Turns world and location objects into names and numbers; Worlds.java checks everything else. |
 | [loader.lua](src/main/resources/lullaby/lib/loader.lua) | Loading script files, `import`. |
 | [java.lua](src/main/resources/lullaby/lib/java.lua) | The raw Java door's Lua side (table `java`, only when `unlock.java` is on) and its docs page. |
@@ -179,7 +184,9 @@ wire, through [Fields.java](src/main/java/io/github/kupfermeister/lullaby/nms/Fi
 what it needs and what it got: `count must be a whole number, got 2.5`. A field a doing function doesn't take is an
 error too (`particle{}: unknown field cuont (it takes ...)`), never ignored: Java's `Fields.done()` refuses every key
 the action's code didn't read; functions checked in Lua use `I.only` (core.lua) with Java's wording. Errors of a
-doing function start with its name and `{}` (`sound{}: ...`).
+doing function start with its name and `{}` (`sound{}: ...`). One exception (jft 2026-11-23): an entity field that
+this entity doesn't have (`food` on a zombie, `display_data` on a pig) is checked and then ignored, so one call can go
+to entities of every sort (Entities.java's `SKIP`); a name no entity has is still an error.
 
 **One owner per list.** Java owns the game's facts (wire kinds, events and their fields, event stages, sound
 sources); the library reads them once at startup. The events come from Paper itself: EventList.java writes them into
@@ -238,10 +245,14 @@ the docs build, not from discipline.
    `J.name(plain values)`, or `J.name(I.wire({ ... }))` for several fields. A doing function refuses fields it doesn't
    take: through the wire, send all of the `{ }` and call `a.done()` in Java (step 5); otherwise call
    `I.only(a, "name{}", NAME_TAKES, 2)` in Lua, with `local NAME_TAKES = I.takes(...)` above the doc block.
-4. In [JavaFunctions.java](src/main/java/io/github/kupfermeister/lullaby/lua/JavaFunctions.java), inside `fill`,
-   add `add(lua, "name", L -> { ... })`. Arguments are stack positions 1, 2, ...; push the results and return how
-   many. Text goes through `LuaText`. Use `add`, not `addFree` (`add` checks the script time limit; `addFree` is only
-   for what the library needs while loading or reporting).
+4. In the J functions file of that library file (the JavaFunctions row in Parts names them all: entities.lua →
+   `EntityFunctions.java`, ...), inside `fill`, add `add(lua, "name", L -> { ... })`. Arguments are stack positions
+   1, 2, ...; push the results and return how many. Text goes through `LuaText`. Use `add`, not `addFree` (`add`
+   checks the script time limit; `addFree` is only for what the library needs while loading or reporting). A new
+   library file gets its own `<Topic>Functions.java` in `lua/` (copy the shape of a small one, `EffectFunctions`),
+   one `<Topic>Functions.fill(...)` line at the end of `JavaFunctions.fill`, its name in `LIBRARY` in
+   [LuaRuntime.java](src/main/java/io/github/kupfermeister/lullaby/lua/LuaRuntime.java) and rows in both tables of
+   Parts.
 5. Anything that touches Minecraft's code goes into a static method in `nms` ([Nms.java](src/main/java/io/github/kupfermeister/lullaby/nms/Nms.java)
    or the class of its topic). Wire fields are read through `Fields`; call `a.done()` after the last read, before
    anything changes. Every new message text gets a `FORMAT:` comment.
@@ -265,9 +276,9 @@ To let fields of a new Java type through (for example inventories):
 2. In [EventBridge.java](src/main/java/io/github/kupfermeister/lullaby/event/EventBridge.java), add the word to
    `Kind`. Reading needs nothing more there: `get` hands every value to
    [ToLua.java](src/main/java/io/github/kupfermeister/lullaby/lua/ToLua.java), which gets a `case` for the Java type,
-   and `I.from_java` in [objects.lua](src/main/resources/lullaby/lib/objects.lua) gets the kind word.
+   and `I.from_java` in [entities.lua](src/main/resources/lullaby/lib/entities.lua) gets the kind word.
 3. Setting: plain values go through `set`; anything else gets a `set...` method in EventBridge, its J function in
-   [JavaFunctions.java](src/main/java/io/github/kupfermeister/lullaby/lua/JavaFunctions.java) and a branch in the
+   [EventFunctions.java](src/main/java/io/github/kupfermeister/lullaby/lua/EventFunctions.java) and a branch in the
    event object's `__newindex` in [events.lua](src/main/resources/lullaby/lib/events.lua) (Lua sends the value's
    parts: a slot, numbers).
 4. In [Docs.java](tools/docs/Docs.java), `fieldRow` shows the kind on the event pages; a kind word that is the id of
@@ -295,9 +306,9 @@ an event, no listener exists and its class isn't even loaded.
    `public static void name(Object wire, IntFunction<Object> slots)`: `Fields a = new Fields("name{}", wire)`, read
    each field with vanilla's own default, then `var to = receivers(a, slots); a.done();` (refuses fields nobody
    read), build the vanilla packet(s), then `send(to, packets)`. Field names are Mojang's, snake_case.
-2. In [JavaFunctions.java](src/main/java/io/github/kupfermeister/lullaby/lua/JavaFunctions.java), add
+2. In [EffectFunctions.java](src/main/java/io/github/kupfermeister/lullaby/lua/EffectFunctions.java), add
    `add(lua, "name", L -> { Packets.name(Wire.read(L.toBuffer(1)), slotLookup); return 0; });`.
-3. In [objects.lua](src/main/resources/lullaby/lib/objects.lua), add the doc block (with
+3. In [effects.lua](src/main/resources/lullaby/lib/effects.lua), add the doc block (with
    `expert: Packet | <the packet's protocol wiki name> (play, clientbound)`) and
    `function lib.name(a) J.name(I.wire(action_table(a, "name"))) end` (`action_table` copies every field and puts
    the receivers' slots in; replace object fields by their slot there, as `sound{}` does for `entity`).
@@ -329,7 +340,7 @@ server and say which build is needed.
 
 Marked so nobody mistakes them for features: event fields Lullaby can't read yet (inventories, menus, lists of
 those, merchant offers, ...; `?` kinds in events.txt), new block snapshots in a changed list (only existing ones can be
-kept, removed or given another state), and events Paper fires off the main thread (chat, pre-login); saved data on players,
-entities and items (`server.data`, `w.data` and `c.data` exist so far); a generated packet system (`on_packet`, `send_packet`) on the same send core;
-inventories; more entity fields and actions (spawning, removing, equipment, effects); worker threads for big block
+kept, removed or given another state), and events Paper fires off the main thread (chat, pre-login); saved data on
+items (`server.data`, `w.data`, `c.data` and `entity.data` exist so far); a generated packet system (`on_packet`, `send_packet`) on the same send core;
+inventories; more entity fields and actions (equipment, effects, full NBT in blueprints); changing a client_entity's viewers; a separate particle engine on clientside entities (batching, short moves); worker threads for big block
 edits; mixins as an optional add-on.

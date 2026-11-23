@@ -1,28 +1,9 @@
 package io.github.kupfermeister.lullaby.lua;
 
 import io.github.kupfermeister.lullaby.Engine;
-import io.github.kupfermeister.lullaby.event.EventBridge;
-import io.github.kupfermeister.lullaby.nms.Codecs;
-import io.github.kupfermeister.lullaby.nms.Entities;
 import io.github.kupfermeister.lullaby.nms.Fields;
-import io.github.kupfermeister.lullaby.nms.Input;
 import io.github.kupfermeister.lullaby.nms.Nms;
-import io.github.kupfermeister.lullaby.nms.Packets;
-import io.github.kupfermeister.lullaby.nms.SavedData;
-import io.github.kupfermeister.lullaby.nms.ScriptCommands;
-import io.github.kupfermeister.lullaby.nms.SoundSeeds;
-import io.github.kupfermeister.lullaby.nms.Worlds;
-import java.nio.ByteBuffer;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.function.IntFunction;
-import java.util.function.ToIntFunction;
-import org.bukkit.Bukkit;
-import org.bukkit.entity.Player;
 import party.iroiro.luajava.JFunction;
 import party.iroiro.luajava.Lua;
 
@@ -32,6 +13,12 @@ import static io.github.kupfermeister.lullaby.lua.LuaText.string;
 /**
  * The raw Java functions the Lua library calls (the table J in the library files). Scripts never see them: the
  * library checks arguments in Lua and calls these with plain values (one Lua-Java trip per library call).
+ *
+ * <p>Each library file's J functions live in the Java file of the same topic: events.lua → {@link EventFunctions},
+ * entities.lua → {@link EntityFunctions}, blocks.lua → {@link BlockFunctions}, effects.lua → {@link EffectFunctions},
+ * lazy.lua → {@link LazyFunctions}, commands.lua → {@link CommandFunctions}, data.lua → {@link DataFunctions},
+ * worlds.lua → {@link WorldFunctions}. This file holds the ones of core.lua, values.lua, loader.lua and java.lua, and
+ * {@link #add}, which every one of them uses.
  *
  * <p>Conventions: arguments are read from stack positions 1, 2, ...; a function pushes its results and returns how
  * many; an error is raised in Lua by pushing the message and returning -1 (LuaJava's convention). Java exceptions
@@ -49,8 +36,6 @@ final class JavaFunctions {
     /** Fills the table on top of the stack with every function. */
     static void fill(Lua lua, Engine engine, Slots slots) {
         watchdog = engine.watchdog();
-        EventBridge events = engine.events();
-        events.slots(slots::add);
 
         addFree(lua, "set_time_limit", L -> {
             push(L, watchdog.setLimit(L.toNumber(1)));
@@ -83,370 +68,32 @@ final class JavaFunctions {
             push(L, engine.readScript(string(L, 1)));
             return 1;
         });
-
-        // config data_max_size in megabytes (0: no limit), once per load (data.lua)
-        addFree(lua, "data_limit", L -> {
-            SavedData.setLimit(L.toNumber(1));
-            return 0;
-        });
-        // w.data and c.data (data.lua; nms/SavedData.java, nms/ChunkData.java): a world slot, and a chunk's x, z. A read
-        // gives true and the wire bytes (nil: nothing saved), or false when the world or chunk isn't loaded.
-        add(lua, "world_data_read", L -> pushRead(L, engine.readWorldData(slots.get(slot(L, 1)), slots::add)));
-        add(lua, "world_data_loaded", L -> {
-            engine.worldDataLoaded(slots.get(slot(L, 1)), string(L, 2));
-            return 0;
-        });
-        add(lua, "chunk_data_read", L -> pushRead(L, engine.chunks().read(slots.get(slot(L, 1)), (int) L.toInteger(2),
-                (int) L.toInteger(3), slots::add)));
-        add(lua, "chunk_data_loaded", L -> {
-            engine.chunks().loaded(slots.get(slot(L, 1)), (int) L.toInteger(2), (int) L.toInteger(3), string(L, 4));
-            return 0;
-        });
-        add(lua, "chunk_data_reattach", L -> {
-            L.push(engine.chunks().reattach(slots.get(slot(L, 1)), (int) L.toInteger(2), (int) L.toInteger(3)));
-            return 1;
-        });
-        addFree(lua, "wire_kinds", L -> {
-            push(L, Codecs.kindList());
-            return 1;
-        });
-        // Events: names cross once (event_info at startup, event_fields and listen per event and handler kind); every
-        // event and field read after that is whole numbers only (listener number, event slot, field number).
-        // See EventBridge.java.
-        addFree(lua, "event_info", L -> {
-            push(L, EventBridge.info());
-            return 1;
-        });
-        // The event's fields as "name=number ...", or nil and why it can't be used (unknown, off the main thread).
-        add(lua, "event_fields", L -> {
-            String name = string(L, 1), why = EventBridge.refusal(name);
-            if (why != null) {
-                L.pushNil();
-                LuaText.push(L, why);
-                return 2;
-            }
-            push(L, EventBridge.fields(name));
-            return 1;
-        });
-        add(lua, "listen", L -> {
-            L.push(events.listen(string(L, 1), string(L, 2), string(L, 3)));
-            return 1;
-        });
-        add(lua, "event_get", L -> events.get(L, slots.get(slot(L, 1)), (int) L.toInteger(2)));
-        add(lua, "event_set", L -> {
-            events.set(L, slots.get(slot(L, 1)), (int) L.toInteger(2), 3);
-            return 0;
-        });
-        add(lua, "event_set_component", L -> {
-            events.setComponent(slots.get(slot(L, 1)), (int) L.toInteger(2),
-                    Codecs.adventure(Codecs.componentFromTable(Wire.read(L.toBuffer(3)), slots::get)));
-            return 0;
-        });
-        add(lua, "event_set_item", L -> {
-            events.setItem(slots.get(slot(L, 1)), (int) L.toInteger(2), slots.get(slot(L, 3)));
-            return 0;
-        });
-        // event slot, field number, world slot, x, y, z, yaw, pitch
-        add(lua, "event_set_location", L -> {
-            events.setLocation(slots.get(slot(L, 1)), (int) L.toInteger(2), slots.get(slot(L, 3)), L.toNumber(4),
-                    L.toNumber(5), L.toNumber(6), (float) L.toNumber(7), (float) L.toNumber(8));
-            return 0;
-        });
-        // event slot, field number, x, y, z
-        add(lua, "event_set_vec3", L -> {
-            events.setVec3(slots.get(slot(L, 1)), (int) L.toInteger(2), L.toNumber(3), L.toNumber(4), L.toNumber(5));
-            return 0;
-        });
-        // event slot, field number, the entity's (or player's) slot
-        add(lua, "event_set_entity", L -> {
-            events.setEntity(slots.get(slot(L, 1)), (int) L.toInteger(2), slots.get(slot(L, 3)));
-            return 0;
-        });
-        // event slot, field number, vanilla's block state number
-        add(lua, "event_set_block_state", L -> {
-            events.setBlockState(slots.get(slot(L, 1)), (int) L.toInteger(2), (int) L.toInteger(3));
-            return 0;
-        });
-        // Entry i (1-based) of the list field event_get just copied (events.lua reads them right away).
-        add(lua, "event_list_item", L -> events.listItem(L, (int) L.toInteger(1)));
-        // event slot, field number, the changed list's wire bytes (entries as EventBridge.setList describes)
-        add(lua, "event_set_list", L -> {
-            events.setList(slots.get(slot(L, 1)), (int) L.toInteger(2), Wire.read(L.toBuffer(3)), slots::get);
-            return 0;
-        });
-        // event slot, field number, world slot, x, y, z, vanilla's block state number
-        add(lua, "event_set_snapshot", L -> {
-            events.setSnapshot(slots.get(slot(L, 1)), (int) L.toInteger(2), slots.get(slot(L, 3)), (int) L.toInteger(4),
-                    (int) L.toInteger(5), (int) L.toInteger(6), (int) L.toInteger(7));
-            return 0;
-        });
-        // Lullaby's own input event (nms/Input.java): the packets and fields once at startup, then numbers only.
-        addFree(lua, "input_info", L -> {
-            push(L, Input.info());
-            return 1;
-        });
-        add(lua, "input_listen", L -> {
-            engine.listenInput(L.toBoolean(1));
-            return 0;
-        });
-        add(lua, "input_get", L -> ToLua.object(L, Input.read(slots.get(slot(L, 1)), (int) L.toInteger(2)), slots::add));
         // Slots (see Slots.java): objects are created in Lua, Java keeps what each number stands for.
         addFree(lua, "free_slots", L -> {
             slots.free(string(L, 1));
             return 0;
         });
-        add(lua, "player_slot", L -> {
-            L.push(slots.add(UUID.fromString(string(L, 1))));
-            return 1;
-        });
-        add(lua, "world_slot", L -> {
-            L.push(slots.add(Nms.worldKey(string(L, 1))));
-            return 1;
-        });
-
-        // Entities (nms/Entities.java): an entity's slot holds an Entities.Ref, a player's its UUID; fields go by number.
-        addFree(lua, "entity_fields", L -> {
-            push(L, Entities.fieldList());
-            return 1;
-        });
-        add(lua, "entity_get", L -> ToLua.object(L, Entities.read(slots.get(slot(L, 1)), (int) L.toInteger(2)), slots::add));
-        add(lua, "entity_find", L -> ToLua.object(L, Entities.find(string(L, 1)), slots::add));
-        add(lua, "entity_modify", L -> {
-            L.push(Entities.modify(Wire.read(L.toBuffer(1)), slots::get));
-            return 1;
-        });
-        add(lua, "entity_teleport", L -> {
-            L.push(Entities.teleport(Wire.read(L.toBuffer(1)), slots::get));
-            return 1;
-        });
-        // Chunks: a world slot and the chunk's x, z (a chunk object has no slot of its own, like a block).
-        add(lua, "chunk_loaded", L -> {
-            L.push(Entities.chunkLoaded(slots.get(slot(L, 1)), (int) L.toInteger(2), (int) L.toInteger(3)));
-            return 1;
-        });
-        add(lua, "chunk_entities", L -> {
-            List<org.bukkit.entity.Entity> list = Entities.chunkEntities(slots.get(slot(L, 1)), (int) L.toInteger(2),
-                    (int) L.toInteger(3));
-            return list == null ? 0 : ToLua.entities(L, list, slots::add);
-        });
-        add(lua, "player_name", L -> pushOrNil(L, Nms.playerName(slots.get(slot(L, 1)))));
-        add(lua, "player_online", L -> {
-            L.push(Nms.isOnline(slots.get(slot(L, 1))));
-            return 1;
-        });
-        add(lua, "player_find", L -> {
-            UUID uuid = Nms.findPlayer(string(L, 1));
-            return pushOrNil(L, uuid == null ? null : uuid.toString());
-        });
-        add(lua, "world_id", L -> pushOrNil(L, Nms.worldId(string(L, 1))));
-        // World folders (nms/Worlds.java). Ids cross as text; a move_to location as world slot (0: none), x, y, z,
-        // yaw, pitch. A copy runs on a worker thread: world_copy gives a job number, world_job its result.
-        Worlds worlds = engine.worlds();
-        add(lua, "world_list", L -> {
-            push(L, worlds.list());
-            return 1;
-        });
-        add(lua, "world_create", L -> {
-            push(L, worlds.create(Wire.read(L.toBuffer(1))));
-            return 1;
-        });
-        add(lua, "world_load", L -> {
-            push(L, worlds.load(string(L, 1)));
-            return 1;
-        });
-        add(lua, "world_unload", L -> {
-            L.push(worlds.unload(string(L, 1), L.toBoolean(2), location(L, 3, "unload_world{}", slots)));
-            return 1;
-        });
-        add(lua, "world_delete", L -> {
-            worlds.delete(string(L, 1), location(L, 2, "delete_world{}", slots));
-            return 0;
-        });
-        add(lua, "world_copy", L -> {
-            L.push(worlds.copy(string(L, 1), string(L, 2)));
-            return 1;
-        });
-        add(lua, "world_job", L -> pushOrNil(L, worlds.job((int) L.toInteger(1))));
-        add(lua, "dimension_id", L -> pushOrNil(L, Nms.dimensionId(string(L, 1))));
-        // Block states travel as vanilla's state numbers (Block.getId); objects.lua keeps one table per number.
-        add(lua, "block_state_parse", L -> {
-            L.push(Nms.blockStateParse(string(L, 1)));
-            return 1;
-        });
-        add(lua, "block_state_info", L -> {
-            push(L, Nms.blockStateInfo((int) L.toInteger(1)));
-            return 1;
-        });
-        add(lua, "block_state_text", L -> {
-            push(L, Nms.blockStateText((int) L.toInteger(1)));
-            return 1;
-        });
-        add(lua, "block_state_with", L -> {
-            L.push(Nms.blockStateWith((int) L.toInteger(1), string(L, 2)));
-            return 1;
-        });
-        add(lua, "block_state_at", L -> {
-            int id = Nms.blockStateAt(slots.get(slot(L, 1)), (int) L.toInteger(2), (int) L.toInteger(3),
-                    (int) L.toInteger(4));
-            if (id < 0) return 0;
-            L.push(id);
-            return 1;
-        });
-
-        add(lua, "online_players", L -> {
-            push(L, String.join("\n", Nms.onlinePlayers()));
-            return 1;
-        });
-        add(lua, "has_permission", L -> {
-            Player player = Bukkit.getPlayer(slots.<UUID>get(slot(L, 1)));
-            L.push(player != null && player.hasPermission(string(L, 2)));
-            return 1;
-        });
-
-        // Script commands (commands.lua builds them, ScriptCommands.java holds them). Lists arrive as text:
-        // entries joined by "\n"; a snapshot's suggestions as "id<US>a<US>b<RS>id<US>..." (ASCII 31 and 30).
-        add(lua, "cmd_exists", L -> {
-            L.push(ScriptCommands.exists(string(L, 1)));
-            return 1;
-        });
-        add(lua, "cmd_node", L -> {
-            L.push(engine.commands().addNode((int) L.toInteger(1), L.toBoolean(2), string(L, 3), string(L, 4),
-                    L.toNumber(5), L.toNumber(6), L.toBoolean(7), lines(string(L, 8)), L.toBoolean(9),
-                    L.toBoolean(10), string(L, 11)));
-            return 1;
-        });
-        add(lua, "cmd_alias", L -> {
-            engine.commands().addAlias((int) L.toInteger(1), string(L, 2));
-            return 0;
-        });
-        add(lua, "cmd_register", L -> {
-            engine.commands().register((int) L.toInteger(1));
-            return 0;
-        });
-        add(lua, "cmd_refresh", L -> {
-            Set<Integer> visible = new HashSet<>();
-            for (String id : lines(string(L, 2))) visible.add(Integer.parseInt(id));
-            Map<Integer, List<String>> suggestions = new HashMap<>();
-            for (String record : string(L, 3).split("\u001e")) {
-                if (record.isEmpty()) continue;
-                String[] parts = record.split("\u001f", -1);
-                suggestions.put(Integer.parseInt(parts[0]), List.of(parts).subList(1, parts.length));
-            }
-            engine.commands().refresh(UUID.fromString(string(L, 1)), visible, suggestions);
-            return 0;
-        });
-        // A command's check rejected a value: the script's text (literal, as /tellraw "text") to whoever typed it, in red.
-        add(lua, "cmd_reject", L -> {
-            engine.commands().reject(string(L, 1));
-            return 0;
-        });
-
         // Arguments: what ("message{}"), the unknown key as text, the names it takes (one per line). Gives the error
         // text, so actions checked in Lua word it exactly as Fields does for the others.
         add(lua, "unknown_field", L -> {
             LuaText.push(L, Fields.unknownField(string(L, 1), string(L, 2), List.of(string(L, 3).split("\n"))));
             return 1;
         });
-        add(lua, "message", L -> {
-            L.push(Nms.sendLiteral(slots.get(slot(L, 1)), string(L, 2)));
-            return 1;
-        });
-        // Arguments: player slot, the component's wire bytes (a plain table in codec shape).
-        add(lua, "message_component", L -> {
-            L.push(Nms.sendMessage(slots.get(slot(L, 1)), Codecs.componentFromTable(Wire.read(L.toBuffer(2)), slots::get)));
-            return 1;
-        });
-
-        // Codec values (see lazy.lua and nms/Codecs.java). Tables cross as wire bytes (Wire.java);
-        // each value lives in a slot as an unchangeable Java copy (ItemStack, vanilla Component).
-        IntFunction<Object> slotLookup = slots::get;
-        add(lua, "slot_copy", L -> {
-            L.push(slots.add(slots.get(slot(L, 1))));
-            return 1;
-        });
-        add(lua, "item_parse", L -> {
-            L.push(slots.add(Codecs.itemParse(string(L, 1))));
-            return 1;
-        });
-        add(lua, "item_from_table", L -> {
-            L.push(slots.add(Codecs.itemFromTable(Wire.read(L.toBuffer(1)), slotLookup)));
-            return 1;
-        });
-        // Arguments: base slot, then wire bytes of { id = , count = , components = } holding only the changed parts.
-        add(lua, "item_build", L -> {
-            Wire.Table parts = (Wire.Table) Wire.read(L.toBuffer(2));
-            L.push(slots.add(Codecs.itemBuild(slots.get(slot(L, 1)), parts.hash.get("id"), parts.hash.get("count"),
-                    parts.hash.get("components"), slotLookup)));
-            return 1;
-        });
-        add(lua, "item_id", L -> {
-            push(L, Codecs.itemId(slots.get(slot(L, 1))));
-            return 1;
-        });
-        add(lua, "item_count", L -> {
-            L.push(Codecs.itemCount(slots.get(slot(L, 1))));
-            return 1;
-        });
-        add(lua, "item_empty", L -> {
-            L.push(Codecs.itemEmpty(slots.get(slot(L, 1))));
-            return 1;
-        });
-        add(lua, "item_components", L -> {
-            L.push(Codecs.itemComponents(slots.get(slot(L, 1))));
-            return 1;
-        });
-        add(lua, "item_text", L -> {
-            push(L, Codecs.itemText(slots.get(slot(L, 1))));
-            return 1;
-        });
-        add(lua, "item_matches", L -> {
-            L.push(Codecs.itemMatches(slots.get(slot(L, 1)), slots.get(slot(L, 2))));
-            return 1;
-        });
-        // Components are plain Lua tables: they cross as wire bytes both ways. Results: the bytes
-        // and how many show_item hovers hold a new item stack slot (lazy.lua turns those into item_stacks).
-        ToIntFunction<Object> addSlot = slots::add;
-        add(lua, "component_mini", L -> pushComponent(L, Codecs.componentOut(Codecs.componentMini(string(L, 1)), addSlot)));
-        add(lua, "component_from_table", L -> pushComponent(L, Codecs.componentOut(
-                Codecs.componentFromTable(Wire.read(L.toBuffer(1)), slotLookup), addSlot)));
-        add(lua, "component_text", L -> {
-            push(L, Codecs.componentText(Codecs.componentFromTable(Wire.read(L.toBuffer(1)), slotLookup)));
-            return 1;
-        });
-        add(lua, "block_state_from_table", L -> {
-            L.push(Codecs.blockStateFromTable(Wire.read(L.toBuffer(1)), slotLookup));
-            return 1;
-        });
-
-        // Packet actions (nms/Packets.java): each takes one wire table holding every field.
-        add(lua, "particle", L -> {
-            Packets.particle(Wire.read(L.toBuffer(1)), slotLookup);
-            return 0;
-        });
-        add(lua, "sound", L -> {
-            Packets.sound(Wire.read(L.toBuffer(1)), slotLookup);
-            return 0;
-        });
-        add(lua, "sound_seed", L -> {
-            L.push((double) SoundSeeds.seed(string(L, 1), string(L, 2))); // below 2^48: exact as a Lua number
-            return 1;
-        });
-        add(lua, "stop_sound", L -> {
-            Packets.stopSound(Wire.read(L.toBuffer(1)), slotLookup);
-            return 0;
-        });
+        add(lua, "dimension_id", L -> pushOrNil(L, Nms.dimensionId(string(L, 1))));
         // The raw Java door (config unlock.java): only called when unlocked, so when locked none of it exists.
         addFree(lua, "java_door", L -> {
             JavaDoor.fill(L, slots);
             return 1;
         });
-        add(lua, "from_json", L -> {
-            Object value = Codecs.fromJson(string(L, 1), string(L, 2));
-            Object[] text = Codecs.componentOutIfText(value, addSlot);
-            if (text != null) return pushComponent(L, text);
-            L.push(slots.add(value));
-            return 1;
-        });
+
+        EventFunctions.fill(lua, engine, slots);
+        EntityFunctions.fill(lua, slots);
+        BlockFunctions.fill(lua, slots);
+        EffectFunctions.fill(lua, slots);
+        LazyFunctions.fill(lua, slots);
+        CommandFunctions.fill(lua, engine, slots);
+        DataFunctions.fill(lua, engine, slots);
+        WorldFunctions.fill(lua, engine, slots);
     }
 
     /**
@@ -470,7 +117,7 @@ final class JavaFunctions {
     }
 
     /** A function the library itself needs while loading or reporting errors: never stopped by the watchdog. */
-    private static void addFree(Lua lua, String name, JFunction function) {
+    static void addFree(Lua lua, String name, JFunction function) {
         lua.push((JFunction) L -> {
             try {
                 return function.__call(L);
@@ -482,45 +129,11 @@ final class JavaFunctions {
         lua.setField(-2, name);
     }
 
-    /** "a\nb" -> [a, b]; "" -> []. */
-    private static List<String> lines(String text) {
-        return text.isEmpty() ? List.of() : List.of(text.split("\n"));
-    }
-
-    /** A saved data read ({loaded, bytes or null}): false, or true and the bytes (nil: nothing saved). */
-    private static int pushRead(Lua L, Object[] read) {
-        if (!(Boolean) read[0]) {
-            L.push(false);
-            return 1;
-        }
-        L.push(true);
-        if (read[1] == null) L.pushNil();
-        else L.push((ByteBuffer) read[1]);
-        return 2;
-    }
-
-    private static int pushComponent(Lua L, Object[] out) {
-        L.push((ByteBuffer) out[0]);
-        L.push((int) out[1]);
-        return 2;
-    }
-
-    /** A move_to location from stack positions index (world slot, 0: none) to index + 5; null when none was given. */
-    private static org.bukkit.Location location(Lua L, int index, String what, Slots slots) {
-        int world = slot(L, index);
-        if (world == 0) return null;
-        org.bukkit.World bukkit = Nms.bukkitWorld(slots.get(world));
-        // FORMAT: move_to in a world that isn't loaded
-        if (bukkit == null) throw new IllegalArgumentException(what + ": move_to's world isn't loaded");
-        return new org.bukkit.Location(bukkit, L.toNumber(index + 1), L.toNumber(index + 2), L.toNumber(index + 3),
-                (float) L.toNumber(index + 4), (float) L.toNumber(index + 5));
-    }
-
-    private static int slot(Lua L, int index) {
+    static int slot(Lua L, int index) {
         return (int) L.toInteger(index);
     }
 
-    private static int pushOrNil(Lua L, String text) {
+    static int pushOrNil(Lua L, String text) {
         if (text == null) return 0;
         push(L, text);
         return 1;

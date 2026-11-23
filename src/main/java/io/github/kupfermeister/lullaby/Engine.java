@@ -5,7 +5,10 @@ import io.github.kupfermeister.lullaby.error.ErrorReporter;
 import io.github.kupfermeister.lullaby.event.EventBridge;
 import io.github.kupfermeister.lullaby.lua.LuaRuntime;
 import io.github.kupfermeister.lullaby.lua.Watchdog;
+import com.destroystokyo.paper.event.server.ServerTickStartEvent;
 import io.github.kupfermeister.lullaby.nms.ChunkData;
+import io.github.kupfermeister.lullaby.nms.ClientEntities;
+import io.github.kupfermeister.lullaby.nms.EntityData;
 import io.github.kupfermeister.lullaby.nms.Input;
 import io.github.kupfermeister.lullaby.nms.Nms;
 import io.github.kupfermeister.lullaby.nms.SavedData;
@@ -43,7 +46,9 @@ import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.entity.EntityRemoveEvent;
 import org.bukkit.event.world.ChunkUnloadEvent;
+import org.bukkit.event.world.EntitiesUnloadEvent;
 import org.bukkit.event.world.WorldSaveEvent;
 import org.bukkit.event.world.WorldUnloadEvent;
 import org.bukkit.plugin.IllegalPluginAccessException;
@@ -77,6 +82,14 @@ public final class Engine {
     private final Listener chunkUnloads = new Listener() {
     };
     private boolean listeningChunks;
+    // entity.data and player.data: their listeners only from the first read until the next reload (unused: no cost)
+    private final Listener entityEvents = new Listener() {
+    };
+    private final Listener playerEvents = new Listener() {
+    };
+    private final Listener playerJoins = new Listener() { // registered at every load, before the scripts
+    };
+    private boolean listeningEntities, listeningPlayers;
     // One writer thread for every saved data file (written there after an autosave); lives as long as the plugin.
     private final ExecutorService dataWriter = Executors.newSingleThreadExecutor(task -> {
         Thread thread = new Thread(task, "Lullaby data writer");
@@ -91,6 +104,7 @@ public final class Engine {
     private final Set<ResourceKey<Level>> worldsRead = new HashSet<>(); // this load: worlds whose w.data a script read
     private final Set<ResourceKey<Level>> unloading = new HashSet<>(); // between WorldUnloadEvent and the next tick
     private final ChunkData chunks; // c.data inside the chunks; reset at every reload
+    private final EntityData entityData; // entity.data and player.data; reset at every reload
     private final Worlds worlds; // world folders; lives as long as the plugin, so a copy outlasts a reload
 
     Engine(Lullaby plugin) {
@@ -111,8 +125,10 @@ public final class Engine {
         this.data = new SavedData(dataFolder.resolve("data").resolve("server.snbt"), "plugins/lullaby/data/server.snbt",
                 "server.data", dataReporter, onMainThread, dataWriter);
         this.chunks = new ChunkData(dataReporter, this::listenForChunkUnloads);
+        this.entityData = new EntityData(dataReporter, this::listenForEntities, this::listenForPlayers);
         listenForSaves();
         this.worlds = new Worlds(dataFolder.resolve("temp"));
+        ClientEntities.plugin(plugin); // its persist listeners
     }
 
     public Worlds worlds() {
@@ -121,6 +137,10 @@ public final class Engine {
 
     public ChunkData chunks() {
         return chunks;
+    }
+
+    public EntityData entityData() {
+        return entityData;
     }
 
     /** Plugin off (after {@link #unload}): waits for the last file writes and stops the writer thread. */
@@ -143,6 +163,7 @@ public final class Engine {
             if (!(e instanceof WorldSaveEvent save)) return;
             if (!Bukkit.getWorlds().isEmpty() && save.getWorld().equals(Bukkit.getWorlds().getFirst())) {
                 saveData(false, false);
+                saveEntityData(); // the main world saves first, so every entity gets its data before its world saves
             }
             ResourceKey<Level> world = ((CraftWorld) save.getWorld()).getHandle().dimension();
             boolean going = unloading.contains(world);
@@ -177,6 +198,112 @@ public final class Engine {
                         internalError("saving " + ChunkData.name(world, x, z), ex);
                     }
                 }, plugin);
+    }
+
+    /**
+     * entity.data needs to know when an entity it read unloads or is gone for good (see EntityData); turned on by the
+     * first read of a (non-player) entity's data. EntitiesUnloadEvent comes before Paper writes the chunk's entities;
+     * EntityRemoveEvent UNLOAD comes after (an entity unloaded some other way: its last changes still go in, for the
+     * next save of it). Players never fire EntityRemoveEvent (Paper skips them).
+     */
+    private void listenForEntities() {
+        if (listeningEntities) return;
+        listeningEntities = true;
+        Bukkit.getPluginManager().registerEvent(EntitiesUnloadEvent.class, entityEvents, EventPriority.MONITOR,
+                (listener, e) -> {
+                    if (!(e instanceof EntitiesUnloadEvent unload) || runtime == null) return;
+                    for (org.bukkit.entity.Entity entity : unload.getEntities()) {
+                        UUID uuid = entity.getUniqueId();
+                        if (entityData.has(uuid) && !(entity instanceof org.bukkit.entity.Player)) entityGone(uuid, "unloaded");
+                    }
+                }, plugin);
+        Bukkit.getPluginManager().registerEvent(EntityRemoveEvent.class, entityEvents, EventPriority.MONITOR,
+                (listener, e) -> {
+                    if (!(e instanceof EntityRemoveEvent remove) || runtime == null) return;
+                    UUID uuid = remove.getEntity().getUniqueId();
+                    if (!entityData.has(uuid)) return;
+                    switch (remove.getCause()) {
+                        case UNLOAD -> entityGone(uuid, "unloaded");
+                        case PLAYER_QUIT -> {
+                        } // a player's: never fired (Paper skips players)
+                        default -> {
+                            String name = entityData.name(uuid);
+                            entityData.forget(uuid);
+                            runtime.entityDataGone(name, uuid, "removed");
+                        }
+                    }
+                }, plugin);
+    }
+
+    /** An entity unloads: its table goes into it now (before Paper writes it), then Lua locks the table. */
+    private void entityGone(UUID uuid, String reason) {
+        String name = entityData.name(uuid);
+        try {
+            runtime.entityDataWrite(entityData, uuid);
+            if (entityData.has(uuid)) {
+                entityData.forget(uuid);
+                runtime.entityDataGone(name, uuid, reason);
+            }
+        } catch (RuntimeException ex) {
+            internalError("saving " + name, ex);
+        }
+    }
+
+    /**
+     * player.data needs to know when Paper saves a player (see EntityData): at the tick's start the players Paper
+     * saves in this tick get their table; at quit (before Paper saves the player) too. Turned on by the first read of
+     * a player's data. (Joins: {@link #listenForPlayerJoins}.)
+     */
+    private void listenForPlayers() {
+        if (listeningPlayers) return;
+        listeningPlayers = true;
+        Bukkit.getPluginManager().registerEvent(ServerTickStartEvent.class, playerEvents, EventPriority.MONITOR,
+                (listener, e) -> {
+                    if (runtime == null || !entityData.hasPlayers()) return;
+                    for (UUID uuid : entityData.playersDue()) writeEntityData(uuid);
+                }, plugin);
+        Bukkit.getPluginManager().registerEvent(PlayerQuitEvent.class, playerEvents, EventPriority.MONITOR,
+                (listener, e) -> {
+                    if (!(e instanceof PlayerQuitEvent quit) || runtime == null) return;
+                    UUID uuid = quit.getPlayer().getUniqueId();
+                    if (!entityData.has(uuid)) return;
+                    writeEntityData(uuid);
+                    entityData.quit(uuid);
+                }, plugin);
+    }
+
+    /**
+     * A player joins: a table Lua kept while they were offline is checked against their file (EntityData.joined).
+     * Registered at every load before the scripts (like the command join listener), so it runs before their own
+     * lowest-stage join handlers, which may read player.data.
+     */
+    private void listenForPlayerJoins() {
+        Bukkit.getPluginManager().registerEvent(PlayerJoinEvent.class, playerJoins, EventPriority.LOWEST,
+                (listener, e) -> {
+                    if (!(e instanceof PlayerJoinEvent join) || runtime == null) return;
+                    UUID uuid = join.getPlayer().getUniqueId();
+                    if (!entityData.has(uuid) || entityData.joined(uuid)) return;
+                    String name = entityData.name(uuid);
+                    try {
+                        runtime.entityDataGone(name, uuid, "changed");
+                    } catch (RuntimeException ex) {
+                        internalError("loading " + name, ex);
+                    }
+                }, plugin);
+    }
+
+    private void writeEntityData(UUID uuid) {
+        try {
+            runtime.entityDataWrite(entityData, uuid);
+        } catch (RuntimeException ex) {
+            internalError("saving " + entityData.name(uuid), ex);
+        }
+    }
+
+    /** Every entity.data and player.data table goes into its entity, online player or offline player's file. */
+    private void saveEntityData() {
+        if (runtime == null) return;
+        for (UUID uuid : entityData.all()) writeEntityData(uuid);
     }
 
     /**
@@ -327,6 +454,7 @@ public final class Engine {
         try {
             commands = new ScriptCommands(this::runCommand);
             listenForCommandPlayers(); // before the scripts, so it runs before their own lowest-stage join handlers
+            listenForPlayerJoins(); // the same
             runtime = new LuaRuntime(this);
             runtime.loadData(data); // server.data is there before the first script line runs
             scripts = runtime.loadAll();
@@ -421,6 +549,9 @@ public final class Engine {
                 internalError("stopping the tasks", e);
             }
             saveData(true, reloading);
+            // every entity.data and player.data: into the entities and online players (Paper writes them with their
+            // next save; at stop that comes after this), into the files of offline players now
+            saveEntityData();
             // every loaded world's w.data and c.data, written now (changed tables of unloaded chunks load them)
             for (ServerLevel level : MinecraftServer.getServer().getAllLevels()) {
                 saveWorld(level.dimension(), true, true, reloading);
@@ -428,12 +559,19 @@ public final class Engine {
             runtime.close();
             runtime = null;
         }
+        ClientEntities.clear(); // every clientside entity leaves every screen (after the finals, which may make some)
         // The new Lua state reads w.data and c.data again from the files and chunks.
         chunks.reset();
         worldsRead.clear();
         unloading.clear();
         HandlerList.unregisterAll(chunkUnloads);
         listeningChunks = false;
+        entityData.reset();
+        HandlerList.unregisterAll(entityEvents);
+        HandlerList.unregisterAll(playerEvents);
+        HandlerList.unregisterAll(playerJoins);
+        listeningEntities = false;
+        listeningPlayers = false;
         worlds.forgetJobs();
         if (commands != null) {
             commands.clear();
@@ -443,6 +581,7 @@ public final class Engine {
 
     void tick() {
         worlds.tick(); // before the scripts, so a task waiting for a copy wakes in the tick it finished
+        ClientEntities.tick(); // lifetimes that ended
         if (runtime != null) {
             try {
                 runtime.tick();

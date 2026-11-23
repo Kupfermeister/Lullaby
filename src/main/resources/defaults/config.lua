@@ -21,6 +21,11 @@ return {
   -- Most particles one particle{} call may send (positions x count; count 0 counts as 1). false: no limit.
   particle_limit = 100000,
 
+  -- Most clientside entities (clientside_summon{}) that may exist at once, all scripts together. Each keeps an entity
+  -- in the server's memory until it is removed or its lifetime ends, so a script stuck making them can't fill the
+  -- memory. false: no limit.
+  clientside_entity_limit = 1000000,
+
   -- Seconds one script may run without a break (until its handler ends or it waits). A script past it gets an error
   -- at its next call into the game and is stopped (its final still runs). A loop that never calls into the game
   -- (pure math) can't be stopped. false: no limit.

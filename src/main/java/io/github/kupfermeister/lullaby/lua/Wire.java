@@ -41,6 +41,13 @@ public final class Wire {
         }
     };
 
+    /**
+     * A tree of Java values for Lua (maps, lists, vanilla values inside: entity.display_data): ToLua.java sends it as
+     * kind "tree" through Codecs.treeOut, and the library turns its marked values into Lua values.
+     */
+    public record Tree(Object value) {
+    }
+
     /** A Lua table as it arrived: array part t[1..n] (may hold nulls for holes) and hash part. */
     public static final class Table {
         public final List<Object> array = new ArrayList<>();

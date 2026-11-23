@@ -23,7 +23,6 @@ import net.minecraft.commands.arguments.ParticleArgument;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.world.level.block.Block;
-import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.minecraft.commands.arguments.item.ItemInput;
 import net.minecraft.commands.arguments.item.ItemParser;
 import net.minecraft.core.Holder;
@@ -51,8 +50,8 @@ import net.minecraft.world.level.block.state.BlockState;
  * JSON). Item stacks are kept as vanilla as possible: no checks of Lullaby's own; the patch is exactly vanilla's
  * (only the changes against the item type's defaults, removals as "!minecraft:food"). Main thread only.
  *
- * <p>Text: strings inside tables are literal text, exactly as vanilla's codecs read them. MiniMessage
- * is read only by component("...") and written only by tostring(component).
+ * <p>Text: strings are literal text everywhere, exactly as vanilla's codecs read them (no MiniMessage or other markup).
+ * tostring(component) gives vanilla's JSON text, which from_json(text, "component") reads back.
  */
 public final class Codecs {
 
@@ -224,7 +223,7 @@ public final class Codecs {
                 return map;
             }
             case "block_state" -> {
-                // objects.lua keeps the state number at [1] (vanilla's Block.getId)
+                // blocks.lua keeps the state number at [1] (vanilla's Block.getId)
                 return get(BlockState.CODEC.encodeStart(ops(), Nms.state(((Number) t.array.get(0)).intValue())));
             }
             case "item_stack" -> {
@@ -279,16 +278,6 @@ public final class Codecs {
     static String numberText(double d) {
         if (d == Math.floor(d) && Math.abs(d) < 1e15) return Long.toString((long) d);
         return Double.toString(d);
-    }
-
-    // ---- MiniMessage (only for component("...") and tostring(component)) ----
-
-    private static Component mini(String text) {
-        return PaperAdventure.asVanilla(MiniMessage.miniMessage().deserialize(text));
-    }
-
-    private static String mini(Component text) {
-        return MiniMessage.miniMessage().serialize(PaperAdventure.asAdventure(text));
     }
 
     /** The full id of a patch key ("custom_name", "!food" -> "minecraft:custom_name", "minecraft:food"). */
@@ -469,19 +458,16 @@ public final class Codecs {
 
     // ---- text components (plain Lua tables in vanilla codec shape) ----
 
-    /** MiniMessage text to a vanilla component (only component("...") reads MiniMessage). */
-    public static Component componentMini(String text) {
-        return mini(text);
-    }
-
     /** A vanilla component from a Lua table in codec shape (strings are literal text, as vanilla). */
     public static Component componentFromTable(Object wire, IntFunction<Object> slots) {
         return get(ComponentSerialization.CODEC.parse(ops(), unwrap(plain(wire, slots))));
     }
 
-    /** A component as MiniMessage text (tostring of a component). */
+    /** A component as vanilla's JSON text (tostring of a component); from_json(text, "component") reads it back. */
     public static String componentText(Component text) {
-        return mini(text);
+        ops();
+        return get(ComponentSerialization.CODEC.encodeStart(RegistryOps.create(JsonOps.INSTANCE, registries()), text))
+                .toString();
     }
 
     /**
@@ -540,6 +526,44 @@ public final class Codecs {
 
     public static net.kyori.adventure.text.Component adventure(Component text) {
         return PaperAdventure.asAdventure(text);
+    }
+
+    /**
+     * A tree of Java values (maps, lists, plain values and vanilla values inside, e.g. entity.display_data) as plain
+     * data for the wire: a value that becomes a Lua value is a marker table {[true] = kind, [1] = ..., ...} (vec3 and
+     * quaternion: their numbers; block_state: its state number; item_stack: a new slot; component: its codec table),
+     * which I.from_java's "tree" (entities.lua) turns into that value.
+     */
+    public static Object treeOut(Object v, ToIntFunction<Object> addSlot) {
+        if (v instanceof Map<?, ?> m) {
+            Map<Object, Object> out = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> e : m.entrySet()) out.put(e.getKey(), treeOut(e.getValue(), addSlot));
+            return out;
+        }
+        if (v instanceof List<?> l) {
+            List<Object> out = new ArrayList<>(l.size());
+            for (Object item : l) out.add(treeOut(item, addSlot));
+            return out;
+        }
+        if (v instanceof org.joml.Vector3fc) return marker("vec3", DisplayData.parts(v));
+        if (v instanceof org.joml.Quaternionfc) return marker("quaternion", DisplayData.parts(v));
+        if (v instanceof BlockState s) return marker("block_state", Block.getId(s));
+        if (v instanceof ItemStack s) return marker("item_stack", addSlot.applyAsInt(s.copy()));
+        if (v instanceof Component c) return marker("component", componentTree(c, addSlot, new int[1]));
+        return v;
+    }
+
+    private static Map<Object, Object> marker(String kind, Object... parts) {
+        Map<Object, Object> m = new LinkedHashMap<>();
+        m.put(Boolean.TRUE, kind);
+        for (int i = 0; i < parts.length; i++) m.put((double) (i + 1), parts[i]);
+        return m;
+    }
+
+    private static Map<Object, Object> marker(String kind, double[] parts) {
+        Object[] boxed = new Object[parts.length];
+        for (int i = 0; i < parts.length; i++) boxed[i] = parts[i];
+        return marker(kind, boxed);
     }
 
     // ---- block states and particles from Lua ----

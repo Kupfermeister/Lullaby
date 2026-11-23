@@ -22,6 +22,7 @@ import java.util.Map;
 public final class Fields {
 
     private static final int VEC3 = Codecs.kindIndex("vec3");
+    private static final int QUATERNION = Codecs.kindIndex("quaternion");
 
     private final String what;
     private final Wire.Table table;
@@ -31,6 +32,40 @@ public final class Fields {
     public Fields(String what, Object wire) {
         this.what = what;
         this.table = (Wire.Table) wire;
+    }
+
+    /** The error prefix: the action's name ("summon{}"), for a nested table's own Fields. */
+    public String what() {
+        return what;
+    }
+
+    /**
+     * A field holding a plain table of its own fields ({@code transformation = { scale = ... }}), read with its own
+     * Fields (errors start "summon{}: display_data: transformation: ..."; call done() on it too). null if missing.
+     */
+    public Fields table(String field) {
+        Object value = get(field);
+        if (value == null) return null;
+        if (value instanceof Wire.Table t && t.kind < 0) return new Fields(what + ": " + field, t);
+        throw wrong(field, "a table { ... }", value);
+    }
+
+    /** A quaternion value ({@code quaternion(x, y, z, w)}) as x, y, z, w. */
+    public double[] quaternion(String field) {
+        Object value = get(field);
+        if (value instanceof Wire.Table t && t.kind == QUATERNION && t.array.size() == 4) {
+            return new double[]{number(t.array.get(0), field), number(t.array.get(1), field),
+                    number(t.array.get(2), field), number(t.array.get(3), field)};
+        }
+        throw wrong(field, "a quaternion", value);
+    }
+
+    /** A whole number from {@code min} to {@code max}; the error names the range. */
+    public int whole(String field, int missing, int min, int max) {
+        int value = whole(field, missing);
+        // FORMAT: a whole number outside its range
+        if (has(field) && (value < min || value > max)) throw wrong(field, min + " to " + max, raw(field));
+        return value;
     }
 
     /**

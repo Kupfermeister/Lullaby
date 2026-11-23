@@ -164,7 +164,7 @@ public final class EventBridge implements Listener {
         listeners.clear();
     }
 
-    /** Pushes a field's value for Lua as a kind word plus values (see I.from_java in objects.lua); returns the count. */
+    /** Pushes a field's value for Lua as a kind word plus values (see I.from_java in entities.lua); returns the count. */
     public int get(Lua L, Object event, int number) {
         Field field = FIELDS.get(number);
         // FORMAT: an event field whose type Lullaby can't hand to scripts yet

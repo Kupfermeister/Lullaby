@@ -438,10 +438,14 @@ public final class Docs {
         }
     }
 
-    /** The commit of every line of a file (git blame --porcelain), filling in commit times; null without git. */
+    /**
+     * The commit of every line of a file (git blame --porcelain), filling in commit times; null without git. -C: a
+     * line moved from another library file keeps the commit that last changed it, so splitting a file doesn't mark
+     * every page in it as new.
+     */
     private static String[] blame(String file, Map<String, Long> times) {
         try {
-            Process p = new ProcessBuilder("git", "blame", "--porcelain", "--", file).redirectErrorStream(false).start();
+            Process p = new ProcessBuilder("git", "blame", "-C", "--porcelain", "--", file).redirectErrorStream(false).start();
             List<String> out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8).lines().toList();
             if (p.waitFor() != 0) {
                 // A file git doesn't know yet (new, not committed): every line is an uncommitted change, so its pages

@@ -22,7 +22,8 @@
 --                            :contains(block_pos) :intersects(bounding_box) :center()
 --   global_pos(dimension, block_pos)   a block position in a dimension (vanilla GlobalPos); dimension is an id
 --   location(world, vec3, yaw_pitch)   world + exact position + direction (yaw_pitch optional: 0, 0)
---                                      ==  :block() -> the block object at it  :chunk() -> its chunk  :offset(vec3)
+--                                      .block -> the block object at it (nil: chunk not loaded)
+--                                      ==  :chunk() -> its chunk  :offset(vec3)
 -- Each maker also takes a value of its own type (returned as is: values never change), a table { 1, 2, 3 } or
 -- { x = , y = , z = } (named like the fields), and for the position types vanilla's command text ("1 64 -3").
 -- Errors are raised without a position (level 0): core.lua's report finds the script line itself, and a script that
@@ -128,7 +129,9 @@ end
 
 -- One metatable per type. Fields live in slots [1], [2], ... so that assigning a field (v.x = 5) reaches
 -- __newindex and gives an error; reading v.x maps the name to its slot.
-local function value_type(name, fields, methods)
+-- computed (optional): field name -> function(value), for a field that is worked out on read, not stored
+-- (location.block).
+local function value_type(name, fields, methods, computed)
 	local index_of = {}
 	for i = 1, #fields do index_of[fields[i]] = i end
 	local has -- "x, y, z, :length(), ..." for the error on a name it doesn't have; made on first need
@@ -136,13 +139,18 @@ local function value_type(name, fields, methods)
 		__index = function(v, key)
 			local i = index_of[key]
 			if i then return rawget(v, i) end -- rawget: a field may be nil (a damage without causing)
+			local work = computed and computed[key]
+			if work then return work(v) end
 			local method = methods[key]
 			if method then return method end
 			if not has then
-				local names = {}
+				local extra, names = {}, {}
+				for k in pairs(computed or {}) do extra[#extra + 1] = k end
 				for k in pairs(methods) do names[#names + 1] = ":" .. k .. "()" end
+				table.sort(extra)
 				table.sort(names)
-				has = table.concat(fields, ", ") .. (#names > 0 and ", " .. table.concat(names, ", ") or "")
+				has = table.concat(fields, ", ") .. (#extra > 0 and ", " .. table.concat(extra, ", ") or "")
+					.. (#names > 0 and ", " .. table.concat(names, ", ") or "")
 			end
 			I.no_field(name, key, has, 0)
 		end,
@@ -166,7 +174,7 @@ local function value_type(name, fields, methods)
 	return meta
 end
 
-I.value_type = value_type -- objects.lua makes damage with it
+I.value_type = value_type -- entities.lua makes damage with it
 
 local function is(meta, value)
 	return type(value) == "table" and I.debug_getmetatable(value) == meta
@@ -524,6 +532,7 @@ function yp_methods.from_direction(v)
 end
 
 local function new_q(x, y, z, w) return setmetatable({ x + 0, y + 0, z + 0, w + 0 }, QUAT) end
+I.new_quaternion = new_q -- entities.lua: display_data's rotations
 
 --[[doc
 id: quaternion
@@ -746,9 +755,9 @@ end
 -- global_pos and location
 -- ---------------------------------------------------------------------------------------------------------------
 
-local gp_methods, loc_methods = {}, {}
+local gp_methods, loc_methods, loc_computed = {}, {}, {}
 local GP = value_type("global_pos", { "dimension", "pos" }, gp_methods)
-local LOC = value_type("location", { "world", "pos", "rot" }, loc_methods)
+local LOC = value_type("location", { "world", "pos", "rot" }, loc_methods, loc_computed)
 I.LOCATION_META = LOC
 
 --[[doc
@@ -797,17 +806,17 @@ kind: reading
 group: Values
 words: where place spot
 syntax: location( world, pos, rot ) → location
-lead: A world, an exact position and a direction (yaw_pitch optional: 0, 0). == :block() :chunk() :offset(vec3). Also takes { world = , pos = , rot = }.
+lead: A world, an exact position and a direction (yaw_pitch optional: 0, 0). Fields: l.world, l.pos, l.rot, and l.block (the block object it is in; nil while that chunk isn't loaded, and it never loads one). == :chunk() :offset(vec3). Also takes { world = , pos = , rot = }.
 arg: world | world | The world.
 arg: pos | vec3 | The exact position.
 arg: rot? | yaw_pitch | The direction. Optional: 0, 0.
 returns: location
 expert: Thread | main thread, like every script
 expert: Cost | 0.1–1 µs to make one from numbers, 1–5 µs from command text (guess, not measured); the math on it is plain Lua
-expert: Under the hood | a plain Lua table with a hidden shared metatable; no Java
+expert: Under the hood | a plain Lua table with a hidden shared metatable; no Java, except l.block (one call: is the chunk loaded)
 expert: Can fail | an error naming the field when a value is not a number, is NaN or infinity, or (whole-number types) not whole or outside Java's int range
 expert: Reload | values are plain Lua: they go with the Lua state on /lullaby reload
-expert: Time limit | not checked: plain Lua, no call into the game
+expert: Time limit | not checked: plain Lua, no call into the game (l.block is checked: it calls into the game)
 status: unconfirmed
 ]]
 function lib.location(...)
@@ -828,9 +837,10 @@ function lib.location(...)
 end
 LOC.__tostring = function(l) return tostring(l[2]) .. " in " .. tostring(l[1]) end -- FORMAT
 
-function loc_methods.block(l)
-	need(LOC, l, "location:block", "a location (use : not .)")
+-- l.block: the block object the position is in; nil while its chunk (or its world) isn't loaded. Never loads one.
+function loc_computed.block(l)
 	local p = l[2]:block_pos()
+	if not J.chunk_loaded(I.slot_of[l[1]], floor(p[1] / 16), floor(p[3] / 16)) then return nil end
 	return I.block_at(tostring(l[1]), p[1], p[2], p[3])
 end
 -- The chunk object the position is in (vanilla: block coordinate >> 4).

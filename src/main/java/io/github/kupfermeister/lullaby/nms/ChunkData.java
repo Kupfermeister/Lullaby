@@ -335,7 +335,7 @@ public final class ChunkData {
     }
 
     /** False if the tag must be left out; too long texts and keys are taken out (a list with one goes whole). */
-    private static boolean fits(Tag tag, SavedData.Place at, List<String> problems) {
+    static boolean fits(Tag tag, SavedData.Place at, List<String> problems) {
         switch (tag) {
             case net.minecraft.nbt.StringTag s -> {
                 int bytes = textBytes(s.value());

@@ -283,6 +283,7 @@ local DEFAULTS = {
 	long_wait_warning = true,
 	error_repeat_seconds = 10,
 	particle_limit = 100000,
+	clientside_entity_limit = 1000000,
 	script_time_limit = 5,
 	data_max_size = 16,
 }
@@ -312,17 +313,20 @@ local function read_config()
 	for key, value in pairs(DEFAULTS) do
 		if config[key] == nil then config[key] = value end
 	end
-	-- particle_limit: false (off) or a whole number >= 1; anything else warns and uses the default.
-	local limit = config.particle_limit
-	if limit ~= false then
-		limit = tonumber(limit)
-		if not limit or limit < 1 or limit ~= math.floor(limit) then
-			-- FORMAT: bad particle_limit in the config
-			J.report("warning", "plugins/lullaby/config.lua", -1, "loading the config",
-				"particle_limit must be false or a whole number of 1 or more (using " .. DEFAULTS.particle_limit .. ")")
-			limit = DEFAULTS.particle_limit
+	-- particle_limit, clientside_entity_limit: false (off) or a whole number >= 1 (at most Java's int range); anything
+	-- else warns and uses the default.
+	for _, key in ipairs({ "particle_limit", "clientside_entity_limit" }) do
+		local limit = config[key]
+		if limit ~= false then
+			limit = tonumber(limit)
+			if not limit or limit < 1 or limit ~= math.floor(limit) or limit > 2147483647 then
+				-- FORMAT: bad particle_limit or clientside_entity_limit in the config
+				J.report("warning", "plugins/lullaby/config.lua", -1, "loading the config",
+					key .. " must be false or a whole number of 1 or more (using " .. DEFAULTS[key] .. ")")
+				limit = DEFAULTS[key]
+			end
+			config[key] = limit
 		end
-		config.particle_limit = limit
 	end
 	-- script_time_limit: false (off) or a number of seconds above 0; anything else warns and uses the default.
 	local time = config.script_time_limit

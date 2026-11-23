@@ -1,5 +1,5 @@
--- Lullaby library: saved data, which outlives /lullaby reload and restarts: server.data, w.data (one per world) and
--- c.data (one per chunk).
+-- Lullaby library: saved data, which outlives /lullaby reload and restarts: server.data, w.data (one per world),
+-- c.data (one per chunk) and entity.data (one per entity; player.data is the same field, a player is an entity).
 --
 -- While the server runs, every one of them is a PLAIN Lua table: reading and writing it costs what any Lua table
 -- costs, no Java, no file. Only saving and loading turn it into something else:
@@ -26,6 +26,10 @@
 --                let go of it before the next save, or hold only a table inside it (local claims = c.data.claims);
 --                a weak table would then be thrown away with the change, silently. Only if something else changed
 --                the chunk's data meanwhile does the chunk's version win; the old table is then locked.
+--   entity.data  inside the entity's own save (nms/EntityData.java); a player's in the player file, also while the
+--                player is offline. Read on the first entity.data. An entity's table is locked when its chunk unloads
+--                (an unloaded entity can't be used; reading entity.data again when it is back reads it again) or when
+--                it dies or is removed. A player's table stays, online and offline (same object), until reload.
 local J, lib, I = ...
 
 local type, error, tostring, tonumber, rawget, rawset, pcall, unpack, setmetatable =
@@ -524,6 +528,73 @@ function I.world_gone(id)
 end
 
 -- ---------------------------------------------------------------------------------------------------------------
+-- entity.data and player.data (a player is an entity: the same field; nms/EntityData.java says where each is kept)
+-- ---------------------------------------------------------------------------------------------------------------
+
+local entity_tables = {} -- uuid text -> its data table (read on the first entity.data); one per UUID, players too
+
+-- The name in errors: the script code that reaches the data (Java uses the one Lua hands it on the read).
+local function entity_data_name(o, is_player) -- FORMAT
+	if is_player then return "player(\"" .. (o.name or o.uuid) .. "\").data" end
+	return "entity(\"" .. o.uuid .. "\").data"
+end
+
+-- FORMAT: why a data table of an entity or player is locked (Java names the reason)
+local GONE = {
+	unloaded = "and its chunk unloaded: read entity.data again when it is loaded (check entity.alive first)",
+	removed = "and that entity is gone (it died or was removed): its data went with it",
+	changed = "but something else changed the player file while the player was offline, and the file's version counts:"
+		.. " read player.data again",
+}
+
+-- entity.data / player.data; level: where an error points (1 = this function).
+function I.entity_data(o, is_player, level)
+	local uuid = o.uuid
+	local t = entity_tables[uuid]
+	if t then return t end
+	local name = entity_data_name(o, is_player)
+	local state, bytes = J.entity_data_read(uuid, is_player, name)
+	if state == 0 then
+		-- FORMAT: entity.data of an entity that isn't loaded
+		error("entity " .. uuid .. " isn't loaded: its data can only be used while it is (check entity.alive first)",
+			level + 1)
+	end
+	if state == 2 then
+		-- FORMAT: player.data of an offline player without a player file
+		error(tostring(o) .. " has no player file yet (never joined this server): its data can be used once they"
+			.. " have joined", level + 1)
+	end
+	local found
+	t, found = load_tree(bytes, name)
+	J.entity_data_loaded(uuid, found)
+	entity_tables[uuid] = t
+	return t
+end
+
+-- entity.data = { }: starts over (read first: Java then knows the data is in use, and data that didn't load stays safe).
+function I.set_entity_data(o, is_player, value, level)
+	check_table(is_player and "player.data" or "entity.data", value, level + 1)
+	I.entity_data(o, is_player, level + 1)
+	entity_tables[o.uuid] = value
+end
+
+-- Java calls this to write one table: its save tree as wire bytes and the problems; nil if Lua has no table.
+function I.entity_data_tree(uuid, name)
+	local t = entity_tables[uuid]
+	if t == nil then return nil, "" end
+	local tree, found = save_tree(t, name)
+	return I.wire(tree), found
+end
+
+-- Java calls this when the table's home is gone: the table is locked, the next entity.data reads again.
+function I.entity_data_gone(uuid, name, reason)
+	local t = entity_tables[uuid]
+	if t == nil then return end
+	entity_tables[uuid] = nil
+	lock(t, "this was " .. name .. ", " .. GONE[reason])
+end
+
+-- ---------------------------------------------------------------------------------------------------------------
 -- /lullaby data (LullabyCommand.java): looking at the data as it is in memory now
 -- ---------------------------------------------------------------------------------------------------------------
 
@@ -597,7 +668,7 @@ kind: type
 group: Scripts
 words: save saved data store persist keep flag variable reload restart
 syntax: server.data.coins = 10
-lead: The server itself. server.data is a table that stays: it is saved with the world (autosave, /save-all, server stop) and before /lullaby reload, and comes back after a reload or restart. Every script file sees the same server.data. Use it like any table: server.data.round = (server.data.round or 0) + 1. While the server runs it is a plain Lua table, so it costs nothing extra. Worlds and chunks have their own: world.data (see world( )) and context.data (see chunk( )).
+lead: The server itself. server.data is a table that stays: it is saved with the world (autosave, /save-all, server stop) and before /lullaby reload, and comes back after a reload or restart. Every script file sees the same server.data. Use it like any table: server.data.round = (server.data.round or 0) + 1. While the server runs it is a plain Lua table, so it costs nothing extra. Worlds, chunks, entities and players have their own: world.data (see world( )), context.data (see chunk( )), entity.data (see entity( )) and player.data (see player( )).
 field: data | table | Saved data. Can be text, numbers, true/false, tables (lists, or text keys), players, worlds, positions and the other small values, location, item_stack, block_state and component. Other things (functions, entities, tasks, events, tables with their own metatable, nan and inf, tables more than 98 deep) are left out when saving, with a red error naming the place. Keys can't be empty text, and keys starting with "lullaby:" are kept for Lullaby. server.data = { } starts over.
 note: The file is plugins/lullaby/data/server.snbt, readable text in vanilla's SNBT (what /data get shows). You may edit it: a change by hand wins, so Lullaby doesn't save over it and loads it at the next /lullaby reload (changes scripts made since the last save are then dropped, the console says so). /lullaby data server [path] shows the data, with tab completion of the keys. A table used in two places is saved twice and loads as two tables.
 example:

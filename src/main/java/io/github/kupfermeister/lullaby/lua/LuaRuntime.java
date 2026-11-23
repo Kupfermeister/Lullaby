@@ -4,6 +4,7 @@ import io.github.kupfermeister.lullaby.Engine;
 import io.github.kupfermeister.lullaby.event.EventBridge;
 import io.github.kupfermeister.lullaby.nms.Input;
 import io.github.kupfermeister.lullaby.nms.ChunkData;
+import io.github.kupfermeister.lullaby.nms.EntityData;
 import io.github.kupfermeister.lullaby.nms.SavedData;
 import java.io.IOException;
 import java.io.InputStream;
@@ -26,8 +27,8 @@ import party.iroiro.luajava.luajit.LuaJit;
  */
 public final class LuaRuntime {
 
-    private static final String[] LIBRARY = {"core", "values", "tasks", "events", "objects", "lazy", "commands", "data", "worlds",
-            "loader", "java"};
+    private static final String[] LIBRARY = {"core", "values", "tasks", "events", "entities", "blocks", "effects", "lazy",
+            "commands", "data", "worlds", "loader", "java"};
 
     private final Lua lua;
     private final Slots slots = new Slots();
@@ -166,6 +167,41 @@ public final class LuaRuntime {
                 lua.setTop(top);
             }
             save.finish();
+        } finally {
+            lua.setTop(top);
+        }
+    }
+
+    /**
+     * One entity.data or player.data table goes where it belongs (EntityData.write); if its entity is no longer loaded,
+     * Lua locks the table ("unloaded").
+     */
+    public void entityDataWrite(EntityData entities, UUID uuid) {
+        int top = lua.getTop();
+        String name = entities.name(uuid);
+        try {
+            pushInternal("entity_data_tree");
+            LuaText.push(lua, uuid.toString());
+            LuaText.push(lua, name);
+            enterLua("saving " + name, 2, 2);
+            if (lua.isNil(-2)) return;
+            boolean there = entities.write(uuid, Wire.read(lua.toBuffer(-2)), slots::get, LuaText.string(lua, -1));
+            lua.setTop(top);
+            if (!there) entityDataGone(name, uuid, "unloaded");
+        } finally {
+            lua.setTop(top);
+        }
+    }
+
+    /** The home of an entity.data or player.data table is gone: Lua locks it (reason: data.lua's GONE). */
+    public void entityDataGone(String name, UUID uuid, String reason) {
+        int top = lua.getTop();
+        try {
+            pushInternal("entity_data_gone");
+            LuaText.push(lua, uuid.toString());
+            LuaText.push(lua, name);
+            LuaText.push(lua, reason);
+            enterLua("saving " + name, 3, 0);
         } finally {
             lua.setTop(top);
         }

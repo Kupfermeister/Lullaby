@@ -36,9 +36,9 @@
 --   (a) a value of that type
 --   (b) a table in codec shape: the same shape as datapack JSON, so the wiki's datapack pages apply directly
 --   (c) vanilla command text ("diamond_sword[enchantments={sharpness:5}]", "oak_stairs[facing=north]")
---   tostring(v) gives form (c), so printed text can be pasted back. Exception: component (component("<red>Hi")
---   reads MiniMessage, tostring gives MiniMessage). Strings inside tables are ALWAYS literal, exactly as vanilla's
---   codecs read them (MiniMessage only where necessary); from_json(text, type) is vanilla's meaning.
+--   tostring(v) gives form (c), so printed text can be pasted back. Exception: component (component("Hi") is
+--   literal text, tostring gives vanilla's JSON text for from_json). Strings are ALWAYS literal, exactly as vanilla's
+--   codecs read them (no MiniMessage or other markup anywhere); from_json(text, type) is vanilla's meaning.
 --   Everything is strict: "5" is not a number, 2.5 where a whole number is needed is an error, not 2.
 --
 -- SAVING (field `save`): NBT { type = <name>, data_version = <Minecraft's>, value = ... }. On load an older
@@ -199,10 +199,11 @@ T.bounding_box = {
 }
 T.location = {
 	kind = "value", impl = "small", vanilla = "Bukkit Location (every Paper event uses it; vanilla has no such type)",
-	fields = { world = "world (object)", pos = "vec3", rot = "yaw_pitch" },
+	fields = { world = "world (object)", pos = "vec3", rot = "yaw_pitch",
+		block = "block (the block object it is in; nil while its chunk is not loaded)" },
 	accepts = "location, { world = , pos = , rot = } (rot optional: 0, 0, as in vanilla), entity (its location), block (its center)",
 	save = "own: { world = id, pos, rot }", note = "built from world + vec3 + yaw_pitch; replaces today's location",
-	methods = "block() (the block object at it), offset(vec3)",
+	methods = "offset(vec3)",
 }
 
 -- =================================================================================================================
@@ -249,10 +250,11 @@ T.components = {
 }
 T.component = {
 	kind = "value", impl = "plain table (vanilla codec shape, changeable; only the top table has the component mark)", vanilla = "net.minecraft.network.chat.Component (text)",
-	accepts = "component, MiniMessage string, JSON text (from_json), table in codec shape",
+	accepts = "component, literal text (becomes { text = }), JSON text (from_json), table in codec shape",
 	codec = "ComponentSerialization.CODEC", stream = "ComponentSerialization.STREAM_CODEC (TRUSTED_ where vanilla uses it)",
 	arg = "ComponentArgument", fix = "TEXT_COMPONENT", save = "codec",
-	note = "tostring gives MiniMessage; == compares that text. A show_item hover holds item = <item_stack> instead "
+	note = "no markup (MiniMessage was removed 2026-11-23): colors go in the table. tostring gives vanilla's JSON "
+		.. "text; == compares that text. A show_item hover holds item = <item_stack> instead "
 		.. "of vanilla's flat id/count/components. Messages go out as System Chat Message packets.",
 }
 T.nbt = {
@@ -396,7 +398,25 @@ T.entity = {
 	save = "uuid", note = "removed: fields read nil, actions return false",
 	built = "2026-11-15: entity( ), fields uuid type alive world pos location velocity on_ground health max_health "
 		.. "custom_name vehicle (list owned by nms/Entities.java), teleport{ }; 2026-11-23: modify_entity{ } with max_health health absorption velocity custom_name custom_name_visible glowing silent gravity invulnerable persistent visible collidable fire_time freeze_time fall_distance no_damage_time air ai aware target can_pickup_items angry left_handed food saturation exhaustion xp xp_level (list owned by Entities.java Change). "
-		.. "One type for every sort (living or not: fields a sort lacks read nil). Players have every entity field.",
+		.. "One type for every sort (living or not: fields a sort lacks read nil). Players have every entity field. "
+		.. "2026-11-23: fields blueprint and display_data; modify_entity{ } ignores fields an entity doesn't have; "
+		.. "summon{ }, remove_entity{ }.",
+}
+T.client_entity = {
+	kind = "object", vanilla = "net.minecraft.world.entity.Entity, never added to a world (nms/ClientEntities.java)",
+	identity = "the object itself (uuid and network id of its vanilla entity)", save = false,
+	note = "only in its viewers' games; every entity field reads, modify_entity{ } teleport{ } remove_entity{ } "
+		.. "sound{ } take it; no data, no events, entity( ) doesn't find it",
+	built = "2026-11-23: clientside_summon{ } with viewers, persist (chunks, worlds, rejoin), lifetime (default 12000 "
+		.. "ticks, -1 never); field viewers",
+}
+T.blueprint = {
+	kind = "value", impl = "plain Lua (fields kept privately; reads give copies)", vanilla = "none (an entity type plus Lullaby's changeable fields)",
+	fields = { type = "full entity id", ["<field>"] = "every modify_entity{ } field except target" },
+	accepts = "blueprint{ type = , ... }, blueprint{ from = b, ... }, entity.blueprint", save = false,
+	note = "checked once by Java when made (a throwaway entity); summon{ } and clientside_summon{ } send its fields "
+		.. "again. Fields Lullaby doesn't read (equipment, effects, other NBT) are not in it yet.",
+	built = "2026-11-23",
 }
 T.world = {
 	kind = "object", vanilla = "net.minecraft.server.level.ServerLevel", identity = "dimension id",

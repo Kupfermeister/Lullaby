@@ -14,11 +14,11 @@
 --   it.components    EXACTLY vanilla's patch: only the changes against the item type's defaults, keys as vanilla
 --                    writes them ("minecraft:custom_name"); a removed default is "!minecraft:food" = {}. Short keys
 --                    work too (it.components.custom_name, it.components["!food"] = {}): a lookup only, nothing is
---                    added. Strings are literal text, as vanilla (no MiniMessage inside tables).
+--                    added. Strings are literal text, as vanilla (no markup anywhere in Lullaby).
 --   tostring(it)     vanilla's item text with the changed components (as /give takes it; no count, like vanilla)
 --   a == b           vanilla's ItemStack.matches (same item, count and components)
---   component(x)     text: MiniMessage string, codec table or component -> a PLAIN changeable table in vanilla's
---                    codec shape (c.text, c.color, c.extra, ...; strings literal). tostring gives MiniMessage; ==
+--   component(x)     text (literal), codec table or component -> a PLAIN changeable table in vanilla's codec shape
+--                    (c.text, c.color, c.extra, ...; strings literal). tostring gives vanilla's JSON text; ==
 --                    compares that. A show_item hover holds item = <item_stack>.
 --   from_json(text, type)  datapack JSON with vanilla's own meaning; type "item_stack" or "component".
 --   pairs, next      Lullaby's own: on a lazy value they load every part first; on other tables plain Lua.
@@ -323,31 +323,33 @@ end
 -- Wire bytes from Java as Lua values (the other direction of I.wire).
 I.decode = buffer.decode
 
--- component("<red>Hi") reads MiniMessage (the only place that does); component(table or component) is a checked
--- fresh copy, cleaned up by vanilla's codec.
+-- component("Hi") is literal text ({ text = "Hi" }, no markup); component(table or component) is a checked fresh
+-- copy, cleaned up by vanilla's codec.
 --[[doc
 name: component( )
 kind: reading
 group: Text
-words: minimessage text format color
-syntax: component( "<red>Hi" | table | component )
-lead: Text as a component. Text is read as MiniMessage (the only place that does); a table or component is a checked fresh copy.
+words: text format color bold json chat
+syntax: component( "Hi" | { text = "Hi", color = "red", ... } | component )
+lead: Text as a component, in vanilla's own shape (the same as datapack JSON): { text = "Hi", color = "red", bold = true, extra = { ... } }. Text is literal, exactly as it is written ("<red>" shows as those letters); colors and styles go in the table. A table or component gives a checked fresh copy. tostring(c) gives vanilla's JSON text, which from_json(text, "component") reads back; == compares that.
 arg: text | text · table · component | The text.
 returns: component
+example:
+  local title = component{ text = "Boss", color = "red", bold = true, extra = { { text = " (angry)", color = "gray" } } }
 expert: Thread | main thread, like every script
-expert: Cost | MiniMessage text 10–200 µs, a table 10–100 µs (guess, not measured)
-expert: Under the hood | MiniMessage (text only) or vanilla's component codec; the result is a plain Lua table
+expert: Cost | text 1–3 µs (plain Lua), a table 10–100 µs (guess, not measured)
+expert: Under the hood | text: plain Lua, no Java; a table: vanilla's component codec; the result is a plain Lua table
 expert: Can fail | fields vanilla's codec refuses
 expert: Reload | plain tables: they go with the Lua state
-expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
+expert: Time limit | checked for a table: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
 function lib.component(x)
 	local t = type(x)
-	if t == "string" then return new_component(J.component_mini(x)) end
+	if t == "string" then return setmetatable({ text = x }, COMPONENT) end
 	if t == "table" then return new_component(J.component_from_table(I.wire(x))) end
 	-- FORMAT: wrong argument for component()
-	error("component needs MiniMessage text, a table or a component, got " .. I.type_name(x), 2)
+	error("component needs text, a table or a component, got " .. I.type_name(x), 2)
 end
 
 --[[doc

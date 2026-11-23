@@ -22,7 +22,7 @@ import party.iroiro.luajava.Lua;
 /**
  * The one place that turns a Java value into a Lullaby value for Lua: event fields (EventBridge.java), entity fields
  * (Entities.java) and java.wrap( ) (JavaDoor.java) all use it. Pushes a kind word and its values, and I.from_java
- * (objects.lua) makes the Lua value from them. Every conversion COPIES (Bukkit's Vector, Location and ItemStack can be
+ * (entities.lua) makes the Lua value from them. Every conversion COPIES (Bukkit's Vector, Location and ItemStack can be
  * changed in Java; scripts never get them). Main thread only.
  */
 public final class ToLua {
@@ -208,6 +208,11 @@ public final class ToLua {
                 L.push((ByteBuffer) out[0]);
                 L.push((int) out[1]);
                 return 3;
+            }
+            case Wire.Tree t -> { // a table of values (entity.display_data): wire bytes, marked values inside
+                L.push("tree");
+                L.push(Wire.write(Codecs.treeOut(t.value(), addSlot)));
+                return 2;
             }
             case String s -> {
                 L.push("v");

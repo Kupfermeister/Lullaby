@@ -46,7 +46,7 @@ text:
   1. **Install VS Code** from code.visualstudio.com and open it.
   2. **Add Lua.** Click the four squares on the far left (`Ctrl+Shift+X`), search `Lua`, install **Lua** by **sumneko**.
   3. **Open the folder.** **File → Open Folder…**, pick `plugins/lullaby` in your server folder. If asked whether you trust the authors, click **Yes**.
-  4. **Add the name list.** [Download lullaby.d.lua](lullaby.d.lua) and drag it onto the empty space on the left, **below** the files (not on `scripts`). Only the editor reads it; Lullaby never runs it.
+  4. **Add the name list.** [Download lullaby.d.lua](lullaby.d.lua); your browser puts it in your **Downloads** folder. Move it into `plugins/lullaby`, right next to `config.lua`, **not** into `scripts` (a file in `scripts` would run as a script). The easy way: drag it from Downloads onto the empty space in VS Code's left side, below the files. Only the editor reads it; Lullaby never runs it.
   5. **Tell VS Code which Lua.** Right-click the empty space on the left, **New File…**, name it `.luarc.json` (dot in front), paste `{ "runtime.version": "LuaJIT" }`, save with `Ctrl+S`. Without it, some correct code is marked wrong.
 
   The left side now shows `scripts`, `.luarc.json`, `config.lua`, `lullaby.d.lua`. To check: in `scripts` make `test.lua`, type `mess` and a list pops up with `message`; point at it to see its description. Delete `test.lua` afterwards, or the next reload runs it. Nothing pops up? `Ctrl+Shift+P`, `Reload Window`.

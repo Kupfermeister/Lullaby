@@ -25,7 +25,9 @@ import java.util.stream.Stream;
  *   name, kind (doing | reading | event | type | lua | guide), group, syntax, lead, note, returns, example (code; indented
  *   lines below continue it), status (confirmed | unconfirmed), words (extra search words), arg: name | types | text
  *   (repeatable), field: name | types | text (repeatable: the fields of the object or value the page is about),
- *   fields-from: <java file> <enum> (the field names' owner is that Java enum: the build checks that the field: lines
+ *   method: call | returns | text (repeatable: what can be done with the value, written as a script writes it:
+ *   ":offset(dx, dy, dz)" a method, ".from_direction(vec3)" a function on the maker, "a + b" or "a == b" an
+ *   operator; returns is a type list, empty for nothing; only ":name(...)" rows go into VS Code's class), fields-from: <java file> <enum> (the field names' owner is that Java enum: the build checks that the field: lines
  *   name exactly its constants, lowercase, see checkFieldsFrom), tree: path | types | text (repeatable: the packets
  *   of the input event as a tree; path is "packet", "packet.field" or "packet.action.word", types is empty for a packet
  *   or a word), tree-from: <java file> <enum> (the tree's owner is that Java enum: the build checks that the tree:
@@ -46,8 +48,8 @@ import java.util.stream.Stream;
  * FORMAT of docs.json (version 1). New fields may be added at any time; builders ignore fields they don't know.
  *   { "version": 1, "minecraft": "...", "entries": [ { "id", "name", "kind", "group", "syntax", "lead", "note",
  *     "returns", "example", "status", "words", "args": [[name, types, text]], "expert": [[key, value]], "src": "file:line",
- *     "uses": [id], "usedBy": [id], "fields": [[name, type, text]], "tree": [[path, type, text]] (only if it has
- *     one) } ] }
+ *     "uses": [id], "usedBy": [id], "fields": [[name, type, text]], "methods": [[call, returns, text]] (only if it
+ *     has some), "tree": [[path, type, text]] (only if it has one) } ] }
  *   Generated event pages also have "sub" (their sub group), "dot" (untested | changeable | readonly | unusable) and
  *   "paper" (the address of Paper's own page for the event); their status is "generated".
  *   Recently new or changed pages have "fresh" (1 | 2 | 3: 1 is the newest change), "freshAs" (new | changed) and
@@ -67,7 +69,7 @@ public final class Docs {
     private static final Map<String, Object[]> SPANS = new HashMap<>();
 
     record Entry(Map<String, String> f, List<String[]> args, List<String[]> expert, Set<String> uses,
-                 Set<String> usedBy, List<String[]> fields, List<String[]> tree) {
+                 Set<String> usedBy, List<String[]> fields, List<String[]> tree, List<String[]> methods) {
         String id() { return f.get("id"); }
     }
 
@@ -305,7 +307,7 @@ public final class Docs {
         while (m.find()) {
             Map<String, String> f = new LinkedHashMap<>();
             List<String[]> args = new ArrayList<>(), expert = new ArrayList<>(), fields = new ArrayList<>(),
-                    tree = new ArrayList<>();
+                    tree = new ArrayList<>(), methods = new ArrayList<>();
             // `key: value` per line; an indented line (tab or 2 spaces) or an empty line continues the key before it,
             // keeping the line break (for `example:` code).
             String last = null;
@@ -322,6 +324,7 @@ public final class Docs {
                 if (key.equals("arg")) args.add(split(value, 3));
                 else if (key.equals("field")) fields.add(split(value, 3));
                 else if (key.equals("tree")) tree.add(split(value, 3));
+                else if (key.equals("method")) methods.add(split(value, 3));
                 else if (key.equals("expert")) expert.add(split(value, 2));
                 else { f.merge(key, value, (a, b) -> a + " " + b); last = key; }
             }
@@ -340,7 +343,7 @@ public final class Docs {
             // the doc block and the function line below it (a topic page: the block alone)
             int end = m.group(2) != null ? line : (int) text.substring(0, m.end()).chars().filter(c -> c == '\n').count();
             SPANS.put(id, new Object[]{src, first, end});
-            entries.put(id, new Entry(f, args, expert, new LinkedHashSet<>(), new LinkedHashSet<>(), fields, tree));
+            entries.put(id, new Entry(f, args, expert, new LinkedHashSet<>(), new LinkedHashSet<>(), fields, tree, methods));
             if (m.group(2) == null) continue; // a topic page: no code, no connections
             // Strings and comments are no calls.
             bodies.put(id, body(text, m.end()).replaceAll("--[^\\n]*", "")
@@ -373,7 +376,7 @@ public final class Docs {
         f.put("syntax", id + "( … )");
         f.put("status", "confirmed"); // generated, no handwritten text
         f.put("src", "src/main/java/io/github/kupfermeister/lullaby/lua/JavaFunctions.java");
-        return new Entry(f, new ArrayList<>(), new ArrayList<>(), new LinkedHashSet<>(), new LinkedHashSet<>(), new ArrayList<>(), new ArrayList<>());
+        return new Entry(f, new ArrayList<>(), new ArrayList<>(), new LinkedHashSet<>(), new LinkedHashSet<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
     }
 
     private static String minecraftVersion() throws IOException {
@@ -544,7 +547,7 @@ public final class Docs {
         f.put("src", EVENTS_FILE + ":" + line);
         f.put("flags", p[3]);
         f.put("java", java);
-        return new Entry(f, new ArrayList<>(), new ArrayList<>(), new LinkedHashSet<>(), new LinkedHashSet<>(), new ArrayList<>(), new ArrayList<>());
+        return new Entry(f, new ArrayList<>(), new ArrayList<>(), new LinkedHashSet<>(), new LinkedHashSet<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
     }
 
     /**
@@ -637,6 +640,7 @@ public final class Docs {
             b.append(",\"args\":").append(rows(e.args())).append(",\"expert\":").append(rows(e.expert()));
             b.append(",\"uses\":").append(strings(e.uses())).append(",\"usedBy\":").append(strings(e.usedBy()));
             b.append(",\"fields\":").append(rows(e.fields()));
+            if (!e.methods().isEmpty()) b.append(",\"methods\":").append(rows(e.methods()));
             if (!e.tree().isEmpty()) b.append(",\"tree\":").append(rows(e.tree()));
             b.append('}');
         }
@@ -687,6 +691,10 @@ public final class Docs {
                 b.append("\n| field | type | |\n|---|---|---|\n");
                 for (String[] a : e.fields()) b.append("| `").append("event".equals(f.get("kind")) ? "event." : ".").append(a[0]).append("` | ").append(a[1]).append(" | ").append(a[2]).append(" |\n");
             }
+            if (!e.methods().isEmpty()) {
+                b.append("\n| method | returns | |\n|---|---|---|\n");
+                for (String[] a : e.methods()) b.append("| `").append(a[0]).append("` | ").append(a[1]).append(" | ").append(a[2]).append(" |\n");
+            }
             if (!e.tree().isEmpty()) {
                 b.append('\n');
                 for (String[] t : e.tree()) {
@@ -719,10 +727,11 @@ public final class Docs {
         Set<String> classes = new TreeSet<>();
         for (Entry e : list) {
             if (e.f().containsKey("sub")) continue;
-            if (!e.fields().isEmpty()) classes.add(e.id());
+            if (!e.fields().isEmpty() || !e.methods().isEmpty()) classes.add(e.id());
             List<String> words = new ArrayList<>();
             for (String[] a : e.args()) words.add(a[1]);
             for (String[] fl : e.fields()) words.add(fl[1]);
+            for (String[] me : e.methods()) words.add(me[1]);
             if (returnTypes(e) != null) words.add(returnTypes(e)[0]);
             for (String w : words) for (String t : w.split("·")) {
                 t = t.trim().replaceFirst("^list of ", "");
@@ -736,8 +745,25 @@ public final class Docs {
             if (e.f().containsKey("is")) b.append(" : ").append(e.f().get("is"));
             b.append('\n');
             for (String[] fl : e.fields()) {
+                if (!fl[0].matches("\\w+")) continue; // "<property>": a stand-in for many names, not a Lua name
                 b.append("---@field ").append(fl[0]).append(' ').append(luaType(fl[1]));
                 if (fl.length > 2 && !fl[2].isEmpty()) b.append(' ').append(fl[2]);
+                b.append('\n');
+            }
+            // ":offset(dx, dy, dz)" -> ---@field offset fun(self: block_pos, dx: any, dy: any, dz: any): block_pos
+            for (String[] me : e.methods()) {
+                Matcher m = Pattern.compile("^:(\\w+)(?:\\((.*)\\)|\\{.*})$").matcher(me[0]); // s:with{ ... }: one table
+                if (!m.matches()) continue;
+                StringJoiner params = new StringJoiner(", ");
+                params.add("self: " + c);
+                if (m.group(2) == null) params.add("args: table");
+                else for (String p : m.group(2).split(",")) {
+                    p = p.trim().replaceFirst(" .*", ""); // "amount 0..1" -> "amount"
+                    if (!p.isEmpty()) params.add((p.matches("[\\w?]+") ? p : "arg") + ": any");
+                }
+                b.append("---@field ").append(m.group(1)).append(" fun(").append(params).append(')');
+                if (!me[1].isEmpty()) b.append(": ").append(luaType(me[1].replaceFirst("\\s*\\(.*$", "")));
+                if (!me[2].isEmpty()) b.append(' ').append(me[2]);
                 b.append('\n');
             }
         }

@@ -136,7 +136,7 @@ T.block_pos = {
 	accepts = "block_pos, { x, y, z } or { x = , y = , z = } with whole numbers, text \"10 64 -5\"",
 	codec = "BlockPos.CODEC (3 ints)", stream = "BlockPos.STREAM_CODEC", text = "BlockPosArgument",
 	arg = "BlockPosArgument (~ ~1 ~)", save = "codec",
-	methods = "+ - with block_pos, offset(dx, dy, dz), vec3() (the corner), chunk_pos(), section_pos() (only offset: "
+	methods = "+ - with block_pos, offset(dx, dy, dz), random_offset(dx, dy, dz) (each axis -d..d), vec3() (the corner), chunk_pos(), section_pos() (only offset: "
 		.. "no above/below/north/..., )",
 }
 T.vec3 = {
@@ -146,7 +146,7 @@ T.vec3 = {
 	codec = "Vec3.CODEC (3 doubles)", stream = "Vec3.STREAM_CODEC (LP_STREAM_CODEC for velocities)",
 	text = "Vec3Argument", arg = "Vec3Argument", save = "codec",
 	methods = "+ - * / (by a number), unary -, length, normalize, dot, cross, distance_to, lerp, x_rot y_rot z_rot "
-		.. "(degrees), rotate(quaternion), block_pos() (rounds down)",
+		.. "(degrees), rotate(quaternion), block_pos() (rounds down), random_offset(dx, dy, dz) (each axis -d..d)",
 	note = "also used for vanilla's Vector3f fields (display entity scale and translation: rounded to float at the "
 		.. "border, as vanilla does) and Rotations (armor stand angles): same handling, so one type. "
 		.. "block_pos, section_pos and chunk_pos stay separate: whole numbers with their own handling.",
@@ -155,14 +155,14 @@ T.chunk_pos = {
 	kind = "value", impl = "small", vanilla = "net.minecraft.world.level.ChunkPos (a 16x16 column, full height)",
 	fields = { x = "whole number", z = "whole number" },
 	accepts = "chunk_pos, { x, z }, text \"10 -5\"", codec = "ChunkPos.CODEC (2 ints)",
-	stream = "ChunkPos.STREAM_CODEC", arg = "ColumnPosArgument", save = "codec", methods = "offset(dx, dz)",
+	stream = "ChunkPos.STREAM_CODEC", arg = "ColumnPosArgument", save = "codec", methods = "offset(dx, dz), random_offset(dx, dz)",
 }
 T.section_pos = {
 	kind = "value", impl = "small", vanilla = "net.minecraft.core.SectionPos (a 16x16x16 cube)",
 	fields = { x = "whole number", y = "whole number", z = "whole number" },
 	accepts = "section_pos, { x, y, z }", stream = "SectionPos.STREAM_CODEC (one long)",
 	save = "own: list of 3 ints", note = "vanilla has no Codec for it",
-	methods = "offset(dx, dy, dz), chunk_pos(), contains(block_pos)",
+	methods = "offset(dx, dy, dz), random_offset(dx, dy, dz), chunk_pos(), contains(block_pos)",
 }
 T.global_pos = {
 	kind = "value", impl = "small", vanilla = "net.minecraft.core.GlobalPos (death location, lodestone, spawn)",
@@ -203,7 +203,7 @@ T.location = {
 		block = "block (the block object it is in; nil while its chunk is not loaded)" },
 	accepts = "location, { world = , pos = , rot = } (rot optional: 0, 0, as in vanilla), entity (its location), block (its center)",
 	save = "own: { world = id, pos, rot }", note = "built from world + vec3 + yaw_pitch; replaces today's location",
-	methods = "offset(vec3)",
+	methods = "offset(vec3), random_offset(vec3)",
 }
 
 -- =================================================================================================================

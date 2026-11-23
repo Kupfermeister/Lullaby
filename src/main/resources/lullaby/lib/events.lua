@@ -536,6 +536,7 @@ id: events
 name: Event fields
 kind: event
 group: Events
+also: event
 words: fields event player cancelled
 lead: The event an event handler gets. Its fields are the event's Paper getters by one rule: getJoinMessage() is event.join_message, isCancelled() is event.cancelled. Each event's page lists its fields, what they hold and whether they can be changed; fields are writable in on{ }, read only in after{ }. A name the event doesn't have is an error that lists its fields, never nil. A list field (event.drops) is a plain Lua list and a block snapshot (event.new_state) a block_snapshot, the same one for every read in the handler: change it (table.remove(event.drops, 1), event.drops[1].count = 2, event.new_state.state = ...) and the change goes back into the event when the handler ends or first waits; where it can't (after{ }, a list Paper gives read only) that is a red error, never a silent loss. Fields Lullaby can't hand to scripts yet (inventories, ...) give a red error too. Enum fields are lowercase words ("right_click_block"), keys are ids ("minecraft:stone").
 example:

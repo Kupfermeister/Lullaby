@@ -88,7 +88,12 @@ kind: type
 group: Blocks
 words: place position block object
 syntax: block.state   block.pos   block.world   block.location
-lead: A place in a world: a world plus a block position. Each block exists once, so == works. Fields: block.state (the block_state there, nil if the chunk is not loaded), block.pos (block_pos), block.world (world), block.location (a location at the block's center, yaw 0, pitch 0). location.block gives one.
+lead: A place in a world: a world plus a block position. Each block exists once, so == works. location.block gives one.
+field: state | block_state · nil | The block state there; nil if the chunk is not loaded.
+field: pos | block_pos | Its position.
+field: world | world | Its world.
+field: location | location | A location at the block's center, yaw 0, pitch 0.
+method: a == b | boolean | The same place.
 expert: Java object | none kept: the world id and x, y, z live in Lua; block.state asks Java each time
 expert: Stays valid | always (it is a place); block.state is nil while the chunk isn't loaded
 expert: Compare | == works: one object per place
@@ -174,6 +179,11 @@ syntax: block_state( "oak_stairs[facing=north]" | { id = text, ... } | { id = te
 lead: A block state from vanilla's text, from id plus properties, or from vanilla's codec shape. Missing properties take their default.
 arg: state | text · table · block_state | The state.
 returns: block_state
+field: type | text | The block's id, like "minecraft:oak_stairs".
+field: <property> | boolean · number · text | Each property by its name: s.facing == "north", s.waterlogged == false, s.age == 3. Can't be changed: use s:with{ }.
+method: :with{ property = value, ... } | block_state | The state with these properties changed (vanilla's setValue): s:with{ facing = "south" }. s itself stays as it was.
+method: a == b | boolean | The same state (each state exists once).
+method: tostring(s) | text | Vanilla's text, like "minecraft:oak_stairs[facing=north,...]".
 expert: Thread | main thread, like every script
 expert: Cost | from text 5–50 µs, the same state again reuses its object; a property: first time 3–20 µs, then 50–200 ns (guess, not measured)
 expert: Under the hood | vanilla's state number (Block.getId) with vanilla's own parser and codec

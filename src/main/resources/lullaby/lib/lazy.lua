@@ -253,11 +253,17 @@ end
 name: item_stack( )
 kind: reading
 group: Items
+also: components
 words: item give stack
 syntax: item_stack( "diamond_sword[damage=5]" | table | item_stack )
-lead: An item stack from vanilla's item text, a table, or a copy of another item stack.
+lead: An item stack from vanilla's item text, a table { id = , count = , components = } (vanilla's ItemStack codec), or a copy of another item stack. The empty stack is nil. Each item stack is your own copy: changing it changes nothing in the game until you give it back.
 arg: item | text · table · item_stack | The item.
 returns: item_stack
+field: id | text | The item's id, like "minecraft:diamond_sword". Can be changed.
+field: count | number | How many. Can be changed.
+field: components | table | EXACTLY vanilla's patch: only the changes against the item type's defaults, keys as vanilla writes them ("minecraft:custom_name"); a removed default is ["!minecraft:food"] = { }. Short keys work too (it.components.custom_name). Can be changed, in place or as a whole table.
+method: a == b | boolean | Vanilla's ItemStack.matches: same item, count and components.
+method: tostring(it) | text | Vanilla's item text with the changed components, as /give takes it (no count, like vanilla).
 expert: Thread | main thread, like every script
 expert: Cost | 10–100 µs to make one; it.id 1–5 µs; it.components first touch 10–100 µs (guess, not measured)
 expert: Under the hood | vanilla's item parser and ItemStack codec; a Java copy in a slot, parts load on first touch

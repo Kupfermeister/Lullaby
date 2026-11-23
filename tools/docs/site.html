@@ -285,6 +285,8 @@ function show(id) {
       `<tr><td class="mono c-field">${esc(n.replace(/\?$/, ""))}${n.endsWith("?") ? ' <span class="opt">optional</span>' : ""}</td><td>${typed(t)}</td><td>${esc(d)}</td></tr>`).join("")}</table></section>` : ""}
     ${e.fields?.length ? `<section><h2>Fields</h2><table>${e.fields.map(([n, t, d]) =>
       `<tr><td class="mono c-field">${e.kind === "event" ? "event." : "."}${esc(n)}</td><td>${BY[t] || TYPES.has(t) ? typed(t) : `<span class="c-dim mono">${esc(t)}</span>`}</td><td>${esc(d)}</td></tr>`).join("")}</table></section>` : ""}
+    ${e.methods?.length ? `<section><h2>Methods</h2><table>${e.methods.map(([n, t, d]) =>
+      `<tr><td class="mono c-field">${esc(n)}</td><td>${t ? typed(t) : ""}</td><td>${esc(d)}</td></tr>`).join("")}</table></section>` : ""}
     ${e.tree ? `<section><h2>Packets</h2>${tree(e.tree)}</section>` : ""}
     ${e.returns ? `<section><h2>Returns</h2><div>${typed(e.returns)}</div></section>` : ""}
     ${e.example ? `<section><h2>Example</h2><div class="syntax mono" style="--c:var(--line)">${paint(e.example)}</div></section>` : ""}
@@ -314,8 +316,10 @@ function dist(a, b) {
 }
 function score(e, q) {
   // CamelCase names are split too: "join" finds PlayerJoinEvent
-  const terms = (e.id.replace(/([a-z0-9])([A-Z])/g, "$1 $2") + " " + e.id + " " + (e.words || "")).toLowerCase()
-    .split(/[\s_.]+/).filter(Boolean);
+  // method names count as search words: "offset" finds block_pos( ) and location( )
+  const methods = (e.methods || []).map(([n]) => (n.match(/^[:.](\w+)/) || [])[1] || "").join(" ");
+  const terms = (e.id.replace(/([a-z0-9])([A-Z])/g, "$1 $2") + " " + e.id + " " + (e.words || "") + " " + methods)
+    .toLowerCase().split(/[\s.]+/).filter(Boolean).flatMap(t => t.includes("_") ? [t, ...t.split("_")] : [t]);
   if (e.id.toLowerCase().startsWith(q)) return 0;
   let best = 99;
   for (const t of terms) {

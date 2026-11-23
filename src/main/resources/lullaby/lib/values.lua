@@ -5,14 +5,15 @@
 -- make a new value instead (v + vec3(5, 0, 0), p:offset(...)). Every value is checked completely where it is made
 -- (type, NaN, infinity, whole numbers, int range), never again in the math, so loops stay fast.
 --
---   block_pos(x, y, z)       whole numbers (vanilla BlockPos)    + - ==  :offset(x, y, z) :vec3() :chunk_pos()
---                                                                       :section_pos()
---   section_pos(x, y, z)     whole numbers (vanilla SectionPos: a 16x16x16 cube)   ==  :offset  :chunk_pos()
---                                                                       :contains(block_pos)
---   chunk_pos(x, z)          whole numbers (vanilla ChunkPos: a 16x16 column)      ==  :offset(x, z)
+--   block_pos(x, y, z)       whole numbers (vanilla BlockPos)    + - ==  :offset(x, y, z) :random_offset(x, y, z)
+--                                                                       :vec3() :chunk_pos() :section_pos()
+--   section_pos(x, y, z)     whole numbers (vanilla SectionPos: a 16x16x16 cube)   ==  :offset  :random_offset
+--                                                                       :chunk_pos() :contains(block_pos)
+--   chunk_pos(x, z)          whole numbers (vanilla ChunkPos: a 16x16 column)      ==  :offset(x, z) :random_offset(x, z)
 --   vec3(x, y, z)            decimals (vanilla Vec3; also Vector3f fields and armor stand Rotations)
 --                            + - * / (by a number) unary - ==  :length() :normalize() :dot(v) :cross(v)
 --                            :distance_to(v) :lerp(v, t) :x_rot(degrees) :y_rot(degrees) :z_rot(degrees) :rotate(quaternion) :block_pos()
+--                            :random_offset(x, y, z)
 --   yaw_pitch(yaw, pitch)    degrees  ==  :direction() -> vec3;  yaw_pitch.from_direction(vec3)
 --   quaternion(x, y, z, w)   * (combine) ==  :rotate(vec3);  quaternion.from_yaw_pitch(yp),
 --                            quaternion.from_axis_angle(axis vec3, degrees)
@@ -23,11 +24,12 @@
 --   global_pos(dimension, block_pos)   a block position in a dimension (vanilla GlobalPos); dimension is an id
 --   location(world, vec3, yaw_pitch)   world + exact position + direction (yaw_pitch optional: 0, 0)
 --                                      .block -> the block object at it (nil: chunk not loaded)
---                                      ==  :chunk() -> its chunk  :offset(vec3)
+--                                      ==  :chunk() -> its chunk  :offset(vec3) :random_offset(vec3)
 -- Each maker also takes a value of its own type (returned as is: values never change), a table { 1, 2, 3 } or
 -- { x = , y = , z = } (named like the fields), and for the position types vanilla's command text ("1 64 -3").
 -- Errors are raised without a position (level 0): core.lua's report finds the script line itself, and a script that
 -- catches one with pcall gets the clean text.
+-- The full list for scripts (what each method does) is in the doc blocks below: field: and method: lines.
 -- Angles are degrees everywhere (vanilla's Vec3.xRot uses radians; Lullaby keeps one unit).
 local J, lib, I = ...
 
@@ -37,6 +39,10 @@ local floor, sqrt, sin, cos, atan2, asin, abs, huge, pi = math.floor, math.sqrt,
 local concat, pairs, unpack = table.concat, pairs, unpack
 local number_text = I.number_text
 local RAD, DEG = pi / 180, 180 / pi
+local random = math.random
+-- LuaJIT starts its random numbers from the same seed every time, so random_offset (and a script's math.random) would
+-- repeat the same pattern after every /lullaby reload: seeded once per Lua state from the clock instead.
+math.randomseed(os.time() + floor(os.clock() * 1000000))
 local INT_MIN, INT_MAX = -2147483648, 2147483647
 
 -- Metatable -> type name, for type_of (core.lua reads it): no bookkeeping per value.
@@ -215,9 +221,22 @@ kind: reading
 group: Values
 words: position block coordinates xyz
 syntax: block_pos( x, y, z ) → block_pos
-lead: A block position: whole numbers (vanilla BlockPos). + - == :offset(x, y, z) :vec3() :chunk_pos() :section_pos(). Also takes a value of its own type (returned as is), a table { 1, 2, 3 } or { x = , y = , z = }, or command text like "1 64 -3".
+lead: A block position: whole numbers (vanilla BlockPos). Also takes a value of its own type (returned as is), a table { 1, 2, 3 } or { x = , y = , z = }, or command text like "1 64 -3".
 arg: x, y, z | number | Whole numbers.
 returns: block_pos
+field: x | number | East (+) or west (−).
+field: y | number | Up (+) or down (−).
+field: z | number | South (+) or north (−).
+method: a + b | block_pos | Adds two block_pos.
+method: a - b | block_pos | Subtracts one block_pos from another.
+method: a == b | boolean | Same numbers.
+method: :offset(dx, dy, dz) | block_pos | Moved by whole numbers: p:offset(0, 1, 0) is the block above.
+method: :random_offset(dx, dy, dz) | block_pos | Moved by a random whole number from −dx to dx on x, −dy to dy on y and −dz to dz on z (both ends included; 0 keeps that axis). p:random_offset(5, 0, 5) is a random block in the 11 × 11 square around p.
+method: :vec3() | vec3 | The same numbers as decimals: the block's lowest corner (add vec3(0.5, 0, 0.5) for the middle of its floor).
+method: :chunk_pos() | chunk_pos | The chunk column it is in.
+method: :section_pos() | section_pos | The 16×16×16 section it is in.
+example:
+  local spot = player.location.pos:block_pos():random_offset(8, 0, 8)
 expert: Thread | main thread, like every script
 expert: Cost | 0.1–1 µs to make one from numbers, 1–5 µs from command text (guess, not measured); the math on it is plain Lua
 expert: Under the hood | a plain Lua table with a hidden shared metatable; no Java
@@ -237,9 +256,17 @@ kind: reading
 group: Values
 words: section cube
 syntax: section_pos( x, y, z ) → section_pos
-lead: A 16×16×16 cube of blocks: whole numbers (vanilla SectionPos). == :offset(x, y, z) :chunk_pos() :contains(block_pos). Also takes a value of its own type (returned as is), a table { 1, 2, 3 } or { x = , y = , z = }, or command text like "1 4 -3".
+lead: A 16×16×16 cube of blocks: whole numbers (vanilla SectionPos). Also takes a value of its own type (returned as is), a table { 1, 2, 3 } or { x = , y = , z = }, or command text like "1 4 -3".
 arg: x, y, z | number | Whole numbers.
 returns: section_pos
+field: x | number | In sections (16 blocks each).
+field: y | number | In sections.
+field: z | number | In sections.
+method: a == b | boolean | Same numbers.
+method: :offset(dx, dy, dz) | section_pos | Moved by whole sections.
+method: :random_offset(dx, dy, dz) | section_pos | Moved by a random whole number from −dx to dx, −dy to dy, −dz to dz (both ends included).
+method: :chunk_pos() | chunk_pos | The chunk column it is part of.
+method: :contains(block_pos) | boolean | Whether the block is inside this section.
 expert: Thread | main thread, like every script
 expert: Cost | 0.1–1 µs to make one from numbers, 1–5 µs from command text (guess, not measured); the math on it is plain Lua
 expert: Under the hood | a plain Lua table with a hidden shared metatable; no Java
@@ -259,9 +286,14 @@ kind: reading
 group: Values
 words: chunk column
 syntax: chunk_pos( x, z ) → chunk_pos
-lead: A 16×16 column of blocks: whole numbers (vanilla ChunkPos). == :offset(x, z). Also takes a value of its own type (returned as is), a table { 1, 2 } or { x = , z = }, or command text like "1 -3".
+lead: A 16×16 column of blocks: whole numbers (vanilla ChunkPos). Also takes a value of its own type (returned as is), a table { 1, 2 } or { x = , z = }, or command text like "1 -3".
 arg: x, z | number | Whole numbers.
 returns: chunk_pos
+field: x | number | In chunks (16 blocks each).
+field: z | number | In chunks.
+method: a == b | boolean | Same numbers.
+method: :offset(dx, dz) | chunk_pos | Moved by whole chunks.
+method: :random_offset(dx, dz) | chunk_pos | Moved by a random whole number from −dx to dx and −dz to dz (both ends included).
 expert: Thread | main thread, like every script
 expert: Cost | 0.1–1 µs to make one from numbers, 1–5 µs from command text (guess, not measured); the math on it is plain Lua
 expert: Under the hood | a plain Lua table with a hidden shared metatable; no Java
@@ -297,6 +329,15 @@ function block_methods.offset(v, dx, dy, dz)
 	in_range("block_pos:offset", x, y, z)
 	return new_block(x, y, z)
 end
+-- A random whole number from -n to n on each axis (the sign of n doesn't matter).
+local function spread(n) n = abs(n); return n == 0 and 0 or random(-n, n) end
+function block_methods.random_offset(v, dx, dy, dz)
+	need(BLOCK, v, "block_pos:random_offset", "a block_pos (use : not .)")
+	dx, dy, dz = whole(dx, "random_offset", "dx"), whole(dy, "random_offset", "dy"), whole(dz, "random_offset", "dz")
+	local x, y, z = v[1] + spread(dx), v[2] + spread(dy), v[3] + spread(dz)
+	in_range("block_pos:random_offset", x, y, z)
+	return new_block(x, y, z)
+end
 function block_methods.vec3(v)
 	need(BLOCK, v, "block_pos:vec3", "a block_pos (use : not .)")
 	return I.new_vec3(v[1], v[2], v[3])
@@ -319,6 +360,13 @@ function section_methods.offset(v, dx, dy, dz)
 	in_range("section_pos:offset", x, y, z)
 	return new_section(x, y, z)
 end
+function section_methods.random_offset(v, dx, dy, dz)
+	need(SECTION, v, "section_pos:random_offset", "a section_pos (use : not .)")
+	dx, dy, dz = whole(dx, "random_offset", "dx"), whole(dy, "random_offset", "dy"), whole(dz, "random_offset", "dz")
+	local x, y, z = v[1] + spread(dx), v[2] + spread(dy), v[3] + spread(dz)
+	in_range("section_pos:random_offset", x, y, z)
+	return new_section(x, y, z)
+end
 function section_methods.chunk_pos(v)
 	need(SECTION, v, "section_pos:chunk_pos", "a section_pos (use : not .)")
 	return new_chunk(v[1], v[3])
@@ -335,6 +383,13 @@ function chunk_methods.offset(v, dx, dz)
 	dx, dz = whole(dx, "offset", "dx"), whole(dz, "offset", "dz")
 	local x, z = v[1] + dx, v[2] + dz
 	in_range("chunk_pos:offset", x, z)
+	return new_chunk(x, z)
+end
+function chunk_methods.random_offset(v, dx, dz)
+	need(CHUNK, v, "chunk_pos:random_offset", "a chunk_pos (use : not .)")
+	dx, dz = whole(dx, "random_offset", "dx"), whole(dz, "random_offset", "dz")
+	local x, z = v[1] + spread(dx), v[2] + spread(dz)
+	in_range("chunk_pos:random_offset", x, z)
 	return new_chunk(x, z)
 end
 
@@ -361,9 +416,30 @@ kind: reading
 group: Values
 words: vector position direction
 syntax: vec3( x, y, z ) → vec3
-lead: An exact position or direction: decimals (vanilla Vec3). + - * / unary - == :length() :normalize() :dot(other) :cross(other) :distance_to(other) :lerp(other, amount) :x_rot(degrees) :y_rot(degrees) :z_rot(degrees) :rotate(quaternion) :block_pos(). Also takes a value of its own type (returned as is), a table { 1, 2, 3 } or { x = , y = , z = }, or command text like "1.5 64 -3".
+lead: An exact position or direction: decimals (vanilla Vec3). Also takes a value of its own type (returned as is), a table { 1, 2, 3 } or { x = , y = , z = }, or command text like "1.5 64 -3".
 arg: x, y, z | number | Decimals.
 returns: vec3
+field: x | number | East (+) or west (−).
+field: y | number | Up (+) or down (−).
+field: z | number | South (+) or north (−).
+method: a + b | vec3 | Adds two vec3: pos + vec3(0, 1, 0) is one block higher.
+method: a - b | vec3 | Subtracts: target - pos points from pos to target.
+method: v * n | vec3 | Scaled by a number (n * v works too).
+method: v / n | vec3 | Divided by a number (not 0).
+method: -v | vec3 | Pointing the other way.
+method: a == b | boolean | Same numbers.
+method: :random_offset(dx, dy, dz) | vec3 | Moved by a random decimal from −dx to dx on x, −dy to dy on y and −dz to dz on z (0 keeps that axis).
+method: :length() | number | How long it is.
+method: :normalize() | vec3 | The same direction with length 1 (a vector shorter than 0.00001 gives 0, 0, 0, like vanilla).
+method: :dot(other) | number | The dot product.
+method: :cross(other) | vec3 | The cross product: at a right angle to both.
+method: :distance_to(other) | number | The distance between two points.
+method: :lerp(other, amount) | vec3 | The point amount of the way to other: 0 is this one, 1 is other, 0.5 the middle.
+method: :x_rot(degrees) | vec3 | Turned around the x axis.
+method: :y_rot(degrees) | vec3 | Turned around the y axis (the up axis).
+method: :z_rot(degrees) | vec3 | Turned around the z axis.
+method: :rotate(quaternion) | vec3 | Turned by a quaternion.
+method: :block_pos() | block_pos | The block it is in (rounded down, also below 0).
 expert: Thread | main thread, like every script
 expert: Cost | 0.1–1 µs to make one from numbers, 1–5 µs from command text (guess, not measured); the math on it is plain Lua
 expert: Under the hood | a plain Lua table with a hidden shared metatable; no Java
@@ -463,6 +539,13 @@ function vec_methods.z_rot(v, degrees)
 	local c, s = cos(a), sin(a)
 	return new_vec(v[1] * c + v[2] * s, v[2] * c - v[1] * s, v[3])
 end
+-- A random decimal from -n to n on each axis (the sign of n doesn't matter).
+function vec_methods.random_offset(v, dx, dy, dz)
+	self_vec(v, "random_offset")
+	dx, dy, dz = number(dx, "random_offset", "dx"), number(dy, "random_offset", "dy"), number(dz, "random_offset", "dz")
+	return new_vec(v[1] + (random() * 2 - 1) * dx, v[2] + (random() * 2 - 1) * dy, v[3] + (random() * 2 - 1) * dz,
+		"vec3:random_offset")
+end
 -- Rounds down like vanilla's BlockPos.containing (floor, also for negatives).
 function vec_methods.block_pos(v)
 	self_vec(v, "block_pos")
@@ -490,10 +573,15 @@ kind: reading
 group: Values
 words: rotation direction look angle yaw pitch
 syntax: yaw_pitch( yaw, pitch ) → yaw_pitch   yaw_pitch.from_direction( vec3 )
-lead: A direction as yaw and pitch, in degrees. == :direction() gives the vec3 it looks along (length 1); yaw_pitch.from_direction(direction) goes the other way.
+lead: A direction as yaw and pitch, in degrees. Also takes a value of its own type (returned as is), a table { 90, 0 } or { yaw = , pitch = }, or text like "90 0".
 arg: yaw | number | Degrees around the vertical axis.
 arg: pitch | number | Degrees up or down.
 returns: yaw_pitch
+field: yaw | number | Degrees around the vertical axis: 0 south, 90 west, 180 north, −90 east.
+field: pitch | number | Degrees up (−) or down (+); −90 straight up, 90 straight down.
+method: a == b | boolean | Same numbers.
+method: :direction() | vec3 | The direction it looks along, length 1.
+method: .from_direction(vec3) | yaw_pitch | yaw_pitch.from_direction(v): the yaw and pitch that look along v (the zero vector gives 0, 0).
 expert: Thread | main thread, like every script
 expert: Cost | 0.1–1 µs to make one from numbers, 1–5 µs from command text (guess, not measured); the math on it is plain Lua
 expert: Under the hood | a plain Lua table with a hidden shared metatable; no Java
@@ -541,9 +629,18 @@ kind: reading
 group: Values
 words: rotation rotate 3d axis angle
 syntax: quaternion( x, y, z, w ) → quaternion   quaternion.from_yaw_pitch( yaw_pitch )   quaternion.from_axis_angle( axis, degrees )
-lead: A rotation in 3D. first * second rotates by second first, then by first. quaternion:rotate(vector) turns a vec3; vector:rotate(quaternion) does the same.
+lead: A rotation in 3D. Also takes a value of its own type (returned as is), a table { x, y, z, w } or { x = , y = , z = , w = }, text like "0 0 0 1", or vanilla's axis-angle form { axis = vec3, angle = degrees }.
 arg: x, y, z, w | number | The four parts.
 returns: quaternion
+field: x | number | The parts, as vanilla and JOML keep them.
+field: y | number |
+field: z | number |
+field: w | number | 1 with x, y, z at 0 is no turn.
+method: a * b | quaternion | Both rotations: turns by b first, then by a.
+method: a == b | boolean | Same numbers.
+method: :rotate(vec3) | vec3 | The vector turned by this rotation (the same as vector:rotate(q)).
+method: .from_yaw_pitch(yaw_pitch) | quaternion | quaternion.from_yaw_pitch(r): the rotation that turns south (+z) to where r looks.
+method: .from_axis_angle(axis, degrees) | quaternion | quaternion.from_axis_angle(vec3(0, 1, 0), 90): a turn around an axis (any length but zero).
 expert: Thread | main thread, like every script
 expert: Cost | 0.1–1 µs to make one from numbers, 1–5 µs from command text (guess, not measured); the math on it is plain Lua
 expert: Under the hood | a plain Lua table with a hidden shared metatable; no Java
@@ -656,9 +753,18 @@ kind: reading
 group: Values
 words: box area region hitbox
 syntax: aabb( min, max ) → aabb
-lead: A box between two vec3 corners; a point exactly on the max side is outside (vanilla AABB). == :contains(vec3) :intersects(aabb) :grow(amount) :move(vec3) :center() :size().
+lead: A box between two vec3 corners; a point exactly on the max side is outside (vanilla AABB). Any two opposite corners work: they are sorted. Also takes { min = , max = } or { vec3, vec3 }.
 arg: min, max | vec3 | The corners.
 returns: aabb
+field: min | vec3 | The corner with the smallest numbers.
+field: max | vec3 | The corner with the biggest numbers.
+method: a == b | boolean | Same corners.
+method: :contains(vec3) | boolean | Whether the point is inside (the max side is outside).
+method: :intersects(aabb) | boolean | Whether the boxes overlap (only touching doesn't count).
+method: :grow(amount) | aabb | Bigger by amount on every side; a negative amount shrinks it.
+method: :move(vec3) | aabb | Moved by a vec3.
+method: :center() | vec3 | The middle.
+method: :size() | vec3 | How big it is on each axis.
 expert: Thread | main thread, like every script
 expert: Cost | 0.1–1 µs to make one from numbers, 1–5 µs from command text (guess, not measured); the math on it is plain Lua
 expert: Under the hood | a plain Lua table with a hidden shared metatable; no Java
@@ -678,9 +784,15 @@ kind: reading
 group: Values
 words: box area region cuboid
 syntax: bounding_box( min, max ) → bounding_box
-lead: A box between two block_pos corners, both sides included (vanilla BoundingBox). == :contains(block_pos) :intersects(bounding_box) :center().
+lead: A box between two block_pos corners, both sides included (vanilla BoundingBox). Any two opposite corners work: they are sorted. Also takes { min = , max = } or { block_pos, block_pos }.
 arg: min, max | block_pos | The corners.
 returns: bounding_box
+field: min | block_pos | The corner with the smallest numbers.
+field: max | block_pos | The corner with the biggest numbers.
+method: a == b | boolean | Same corners.
+method: :contains(block_pos) | boolean | Whether the block is inside (both sides count).
+method: :intersects(bounding_box) | boolean | Whether the boxes overlap (touching counts).
+method: :center() | block_pos | The middle block, rounded down.
 expert: Thread | main thread, like every script
 expert: Cost | 0.1–1 µs to make one from numbers, 1–5 µs from command text (guess, not measured); the math on it is plain Lua
 expert: Under the hood | a plain Lua table with a hidden shared metatable; no Java
@@ -770,6 +882,9 @@ lead: A block position in a dimension (vanilla GlobalPos). Also takes { dimensio
 arg: dimension | text | An id like "overworld".
 arg: pos | block_pos | The position.
 returns: global_pos
+field: dimension | text | The full id, like "minecraft:overworld".
+field: pos | block_pos | The position.
+method: a == b | boolean | Same dimension and position.
 expert: Thread | main thread, like every script
 expert: Cost | 0.1–1 µs to make one from numbers, 1–5 µs from command text (guess, not measured); the math on it is plain Lua
 expert: Under the hood | a plain Lua table with a hidden shared metatable; the dimension id is checked by one Java call
@@ -806,11 +921,22 @@ kind: reading
 group: Values
 words: where place spot
 syntax: location( world, pos, rot ) → location
-lead: A world, an exact position and a direction (yaw_pitch optional: 0, 0). Fields: l.world, l.pos, l.rot, and l.block (the block object it is in; nil while that chunk isn't loaded, and it never loads one). == :chunk() :offset(vec3). Also takes { world = , pos = , rot = }.
+lead: A world, an exact position and a direction (yaw_pitch optional: 0, 0). Also takes { world = , pos = , rot = }.
 arg: world | world | The world.
 arg: pos | vec3 | The exact position.
 arg: rot? | yaw_pitch | The direction. Optional: 0, 0.
 returns: location
+field: world | world | The world.
+field: pos | vec3 | The exact position.
+field: rot | yaw_pitch | The direction.
+field: block | block · nil | The block it is in; nil while that chunk isn't loaded (reading it never loads one).
+method: a == b | boolean | Same world, position and direction.
+method: :offset(vec3) | location | Moved by a vec3; world and direction stay.
+method: :random_offset(vec3) | location | Moved by a random decimal from −x to x, −y to y and −z to z of the vec3 (0 keeps that axis); world and direction stay. l:random_offset(vec3(3, 0, 3)) is a random spot up to 3 blocks away on the ground plane.
+method: :chunk() | chunk | The chunk it is in (loaded or not).
+example:
+  local l = player.location
+  teleport{ entity = player, location = l:random_offset(vec3(10, 0, 10)) }
 expert: Thread | main thread, like every script
 expert: Cost | 0.1–1 µs to make one from numbers, 1–5 µs from command text (guess, not measured); the math on it is plain Lua
 expert: Under the hood | a plain Lua table with a hidden shared metatable; no Java, except l.block (one call: is the chunk loaded)
@@ -852,4 +978,8 @@ end
 function loc_methods.offset(l, v)
 	need(LOC, l, "location:offset", "a location (use : not .)"); need(VEC, v, "location:offset", "a vec3")
 	return setmetatable({ l[1], l[2] + v, l[3] }, LOC)
+end
+function loc_methods.random_offset(l, v)
+	need(LOC, l, "location:random_offset", "a location (use : not .)"); need(VEC, v, "location:random_offset", "a vec3")
+	return setmetatable({ l[1], vec_methods.random_offset(l[2], v[1], v[2], v[3]), l[3] }, LOC)
 end

@@ -177,6 +177,7 @@ id: java.class
 name: java.class( )
 kind: reading
 group: Java door
+also: java_class
 words: raw java class import reflection bukkit paper nms
 syntax: java.class( "org.bukkit.Bukkit" ) → java_class
 lead: Loads a Java class by its full name: Paper's and Bukkit's, Minecraft's own (net.minecraft...), Java's, or any plugin's. Call its static methods with a colon (Class:getServer()), read static fields with a dot (Class.STONE), make objects with Class:new(...). Only with unlock.java in the config.

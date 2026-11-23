@@ -9,7 +9,7 @@
 --   entity(uuid text)                    -> entity (or player) or nil if none is loaded    e.uuid e.type e.pos ... (the
 --                                           field list is Java's: nms/Entities.java)
 --   modify_entity{ entity = e, fire_time = , ai = , food = , ... }   changes an entity -> true, false if it is gone
---   teleport{ entity = e, location = }  velocity{ entity = e, velocity = }  set_health{ entity = e, health = , ... }
+--   teleport{ entity = e, location = }   as /tp
 --   world("overworld")                   -> world ("minecraft:overworld") or nil
 --   chunk(world, chunk_pos) / location:chunk()  -> chunk (a PLACE: world + chunk_pos)  c.world c.pos c.loaded c.entities
 --   damage (from events: e.damage_source)  d.type  d.direct  d.causing  d.pos
@@ -66,7 +66,7 @@ local function no_assign(letter)
 	return function(_, key)
 		-- FORMAT: an entity or player field assigned with = instead of an action
 		error("entity fields can't be changed with = (." .. tostring(key) .. "): use an action: modify_entity{ entity = "
-			.. letter .. ", ... }, teleport{ }, velocity{ } or set_health{ }", 2)
+			.. letter .. ", ... }, or teleport{ entity = " .. letter .. ", location = ... }", 2)
 	end
 end
 
@@ -104,8 +104,8 @@ kind: reading
 group: Players
 words: get find user name uuid
 syntax: player( text ) → player | nil
-lead: A player by name or UUID: online, or one who has played on this server before. nil if none. Each player exists once, so == works, online and offline. A player is an entity too: every field of entity( ) works on p (p.pos, p.health, ...) and reads nil while the player is offline; modify_entity{ entity = p, ... } changes an online player.
-arg: x | text · player | Name or UUID (a player is returned as is).
+lead: A player by name or UUID: online, or one who has played on this server before. nil if none. Each player exists once, so == works, online and offline. A player is an entity too: every field of entity( ) works on player (player.pos, player.health, ...) and reads nil while the player is offline; modify_entity{ entity = player, ... } changes an online player.
+arg: name | text · player | Name or UUID (a player is returned as is).
 returns: player · nil
 is: entity
 field: uuid | text | The UUID, lowercase with dashes. Also while offline.
@@ -179,8 +179,8 @@ group: Entities
 words: mob creature animal item uuid find living
 fields-from: src/main/java/io/github/kupfermeister/lullaby/nms/Entities.java Field
 syntax: entity( uuid ) → entity | player | nil
-lead: An entity by its UUID, if it is in a loaded chunk right now: a mob, an item on the ground, an arrow, a minecart, ... (an online player gives the player). nil if there is none. Every sort of entity is one entity: a field a sort doesn't have reads nil (an item has no health). Each entity exists once, so == works, and it stays the same object when its chunk unloads and loads again or it changes world. Entities also come from events (e.entity, e.damager, ...) and from chunks (c.entities). Change one with modify_entity{ }, teleport{ }, velocity{ } and set_health{ }.
-arg: x | text · entity | A UUID like "069a79f4-44e9-4726-a5be-fca90e38aaf5" (an entity or player is returned as is).
+lead: An entity by its UUID, if it is in a loaded chunk right now: a mob, an item on the ground, an arrow, a minecart, ... (an online player gives the player). nil if there is none. Every sort of entity is one entity: a field a sort doesn't have reads nil (an item has no health). Each entity exists once, so == works, and it stays the same object when its chunk unloads and loads again or it changes world. Entities also come from events (entity.entity, entity.damager, ...) and from chunks (context.entities). Change one with modify_entity{ } and teleport{ }.
+arg: uuid | text · entity | A UUID like "069a79f4-44e9-4726-a5be-fca90e38aaf5" (an entity or player is returned as is).
 returns: entity · player · nil
 field: uuid | text | The UUID, lowercase with dashes. Also when the entity is gone.
 field: type | text | The sort, as vanilla's id: "minecraft:zombie", "minecraft:item".
@@ -188,11 +188,11 @@ field: alive | boolean | false once it is dead or gone (removed, in an unloaded 
 field: world | world | The world it is in.
 field: pos | vec3 | Where its feet are.
 field: location | location | World, position and direction (yaw, pitch) at once.
-field: velocity | vec3 | Its motion in blocks per tick (vanilla's delta movement). velocity{ } changes it.
+field: velocity | vec3 | Its motion in blocks per tick (vanilla's delta movement). modify_entity{ } changes it.
 field: on_ground | boolean | Whether it stands on something.
-field: health | number · nil | Health points (2 per heart); nil for entities without health (items, arrows, minecarts, ...). set_health{ } changes it.
-field: max_health | number · nil | Its highest health; nil for entities without health. set_health{ } changes it.
-field: absorption | number · nil | Yellow extra hearts, in health points; nil for entities without health. set_health{ } changes it.
+field: health | number · nil | Health points (2 per heart); nil for entities without health (items, arrows, minecarts, ...). modify_entity{ } changes it.
+field: max_health | number · nil | Its highest health; nil for entities without health. modify_entity{ } changes it.
+field: absorption | number · nil | Yellow extra hearts, in health points; nil for entities without health. modify_entity{ } changes it.
 field: custom_name | component · nil | The name given with a name tag or a command; nil if it has none. modify_entity{ } changes it.
 field: custom_name_visible | boolean | Whether the name shows always, not only when someone looks at it up close. modify_entity{ } changes it.
 field: vehicle | entity · player · nil | What it rides (a boat, a horse, ...); nil if nothing.
@@ -219,10 +219,10 @@ field: saturation | number · nil | Player's hidden food buffer, used up before 
 field: exhaustion | number · nil | Player's hidden hunger counter: at 4 it takes one saturation or food point and starts over. nil if no player.
 field: xp | number · nil | Player's XP points inside the current level (the green bar). nil if no player.
 field: xp_level | number · nil | Player's XP level (the green number). nil if no player.
-note: A gone entity (dead, removed, in an unloaded chunk) reads nil everywhere except uuid and alive (false); it comes back by itself when its chunk loads again. Fields are read from the game each time: keep the value (local p = e.pos) when you need it twice. A name an entity doesn't have at all (e.helth) is an error that lists the fields.
+note: A gone entity (dead, removed, in an unloaded chunk) reads nil everywhere except uuid and alive (false); it comes back by itself when its chunk loads again. Fields are read from the game each time: keep the value (local pos = entity.pos) when you need it twice. A name an entity doesn't have at all (entity.helth) is an error that lists the fields.
 example:
-  local e = entity("069a79f4-44e9-4726-a5be-fca90e38aaf5")
-  if e and e.alive then print(e.type, e.pos, e.health) end
+  local target = entity("069a79f4-44e9-4726-a5be-fca90e38aaf5")
+  if target and target.alive then print(target.type, target.pos, target.health) end
 expert: Thread | main thread, like every script
 expert: Cost | entity( ): 1–10 µs; a field: 1–5 µs, a Java call each read (guess, not measured)
 expert: Under the hood | nms/Entities.java: the slot keeps the vanilla entity and its UUID; once that entity is removed (unloaded, changed world) the UUID is looked up again in every world (vanilla's LevelEntityGetter), never loading a chunk
@@ -262,10 +262,14 @@ end
 name: modify_entity{ }
 kind: doing
 group: Entities
-words: set change modify adjust name nametag glow outline silent sound gravity float invulnerable god despawn persistent invisible hidden collide push fire burn freeze fall air drown ai brain aware target attack pickup angry left hand food hunger saturation exhaustion xp experience level
-syntax: modify_entity{ entity = entity | player, glowing = boolean, fire_time = number, ai = boolean, food = number, ... }
-lead: Changes an entity or an online player. Give the entity and one or more of the fields below: the same names as the fields you read (entity.glowing, entity.ai, entity.food). Every value, and whether the entity has that field at all, is checked before anything changes. Teleporting, motion and health have their own actions: teleport{ }, velocity{ } and set_health{ }.
+words: set change modify adjust health heal hearts kill max absorption yellow golden velocity motion push launch throw knockback name nametag glow outline silent sound gravity float invulnerable god despawn persistent invisible hidden collide push fire burn freeze fall air drown ai brain aware target attack pickup angry left hand food hunger saturation exhaustion xp experience level
+syntax: modify_entity{ entity = entity | player, health = number, velocity = vec3, glowing = boolean, ai = boolean, food = number, ... }
+lead: Changes an entity or an online player. Give the entity and one or more of the fields below: the same names as the fields you read (entity.health, entity.velocity, entity.ai). Every value, and whether the entity has that field at all, is checked before anything changes. Teleporting has its own action: teleport{ }.
 arg: entity | entity · player | What to change.
+arg: max_health? | number | Entities with health only. Its highest health (the max_health attribute; vanilla allows 1 to 1024). Health above it drops to it. Changes before health, so both can be given at once.
+arg: health? | number | Entities with health only. Its health, kept between 0 and max_health as vanilla does; 0 kills it. It is no hit: no armor, no knockback, no red flash (hurt{ } will do that). To add some: health = entity.health + 4.
+arg: absorption? | number | Entities with health only. Yellow extra hearts in health points (4 is two hearts), 0 or more; 0 removes them. They stay until hits use them up, as with a golden apple.
+arg: velocity? | vec3 | Its motion in blocks per tick (1 block per tick is 20 blocks per second); it replaces the motion it had, then air and gravity slow it as usual.
 arg: custom_name? | text · component · false | The name above it: text is shown as it is, a component (component("<red>Boss")) can have colors; false removes it. A player's own name doesn't change (only what some plugins show).
 arg: custom_name_visible? | boolean | true: the name shows always, not only up close.
 arg: glowing? | boolean | The white outline seen through walls (its color follows the scoreboard team).
@@ -293,6 +297,10 @@ arg: xp? | number | Players only. XP points inside the current level, as /xp set
 arg: xp_level? | number | Players only. The XP level, as /xp set ... levels.
 returns: boolean (false if the entity is gone)
 example:
+  -- throw entity up and towards player
+  modify_entity{ entity = entity, velocity = (player.pos - entity.pos):normalize() * 0.5 + vec3(0, 0.5, 0) }
+  -- a boss with 100 hearts, all full
+  modify_entity{ entity = boss, max_health = 200, health = 200 }
   -- freeze a mob in place and put out the fire
   modify_entity{ entity = mob, ai = false, fire_time = 0 }
   -- a glowing boss that never despawns
@@ -301,8 +309,8 @@ example:
   modify_entity{ entity = player, food = 20, saturation = 5 }
 expert: Thread | main thread, like every script
 expert: Cost | 5–30 µs (guess, not measured)
-expert: Under the hood | one Lua → Java call; each field is vanilla's own setter (setCustomName, setGlowingTag, setNoGravity, setPermanentlyInvulnerable, setInvisible, setRemainingFireTicks, setTicksFrozen, setNoAi, Mob.setTarget, NeutralMob.startPersistentAngerTimer / stopBeingAngry, FoodData, setExperiencePoints, setExperienceLevels, ...); the client gets the change the way vanilla sends it
-expert: Can fail | an unknown field (the error lists the ones it takes), nothing to change, a value of the wrong kind, a field the entity doesn't have (ai on a player, food on a zombie: the error says who has it), a target that is gone or not living
+expert: Under the hood | one Lua → Java call; health: vanilla setHealth; max_health: the attribute's base value; absorption: vanilla keeps it under the max_absorption attribute (0 unless an effect raises it), so Lullaby raises that attribute's base just enough first; velocity: vanilla setDeltaMovement plus the flag knockback sets (markHurt), so every client gets it, the pushed player's own too; the other fields are vanilla's own setters (setCustomName, setGlowingTag, setNoGravity, setPermanentlyInvulnerable, setInvisible, setRemainingFireTicks, setTicksFrozen, setNoAi, Mob.setTarget, NeutralMob.startPersistentAngerTimer / stopBeingAngry, FoodData, setExperiencePoints, setExperienceLevels, ...); the client gets the change the way vanilla sends it
+expert: Can fail | an unknown field (the error lists the ones it takes), nothing to change, a value of the wrong kind, absorption below 0, a field the entity doesn't have (ai on a player, food on a zombie, health on an item: the error says who has it), a target that is gone or not living
 expert: Reload | changes stay
 expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
@@ -353,60 +361,6 @@ function lib.teleport(a)
 	return J.entity_teleport(I.wire(t))
 end
 
---[[doc
-name: velocity{ }
-kind: doing
-group: Entities
-words: motion move push launch throw knockback speed fly jump
-syntax: velocity{ entity = entity | player, velocity = vec3 }
-lead: Sets the motion of an entity or an online player: it then flies that way, slowed by air and gravity as usual. It replaces the motion it had.
-arg: entity | entity · player | What to move.
-arg: velocity | vec3 | The new motion in blocks per tick (1 block per tick is 20 blocks per second).
-returns: boolean (false if the entity is gone)
-example:
-  -- throw entity up and towards player
-  velocity{ entity = entity, velocity = (player.pos - entity.pos):normalize() * 0.5 + vec3(0, 0.5, 0) }
-expert: Thread | main thread, like every script
-expert: Cost | 5–30 µs (guess, not measured)
-expert: Under the hood | one Lua → Java call; vanilla setDeltaMovement plus the flag knockback sets (markHurt), so every client gets it, the pushed player's own too
-expert: Can fail | an unknown field, velocity missing or not a vec3
-expert: Reload | changes stay
-expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
-status: unconfirmed
-]]
-function lib.velocity(a)
-	return J.entity_velocity(I.wire(entity_action("velocity", a, "velocity{ entity = player, velocity = vec3(0, 1, 0) }")))
-end
-
---[[doc
-name: set_health{ }
-kind: doing
-group: Entities
-words: health heal hurt hearts kill max absorption yellow golden life
-syntax: set_health{ entity = entity | player, health = number | add = number | full = true, max_health = number, absorption = number }
-lead: Changes the health of an entity or an online player. Give one of health, add or full, and/or max_health and absorption. It is no hit: no armor, no knockback, no red flash, no death message from a hit (hurt{ } will do that later). max_health changes first, then the health, then absorption.
-arg: entity | entity · player | Whose health. Only entities with health (no items, arrows, minecarts, ...).
-arg: health? | number | The new health, kept between 0 and max_health as vanilla does; 0 kills it.
-arg: add? | number | Health to add; below 0 takes some away. Kept between 0 and max_health too.
-arg: full? | boolean | true: back to max_health.
-arg: max_health? | number | The new highest health (the max_health attribute, vanilla allows 1 to 1024). Health above it drops to it.
-arg: absorption? | number | Yellow extra hearts in health points (4 is two hearts), 0 or more; 0 removes them. They stay until hits use them up, as with a golden apple.
-returns: boolean (false if the entity is gone)
-example:
-  set_health{ entity = player, full = true, absorption = 8 }
-  set_health{ entity = boss, max_health = 200, full = true }
-expert: Thread | main thread, like every script
-expert: Cost | 5–30 µs (guess, not measured)
-expert: Under the hood | one Lua → Java call; vanilla setHealth, the max_health attribute's base value; absorption: vanilla keeps it under the max_absorption attribute (0 unless an effect raises it), so Lullaby raises that attribute's base just enough first, then calls setAbsorptionAmount
-expert: Can fail | an unknown field, nothing to change, more than one of health, add and full, a value of the wrong kind, absorption below 0, an entity without health
-expert: Reload | changes stay
-expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
-status: unconfirmed
-]]
-function lib.set_health(a)
-	return J.entity_set_health(I.wire(entity_action("set_health", a, "set_health{ entity = player, health = 20 }")))
-end
-
 -- ---------------------------------------------------------------------------------------------------------------
 -- Materials and worlds (vanilla ids; "stone" means "minecraft:stone")
 -- ---------------------------------------------------------------------------------------------------------------
@@ -450,11 +404,11 @@ kind: reading
 group: Worlds
 words: dimension level overworld nether end save saved data store persist
 syntax: world( "overworld" ) → world | nil
-lead: A loaded world by its id: "overworld" means "minecraft:overworld". nil if there is none. Each world exists once, so == works. tostring(w) gives its id.
+lead: A loaded world by its id: "overworld" means "minecraft:overworld". nil if there is none. Each world exists once, so == works. tostring(world) gives its id.
 arg: id | text · world | The world's id (a world is returned as is).
 returns: world · nil
-field: data | table | Saved data of this world, a table that stays like server.data (it takes the same values, see server). It is saved when this world saves (autosave, /save-all, server stop) and before /lullaby reload, into the world's own folder, so it travels with the world: copy_world{ } copies it, delete_world{ } deletes it. Only while the world is loaded. w.data = { } starts over.
-note: w.data lives in the world's folder as data/lullaby.snbt (world/dimensions/minecraft/<name>/data/lullaby.snbt), readable SNBT you may edit: as with server.data, a change by hand wins and loads at the next /lullaby reload. When the world unloads (unload_world{ }, delete_world{ }, another plugin), its table is emptied and locked: using it is a red error, load the world and read w.data again. unload_world{ save = false } doesn't save it, like the world itself. /lullaby data world <world> [path] shows it.
+field: data | table | Saved data of this world, a table that stays like server.data (it takes the same values, see server). It is saved when this world saves (autosave, /save-all, server stop) and before /lullaby reload, into the world's own folder, so it travels with the world: copy_world{ } copies it, delete_world{ } deletes it. Only while the world is loaded. world.data = { } starts over.
+note: world.data lives in the world's folder as data/lullaby.snbt (world/dimensions/minecraft/<name>/data/lullaby.snbt), readable SNBT you may edit: as with server.data, a change by hand wins and loads at the next /lullaby reload. When the world unloads (unload_world{ }, delete_world{ }, another plugin), its table is emptied and locked: using it is a red error, load the world and read world.data again. unload_world{ save = false } doesn't save it, like the world itself. /lullaby data world <world> [path] shows it.
 example:
   local arena = world("arena")
   arena.data.rounds = (arena.data.rounds or 0) + 1
@@ -472,12 +426,12 @@ name: block
 kind: type
 group: Blocks
 words: place position block object
-syntax: b.state   b.pos   b.world
-lead: A place in a world: a world plus a block position. Each block exists once, so == works. Fields: b.state (the block_state there, nil if the chunk is not loaded), b.pos (block_pos), b.world (world). location:block() gives one.
-expert: Java object | none kept: the world id and x, y, z live in Lua; b.state asks Java each time
-expert: Stays valid | always (it is a place); b.state is nil while the chunk isn't loaded
+syntax: block.state   block.pos   block.world
+lead: A place in a world: a world plus a block position. Each block exists once, so == works. Fields: block.state (the block_state there, nil if the chunk is not loaded), block.pos (block_pos), block.world (world). location:block() gives one.
+expert: Java object | none kept: the world id and x, y, z live in Lua; block.state asks Java each time
+expert: Stays valid | always (it is a place); block.state is nil while the chunk isn't loaded
 expert: Compare | == works: one object per place
-expert: Cost | b.state 1–5 µs (a Java call, never cached), b.pos and b.world 0.1–1 µs (guess, not measured)
+expert: Cost | block.state 1–5 µs (a Java call, never cached), block.pos and block.world 0.1–1 µs (guess, not measured)
 status: unconfirmed
 ]]
 I.world_by_id, lib.world, world_id_of = id_objects("world", J.world_id, J.world_slot)
@@ -557,7 +511,7 @@ group: Blocks
 words: block properties stairs
 syntax: block_state( "oak_stairs[facing=north]" | { id = text, ... } | { id = text, properties = { } } )
 lead: A block state from vanilla's text, from id plus properties, or from vanilla's codec shape. Missing properties take their default.
-arg: x | text · table · block_state | The state.
+arg: state | text · table · block_state | The state.
 returns: block_state
 expert: Thread | main thread, like every script
 expert: Cost | from text 5–50 µs, the same state again reuses its object; a property: first time 3–20 µs, then 50–200 ns (guess, not measured)
@@ -722,18 +676,18 @@ field: world | world | Its world.
 field: pos | chunk_pos | Its position, in chunks.
 field: loaded | boolean | Whether it is loaded right now.
 field: entities | list of entity · nil | Every entity whose position is in this chunk, players too, as a new list each read; nil while the chunk isn't loaded.
-field: data | table | Saved data of this chunk, a table that stays like server.data (it takes the same values, see server). It is saved inside the chunk itself, so it travels with the chunk: a chunk that is reset or regenerated loses it. Reading it needs the chunk loaded (else a red error: check c.loaded). Keep data of single blocks here too, under a key of your own, like c.data[x .. "," .. y .. "," .. z]. One text (a value or a key) can be at most 65535 bytes here, the most a chunk holds; a longer one is left out with a red error. c.data = { } starts over.
-note: A table you keep (local d = c.data) stays the chunk's real data, also after the chunk unloads: changes are still saved (at the next autosave Lullaby loads the chunk in the background to write them) and c.data gives the same table when the chunk is back. So every chunk's data read since the last /lullaby reload stays in memory and is checked for changes when its world saves. Only if something else changed the chunk's saved data meanwhile (a world editing tool) the chunk's version wins: the old table is then emptied and locked, and using it is a red error. The same happens when the chunk's world unloads. /lullaby data chunk [path] shows the data of the chunk you stand in.
+field: data | table | Saved data of this chunk, a table that stays like server.data (it takes the same values, see server). It is saved inside the chunk itself, so it travels with the chunk: a chunk that is reset or regenerated loses it. Reading it needs the chunk loaded (else a red error: check chunk.loaded). Keep data of single blocks here too, under a key of your own, like chunk.data[x .. "," .. y .. "," .. z]. One text (a value or a key) can be at most 65535 bytes here, the most a chunk holds; a longer one is left out with a red error. chunk.data = { } starts over.
+note: A table you keep (local data = chunk.data) stays the chunk's real data, also after the chunk unloads: changes are still saved (at the next autosave Lullaby loads the chunk in the background to write them) and chunk.data gives the same table when the chunk is back. So every chunk's data read since the last /lullaby reload stays in memory and is checked for changes when its world saves. Only if something else changed the chunk's saved data meanwhile (a world editing tool) the chunk's version wins: the old table is then emptied and locked, and using it is a red error. The same happens when the chunk's world unloads. /lullaby data chunk [path] shows the data of the chunk you stand in.
 example:
   -- a simple claim
-  local c = p.location:chunk()
-  if c.data.owner == nil then c.data.owner = p end
+  local chunk = player.location:chunk()
+  if chunk.data.owner == nil then chunk.data.owner = player end
 expert: Thread | main thread, like every script
-expert: Cost | chunk( ): 0.5–2 µs, no Java; c.loaded 1–3 µs; c.entities 5 µs plus 1–3 µs per entity; c.data: the first read in a chunk 10–100 µs (it reads the chunk's saved data), then as any Lua table (guess, not measured)
+expert: Cost | chunk( ): 0.5–2 µs, no Java; chunk.loaded 1–3 µs; chunk.entities 5 µs plus 1–3 µs per entity; chunk.data: the first read in a chunk 10–100 µs (it reads the chunk's saved data), then as any Lua table (guess, not measured)
 expert: Under the hood | world + chunk_pos in Lua; loaded: vanilla getChunkNow (never loads); entities: vanilla's entity lookup over the chunk's box, then kept if their chunk position matches; data: one entry "lullaby:data" in the chunk's plugin data (ChunkBukkitValues in the region file), written when the chunk unloads and when its world saves, only when it changed (nms/ChunkData.java)
-expert: Can fail | world not a world, pos not a chunk_pos; c.data while the chunk isn't loaded
-expert: Reload | chunk objects are made new after reload; c.data is written into the chunks before and read again after
-expert: Time limit | not checked by chunk( ) (plain Lua); checked by c.loaded, c.entities and the first c.data in a chunk (they call into the game)
+expert: Can fail | world not a world, pos not a chunk_pos; chunk.data while the chunk isn't loaded
+expert: Reload | chunk objects are made new after reload; chunk.data is written into the chunks before and read again after
+expert: Time limit | not checked by chunk( ) (plain Lua); checked by chunk.loaded, chunk.entities and the first chunk.data in a chunk (they call into the game)
 status: unconfirmed
 ]]
 function lib.chunk(world, pos)
@@ -757,8 +711,8 @@ name: damage
 kind: type
 group: Entities
 words: hurt attack cause source killer
-syntax: d.type   d.direct   d.causing   d.pos
-lead: What hurt an entity (vanilla's damage source), from events: e.damage_source in EntityDamageEvent, EntityDeathEvent, ... A value: your own copy, it can't be changed.
+syntax: damage.type   damage.direct   damage.causing   damage.pos
+lead: What hurt an entity (vanilla's damage source), from events: event.damage_source in EntityDamageEvent, EntityDeathEvent, ... A value: your own copy, it can't be changed.
 field: type | text | The damage type's id: "minecraft:player_attack", "minecraft:fall", "minecraft:arrow", ...
 field: direct | entity · player · nil | What hit: the arrow, the zombie; nil if nothing did (falling, fire, ...).
 field: causing | entity · player · nil | Who is behind it: the player who shot the arrow; nil if no one.
@@ -783,15 +737,15 @@ name: block_snapshot
 kind: type
 group: Blocks
 words: snapshot blockstate new state grow form spread tree structure
-syntax: s.block   s.state   s.state = block_state
-lead: A block and the state it has, would get or had, from events: e.new_state in BlockFormEvent, BlockGrowEvent, ..., e.blocks in StructureGrowEvent (a list of them). Changing s.state inside on{ } changes what the event places, where the event's page says the field can be changed; anywhere else a change is a red error when the handler ends (never silently lost).
+syntax: snapshot.block   snapshot.state   snapshot.state = block_state
+lead: A block and the state it has, would get or had, from events: event.new_state in BlockFormEvent, BlockGrowEvent, ..., event.blocks in StructureGrowEvent (a list of them). Changing snapshot.state inside on{ } changes what the event places, where the event's page says the field can be changed; anywhere else a change is a red error when the handler ends (never silently lost).
 field: block | block | Where.
 field: state | block_state | The state. The only field that can be changed.
 example:
   -- trees grow birch logs instead of oak logs
-  on{ "StructureGrowEvent", function(e)
-    for _, s in ipairs(e.blocks) do
-      if s.state.type == "minecraft:oak_log" then s.state = block_state("birch_log") end
+  on{ "StructureGrowEvent", function(event)
+    for _, snapshot in ipairs(event.blocks) do
+      if snapshot.state.type == "minecraft:oak_log" then snapshot.state = block_state("birch_log") end
     end
   end }
 expert: Java object | none kept: a Lua value (block and block_state); in an event, the change is written back into Paper's BlockState when the handler ends or first waits
@@ -824,8 +778,8 @@ name: profile
 kind: type
 group: Players
 words: game profile skin textures head
-syntax: p.name   p.uuid   p.textures
-lead: A player's profile as the server knows it (name, UUID, skin), from events: e.player_profile in PlayerServerFullCheckEvent, ProfileWhitelistVerifyEvent, ... A value: your own copy, it can't be changed.
+syntax: profile.name   profile.uuid   profile.textures
+lead: A player's profile as the server knows it (name, UUID, skin), from events: event.player_profile in PlayerServerFullCheckEvent, ProfileWhitelistVerifyEvent, ... A value: your own copy, it can't be changed.
 field: name | text · nil | The name; nil if the profile has none.
 field: uuid | text · nil | The UUID, lowercase with dashes; nil if the profile has none.
 field: textures | text · nil | The skin: the "textures" property's value (base64 text, as Mojang sends it); nil if none.
@@ -838,6 +792,66 @@ status: unconfirmed
 ]]
 function I.new_profile(name, uuid, textures, signature)
 	return setmetatable({ name, uuid, textures, signature }, PROFILE)
+end
+
+local EFFECT = I.value_type("effect", { "id", "amplifier", "duration", "ambient", "show_particles", "show_icon" }, {})
+-- FORMAT: an effect as text
+EFFECT.__tostring = function(e) return "effect " .. e[1] .. " " .. e[2] end
+
+--[[doc
+id: effect
+name: effect
+kind: type
+group: Entities
+words: potion status buff debuff mob effect speed poison amplifier level
+syntax: effect.id   effect.amplifier   effect.duration   effect.ambient   effect.show_particles   effect.show_icon
+lead: A status effect as an entity has it (vanilla's mob effect: speed, poison, ...), from events: event.old_effect and event.new_effect in EntityPotionEffectEvent, event.effect in BeaconEffectEvent. A value: your own copy, it can't be changed.
+field: id | text | The effect's id: "minecraft:speed", "minecraft:poison", ...
+field: amplifier | number | The level minus 1, as in /effect: 0 is Speed I, 1 is Speed II.
+field: duration | number | Seconds left (ticks / 20, so it can be 2.5); math.huge for an infinite effect.
+field: ambient | boolean | Whether it comes from a beacon or conduit (fainter particles).
+field: show_particles | boolean | Whether it shows particles.
+field: show_icon | boolean | Whether it shows its icon in the top right.
+example:
+  on{ "EntityPotionEffectEvent", function(event)
+    if event.new_effect and event.new_effect.id == "minecraft:poison" then event.cancelled = true end
+  end }
+expert: Java object | none kept: a plain Lua value
+expert: Stays valid | always (a copy)
+expert: Compare | == compares all six fields
+expert: Cost | made when the event field is read: 2–10 µs (guess, not measured)
+status: unconfirmed
+]]
+function I.new_effect(id, amplifier, ticks, ambient, particles, icon)
+	return setmetatable({ id, amplifier, ticks < 0 and math.huge or ticks / 20, ambient, particles, icon }, EFFECT)
+end
+
+local PLAYED_SOUND = I.value_type("played_sound", { "sound", "source", "volume", "pitch", "seed" }, {})
+-- FORMAT: a played_sound as text
+PLAYED_SOUND.__tostring = function(s) return "played_sound " .. s[1] end
+
+--[[doc
+id: played_sound
+name: played_sound
+kind: type
+group: Effects
+words: sound audio noise volume pitch source
+syntax: s.sound   s.source   s.volume   s.pitch   s.seed
+lead: A sound the game is about to play, with how it plays, from events: event.locked_sound in BlockLockCheckEvent. The fields have the names sound{ } takes, so sound{ player = p, pos = p.pos, sound = s.sound, source = s.source, volume = s.volume, pitch = s.pitch } plays the same. A value: your own copy, it can't be changed.
+field: sound | text | The sound's id: "minecraft:block.chest.locked".
+field: source | text | Which volume slider plays it, vanilla's name as in /playsound: "master", "block", "player", "ambient", ...
+field: volume | number | 1 is normal.
+field: pitch | number | 1 is normal.
+field: seed | number · nil | Which file of the sound plays; nil: a random one.
+expert: Java object | none kept: a plain Lua value (Adventure's Sound)
+expert: Stays valid | always (a copy)
+expert: Compare | == compares all five fields
+expert: Cost | made when the event field is read: 2–10 µs (guess, not measured)
+expert: Can fail | a seed above 2^53 loses its last digits (Lua numbers); vanilla's own seeds come from sound_seed( ) and are exact
+status: unconfirmed
+]]
+function I.new_played_sound(sound, source, volume, pitch, seed)
+	return setmetatable({ sound, source, volume, pitch, seed }, PLAYED_SOUND)
 end
 
 -- ---------------------------------------------------------------------------------------------------------------
@@ -1019,7 +1033,7 @@ returns: number
 note: The player's game picks the file from its own sounds.json. A resource pack that changes the sound's file list can make the player hear another file; the server can't see that. Lullaby reads Minecraft's own sounds.json for the version it is built for and works the seed out the way the game does, so a Minecraft update can't make a seed silently wrong. The seed is found once per sound and then kept.
 example:
   local seed = sound_seed("ambient.basalt_deltas.additions", "ambient/nether/basalt_deltas/basaltground1")
-  sound{ player = p, sound = "ambient.basalt_deltas.additions", source = "ambient", entity = p, seed = seed }
+  sound{ player = player, sound = "ambient.basalt_deltas.additions", source = "ambient", entity = player, seed = seed }
 expert: Thread | main thread, like every script
 expert: Cost | first time per sound 10–500 µs (it searches the seed), then 1–5 µs (guess, not measured)
 expert: Under the hood | one Lua → Java call; SoundSeeds.java runs the game's own file pick over vanilla's sounds.json
@@ -1077,6 +1091,9 @@ function I.from_java(kind, a, b, c, d, f, g, h, i)
 	if kind == "aabb" then return I.new_aabb(I.new_vec3(a, b, c), I.new_vec3(d, f, g)) end
 	if kind == "block_snapshot" then return I.new_block_snapshot(I.block_at(a, b, c, d), I.block_state_by_id(f)) end
 	if kind == "profile" then return I.new_profile(a, b, c, d) end
+	if kind == "effect" then return I.new_effect(a, b, c, d, f, g) end
+	if kind == "played_sound" then return I.new_played_sound(a, b, c, d, f) end
+	if kind == "server" then return lib.server end -- a command sent by the console or rcon
 	if kind == "damage" then
 		return I.new_damage(a, nested_entity(b, c), nested_entity(d, f), g and I.new_vec3(g, h, i) or nil)
 	end

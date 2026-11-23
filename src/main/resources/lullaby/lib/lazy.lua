@@ -256,7 +256,7 @@ group: Items
 words: item give stack
 syntax: item_stack( "diamond_sword[damage=5]" | table | item_stack )
 lead: An item stack from vanilla's item text, a table, or a copy of another item stack.
-arg: x | text · table · item_stack | The item.
+arg: item | text · table · item_stack | The item.
 returns: item_stack
 expert: Thread | main thread, like every script
 expert: Cost | 10–100 µs to make one; it.id 1–5 µs; it.components first touch 10–100 µs (guess, not measured)
@@ -332,7 +332,7 @@ group: Text
 words: minimessage text format color
 syntax: component( "<red>Hi" | table | component )
 lead: Text as a component. Text is read as MiniMessage (the only place that does); a table or component is a checked fresh copy.
-arg: x | text · table · component | The text.
+arg: text | text · table · component | The text.
 returns: component
 expert: Thread | main thread, like every script
 expert: Cost | MiniMessage text 10–200 µs, a table 10–100 µs (guess, not measured)

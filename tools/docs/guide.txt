@@ -67,18 +67,18 @@ text:
   Make `scripts/hello.lua`:
   ```
   -- /hello greets whoever types it
-  command{ "hello", function(c)
-    message{ player = c.player, text = "Hello, " .. c.player.name .. "!" }
+  command{ "hello", function(context)
+    message{ player = context.player, text = "Hello, " .. context.player.name .. "!" }
   end }
   ```
   Type `/lullaby reload` (green: loaded; red: an error), then `/hello`.
-  - `command{ "hello", function(c) ... end }` adds /hello; the function runs each time someone types it. `c.player` is who typed it.
+  - `command{ "hello", function(context) ... end }` adds /hello; the function runs each time someone types it. `context.player` is who typed it.
   - `message{ player = ..., text = ... }` sends a chat message.
   The file's top level runs once while loading; functions inside run later, when something happens. Every symbol here (`--`, `..`, `function`, `end`) is explained on the next page.
 
   ## Reading the docs
-  - `{ }` **does** something (copper): `message{ player = p, text = "Hi" }`, fields by name.
-  - `( )`, `.` and `:` only **read** (teal): `player("Notch")`, `p.name`.
+  - `{ }` **does** something (copper): `message{ player = player, text = "Hi" }`, fields by name.
+  - `( )`, `.` and `:` only **read** (teal): `player("Notch")`, `player.name`.
   - Gold is a type, violet an event, pale blue a field name, bold is Lua itself. Every colored name is a link.
   - On a page: **Arguments** is what you give, **Fields** what you can read, **For experts** can be skipped.
 status: unconfirmed
@@ -111,16 +111,16 @@ text:
   ```
   local coins = 10            -- make a variable and set it
   coins = coins + 5           -- change it (no "local" again)
-  local a, b = 1, 2           -- several at once
-  a, b = b, a                 -- swap
-  local c                     -- made, still nil
+  local first, second = 1, 2 -- several at once
+  first, second = second, first -- swap
+  local nothing                     -- made, still nil
   ```
   Always write `local` the first time: the variable then belongs to the block it is in (file, function, if, loop). Without `local` it is a global of this file.
 
   ## Operators
-  - Math: `+ - * /`, `%` remainder (`7 % 2` is 1), `^` power, `-x` minus. `7 / 2` is `3.5`; whole division is `math.floor(7 / 2)`.
-  - Compare: `==` equal, `~=` not equal, `< > <= >=`. **One `=` stores, two compare**: `if x = 5` is an error.
-  - Logic: `and`, `or`, `not`. Only `nil` and `false` count as false; `0` and `""` are true. `x or 5` gives x, or 5 when x is nil: a default. `a and b or c`: b if a, else c.
+  - Math: `+ - * /`, `%` remainder (`7 % 2` is 1), `^` power, `-value` minus. `7 / 2` is `3.5`; whole division is `math.floor(7 / 2)`.
+  - Compare: `==` equal, `~=` not equal, `< > <= >=`. **One `=` stores, two compare**: `if value = 5` is an error.
+  - Logic: `and`, `or`, `not`. Only `nil` and `false` count as false; `0` and `""` are true. `value or 5` gives value, or 5 when value is nil: a default. `check and yes or no`: yes if check, else no.
   - Text: `..` joins (`"a" .. 1` is `"a1"`), `#` is the length of a text or list.
   - Order: `^`, then `not # -`, then `* / %`, then `+ -`, then `..`, then compares, then `and`, then `or`. Use `( )` when unsure.
 
@@ -132,19 +132,19 @@ text:
   local spawn = { x = 0, y = 64 }    -- named fields
   spawn.z = 0                        -- same as spawn["z"] = 0
   spawn.x = nil                      -- remove a field
-  local mixed = { "a", n = 2, [10] = "ten", ["with space"] = true }
+  local mixed = { "a", count = 2, [10] = "ten", ["with space"] = true }
   local kills = {}
-  kills[p] = (kills[p] or 0) + 1     -- anything but nil can be a key, even a player
+  kills[player] = (kills[player] or 0) + 1     -- anything but nil can be a key, even a player
   print(spawn.pos.x)                 -- tables in tables: one dot per step
   ```
   Two variables can hold the same table: changing it through one changes it for both.
-  `v:offset(1, 0, 0)` with `:` calls a method on a value; it is short for `v.offset(v, 1, 0, 0)`.
+  `value:offset(1, 0, 0)` with `:` calls a method on a value; it is short for `value.offset(value, 1, 0, 0)`.
 
   ## if
   ```
-  if hp >= 15 then
+  if health >= 15 then
     print("healthy")
-  elseif hp >= 5 then                -- optional, as many as you like
+  elseif health >= 5 then             -- optional, as many as you like
     print("hurt")
   else                               -- optional
     print("help!")
@@ -153,14 +153,14 @@ text:
 
   ## Loops
   ```
-  for i = 1, 10 do print(i) end              -- 10 times, i counts 1 to 10
-  for i = 10, 1, -1 do print(i) end          -- count down (third number: the step)
-  for i, p in ipairs(online_players()) do    -- each item of a list, in order
-    print(i, p.name)
+  for count = 1, 10 do print(count) end      -- 10 times, count goes 1 to 10
+  for count = 10, 1, -1 do print(count) end         -- count down (third number: the step)
+  for index, player in ipairs(online_players()) do   -- each item of a list, in order
+    print(index, player.name)
   end
   for key, value in pairs(spawn) do end      -- each field of a table, any order
-  while x < 10 do x = x + 1 end              -- as long as true; checks before each round
-  repeat x = x - 1 until x <= 0              -- until true; checks after: runs at least once
+  while count < 10 do count = count + 1 end        -- as long as true; checks before each round
+  repeat count = count - 1 until count <= 0        -- until true; checks after: runs at least once
   ```
   - Forever is `while true do ... wait(1) ... end`: always wait inside, or the script is stopped.
   - `break` leaves the loop. `_` is a normal name, used for a value you don't need.
@@ -168,65 +168,65 @@ text:
 
   ## Functions
   ```
-  local function add(a, b)           -- define
-    return a + b                     -- give a value back and leave
+  local function add(first, second)         -- define
+    return first + second                 -- give a value back and leave
   end
   local sum = add(2, 3)              -- use: 5
   local function two() return 1, 2 end
-  local x, y = two()                 -- several results at once
+  local one, other = two()              -- several results at once
   local function all(...)            -- ... takes any number of values
     return select("#", ...), { ... } -- how many, and all of them as a list
   end
-  local shout = function(t) return t:upper() end   -- a function without a name
+  local shout = function(text) return text:upper() end   -- a function without a name
   local util = {}
-  function util.greet(p) end         -- stored in a table
+  function util.greet(player) end         -- stored in a table
   function util:hello() end          -- with ":" it gets the table as self
   print "hi"                         -- one text or one table: no ( ) needed
   ```
   - Missing arguments are `nil`, extra ones are dropped.
-  - A function is a value: `on{ }`, `command{ }` and `run{ }` take one, usually written right there as `function(e) ... end`.
+  - A function is a value: `on{ }`, `command{ }` and `run{ }` take one, usually written right there as `function(event) ... end`.
   - A function inside another still sees that one's local variables later.
 
   ## Basic functions
-  - `print(a, b)`: writes to the server window. See [print( )](#print).
-  - `type(x)`: Lua's sort of x: "nil", "number", "string", "boolean", "table", "function", "userdata", "thread". For Lullaby values use [type_of( )](#type_of).
-  - `tostring(x)`, `tonumber("5")`: to text, to a number (`nil` when it isn't one; `tonumber("ff", 16)` reads other bases). See [tostring( )](#tostring).
-  - `pairs(t)`, `ipairs(t)`, `next(t, k)`: go through a table (`next(t) == nil`: the table is empty). See [pairs( )](#pairs).
-  - `select(n, ...)`: the values from the n-th on; `select("#", ...)` counts them.
-  - `unpack(list)`: the items of a list as separate values: `math.max(unpack(t))`.
-  - `assert(x, "text")`: stops with "text" when x is nil or false, else gives x back. The quick check.
-  - `error("text")`: stops with a red error. `pcall(f, ...)` and `xpcall(f, handler, ...)` run f and catch errors. See [pcall( )](#pcall).
+  - `print(first, second)`: writes to the server window. See [print( )](#print).
+  - `type(value)`: Lua's sort of value: "nil", "number", "string", "boolean", "table", "function", "userdata", "thread". For Lullaby values use [type_of( )](#type_of).
+  - `tostring(value)`, `tonumber("5")`: to text, to a number (`nil` when it isn't one; `tonumber("ff", 16)` reads other bases). See [tostring( )](#tostring).
+  - `pairs(list)`, `ipairs(list)`, `next(list, key)`: go through a table (`next(list) == nil`: the table is empty). See [pairs( )](#pairs).
+  - `select(number, ...)`: the values from that position on; `select("#", ...)` counts them.
+  - `unpack(list)`: the items of a list as separate values: `math.max(unpack(list))`.
+  - `assert(value, "text")`: stops with "text" when value is nil or false, else gives value back. The quick check.
+  - `error("text")`: stops with a red error. `pcall(func, ...)` and `xpcall(func, handler, ...)` run func and catch errors. See [pcall( )](#pcall).
   - `load(text)`, `loadstring(text)`: turn text into a function to call; `nil` and the error when it isn't valid Lua.
-  - `setmetatable(t, mt)`, `getmetatable(t)`: change how a table acts (own classes, operators); most scripts never need it.
-  - `rawget(t, k)`, `rawset(t, k, v)`, `rawequal(a, b)`: like `t[k]` and `==`, skipping the metatable.
+  - `setmetatable(list, metatable)`, `getmetatable(list)`: change how a table acts (own classes, operators); most scripts never need it.
+  - `rawget(list, key)`, `rawset(list, key, value)`, `rawequal(first, second)`: like `list[key]` and `==`, skipping the metatable.
   - `_VERSION`: the text "Lua 5.1".
 
   ## string: text
-  All can be written `s:name(...)` too. Positions count from 1, negative ones from the end.
-  - `s:len()` length · `s:upper()`, `s:lower()` · `s:rep(3, ", ")` repeat · `s:reverse()` backwards
-  - `s:sub(2, 4)`: letters 2 to 4; `s:sub(-3)` the last 3.
-  - `s:find("x")`: where x is (start, end), or nil. `s:find(".", 1, true)` searches plainly, without patterns.
-  - `s:match("%d+")`: the first piece that fits the pattern. `s:gmatch("%a+")`: every piece, for a `for` loop.
-  - `s:gsub("a", "b")`: replace every a with b; also gives the count.
+  All can be written `text:name(...)` too. Positions count from 1, negative ones from the end.
+  - `text:len()` length · `text:upper()`, `text:lower()` · `text:rep(3, ", ")` repeat · `text:reverse()` backwards
+  - `text:sub(2, 4)`: letters 2 to 4; `text:sub(-3)` the last 3.
+  - `text:find("x")`: where x is (start, end), or nil. `text:find(".", 1, true)` searches plainly, without patterns.
+  - `text:match("%d+")`: the first piece that fits the pattern. `text:gmatch("%a+")`: every piece, for a `for` loop.
+  - `text:gsub("a", "b")`: replace every a with b; also gives the count.
   - `string.format("%d coins, %.1f%%, %s", 5, 2.25, "x")`: fill in. `%d` whole number, `%.2f` decimal, `%s` text, `%5d` padded, `%%` a %.
-  - `s:byte(1)` letter to its code, `string.char(72, 105)` codes to text.
+  - `text:byte(1)` letter to its code, `string.char(72, 105)` codes to text.
   - Patterns (find, match, gmatch, gsub): `%d` digit, `%a` letter, `%s` space, `%w` letter or digit, `.` anything, `[abc]` one of these, `*` `+` `-` `?` repeats, `^` start, `$` end, `( )` keep, `%` before a sign takes it as itself.
-  - `string.dump(f)`: a function as bytecode text; `load` refuses it in Lullaby.
+  - `string.dump(func)`: a function as bytecode text; `load` refuses it in Lullaby.
 
   ## table: lists
-  - `table.insert(t, v)` add at the end · `table.insert(t, 1, v)` at the front
-  - `table.remove(t)` take the last · `table.remove(t, 1)` the first; gives it back
-  - `table.sort(t)` small to big · `table.sort(t, function(a, b) return a > b end)` your order
-  - `table.concat(t, ", ")`: a list of texts as one text.
-  - `table.move(a, 1, 3, 1, b)`: copy items 1 to 3 of a into b.
-  - `table.maxn(t)`: the biggest number key. `table.getn`, `table.foreach`, `table.foreachi`: old, use `#t` and `for`.
+  - `table.insert(list, value)` add at the end · `table.insert(list, 1, value)` at the front
+  - `table.remove(list)` take the last · `table.remove(list, 1)` the first; gives it back
+  - `table.sort(list)` small to big · `table.sort(list, function(first, second) return first > second end)` your order
+  - `table.concat(list, ", ")`: a list of texts as one text.
+  - `table.move(from, 1, 3, 1, to)`: copy items 1 to 3 of from into to.
+  - `table.maxn(list)`: the biggest number key. `table.getn`, `table.foreach`, `table.foreachi`: old, use `#list` and `for`.
 
   ## math
-  - `math.random()` 0 to 1 · `math.random(6)` 1 to 6 · `math.random(5, 10)` 5 to 10 · `math.randomseed(n)` fixed order
+  - `math.random()` 0 to 1 · `math.random(6)` 1 to 6 · `math.random(5, 10)` 5 to 10 · `math.randomseed(number)` fixed order
   - `math.floor` down, `math.ceil` up; round with `math.floor(x + 0.5)`
-  - `math.abs`, `math.min(...)`, `math.max(...)`, `math.sqrt`, `math.pow(a, b)`, `math.fmod(a, b)`, `math.modf(x)` (whole part and rest)
-  - `math.sin`, `math.cos`, `math.tan`, `math.asin`, `math.acos`, `math.atan`, `math.atan2(y, x)`, `math.sinh`, `math.cosh`, `math.tanh`: in radians; `math.rad(deg)`, `math.deg(rad)` convert.
-  - `math.exp`, `math.log(x)` (natural), `math.log10`, `math.frexp`, `math.ldexp`
+  - `math.abs`, `math.min(...)`, `math.max(...)`, `math.sqrt`, `math.pow(number, power)`, `math.fmod(number, divisor)`, `math.modf(number)` (whole part and rest)
+  - `math.sin`, `math.cos`, `math.tan`, `math.asin`, `math.acos`, `math.atan`, `math.atan2(y, x)`, `math.sinh`, `math.cosh`, `math.tanh`: in radians; `math.rad(degrees)`, `math.deg(radians)` convert.
+  - `math.exp`, `math.log(number)` (natural), `math.log10`, `math.frexp`, `math.ldexp`
   - `math.pi` 3.14159…, `math.huge` bigger than any number
 
   ## coroutine and bit
@@ -243,7 +243,7 @@ text:
 expert: LuaJIT | Lullaby runs LuaJIT, which speaks Lua 5.1 plus goto. Newer Lua (//, bit operators like &, utf8, <const>) doesn't exist; bit.band and friends do. Numbers are doubles, whole numbers exact up to 2^53. # counts bytes: "ä" has length 2. Lua patterns (find, match, gsub) are not regex: %d digit, %a letter, %s space, % escapes, no | and no {n}.
 expert: Isolation | every script file has its own globals and its own copy of string, table, math, coroutine and bit. getmetatable on a Lullaby value (player, vec3, ...) gives false, so no script can change how everyone's values behave. load and loadstring take Lua text only, never bytecode (broken bytecode can crash LuaJIT).
 expert: Unlock | unlock.debug also brings jit, collectgarbage, gcinfo, getfenv, setfenv and newproxy: they reach into the Lua state all scripts share. unlock.java opens the [Java door](#java). config.lua is read again on /lullaby reload.
-expert: Time limit | a loop running longer than script_time_limit (config) stops with a red error at its next call into the game (message{ }, p.name, ...); final still runs. A loop that never calls into the game (pure math) can't be stopped; after twice the limit the console names what is stuck. A loop that waits never hits the limit.
+expert: Time limit | a loop running longer than script_time_limit (config) stops with a red error at its next call into the game (message{ }, player.name, ...); final still runs. A loop that never calls into the game (pure math) can't be stopped; after twice the limit the console names what is stuck. A loop that waits never hits the limit.
 expert: Cost | arithmetic and one round of a compiled loop: about 1 ns (measured: 1,000,000,000 additions in 0.8–1.1 s). The time-limit check costs nothing per round. A new table or closure: guess 50–300 ns plus garbage collection (not measured). table.concat is the fast way to join many texts; .. in a loop is slow.
 status: unconfirmed
 ]]
@@ -256,10 +256,10 @@ group: Guide
 words: error errors mistake mistakes debug debugging problem help fix red message line nil attempt to index concatenate common
 lead: Every error names the file and the line. Go there, read the message, check the values on that line.
 text:
-  Not sure what a value is? `print(x)` writes it to the server window, `print(type_of(x))` says what sort it is. One file's error stops only that file.
-  - **attempt to index a nil value**: a dot on something empty, like `c.player.name` from the console. Check `if p then` first.
+  Not sure what a value is? `print(value)` writes it to the server window, `print(type_of(value))` says what sort it is. One file's error stops only that file.
+  - **attempt to index a nil value**: a dot on something empty, like `context.player.name` from the console. Check `if player then` first.
   - **attempt to concatenate a nil value**: `..` got nil.
-  - **{ } vs ( )**: `message(p, "Hi")` fails, `message{ player = p, text = "Hi" }` works.
+  - **{ } vs ( )**: `message(player, "Hi")` fails, `message{ player = player, text = "Hi" }` works.
   - **Event names**: `PlayerJoinEvent`, exactly so.
   - **No reload**: saving alone does nothing.
   - **Stopped after 5 seconds**: longer than `script_time_limit` (config). To run long, wait between rounds ([waiting](#guide_waiting)).
@@ -271,23 +271,23 @@ id: guide_events
 name: Events
 kind: guide
 group: Guide
-words: event events on after listener join break block cancel cancelled handler e fields happen
+words: event events on after listener join break block cancel cancelled handler event fields happen
 lead: Run code when something happens in the game, and change or stop it.
 text:
   ```
-  after{ "PlayerJoinEvent", function(e)
-    message{ player = e.player, text = "Welcome, " .. e.player.name }
+  after{ "PlayerJoinEvent", function(event)
+    message{ player = event.player, text = "Welcome, " .. event.player.name }
   end }
 
-  on{ "BlockBreakEvent", function(e)
-    if e.block.state == block_state("diamond_ore") then
-      e.cancelled = true                 -- the block stays
+  on{ "BlockBreakEvent", function(event)
+    if event.block.state == block_state("diamond_ore") then
+      event.cancelled = true                 -- the block stays
     end
   end }
   ```
   - **after{ }** runs once it happened; it can only look.
-  - **on{ }** runs before; it can change fields (`e.cancelled = true`, `e.exp_to_drop = 50`).
-  - `e` holds the event's fields. Each event's page (the **Events** group) lists them. A wrong field name is an error that lists the right ones.
+  - **on{ }** runs before; it can change fields (`event.cancelled = true`, `event.exp_to_drop = 50`).
+  - `event` holds the event's fields. Each event's page (the **Events** group) lists them. A wrong field name is an error that lists the right ones.
   - The dot before an event: gray untested, copper tested and changeable, teal tested read only, ring not usable yet.
 status: unconfirmed
 ]]
@@ -301,16 +301,16 @@ words: command commands arguments args permission branches sub subcommand player
 lead: Arguments, permissions and sub commands; Lullaby checks every value before your code runs.
 text:
   ```
-  command{ "dice", function(c)
-    local sides = c.args.sides or 6
-    message{ player = c.player, text = "You rolled " .. math.random(1, sides) }
+  command{ "dice", function(context)
+    local sides = context.args.sides or 6
+    message{ player = context.player, text = "You rolled " .. math.random(1, sides) }
   end, args = { { name = "sides", type = "integer", min = 2, max = 100, optional = true } },
   permission = "fun.dice" }
   ```
-  - Argument types: `word`, `text` (rest of the line, last only), `integer`, `number`, `bool`, `player`. Read them as `c.args.<name>`.
+  - Argument types: `word`, `text` (rest of the line, last only), `integer`, `number`, `bool`, `player`. Read them as `context.args.<name>`.
   - `optional = true` (only at the end), `suggest = { ... }` for tab completion.
-  - `branches = { buy = { function(c) ... end, args = { ... } } }` makes `/shop buy ...`.
-  - `c.player` is nil in the console.
+  - `branches = { buy = { function(context) ... end, args = { ... } } }` makes `/shop buy ...`.
+  - `context.player` is nil in the console.
   Everything else: [command{ }](#command).
 status: unconfirmed
 ]]
@@ -325,26 +325,26 @@ words: wait delay later seconds ticks task tasks run stop final schedule timer r
 lead: wait( ) pauses your code while the game goes on. Handlers and commands may wait; run{ } starts more.
 text:
   ```
-  local function countdown(p)
-    for i = 3, 1, -1 do
-      message{ player = p, text = tostring(i) }
+  local function countdown(player)
+    for count = 3, 1, -1 do
+      message{ player = player, text = tostring(count) }
       wait(1)                            -- 1 second; also "10t", "2s", "5m"
     end
   end
-  command{ "go", function(c) run{ countdown, args = { c.player }, id = c.player } end }
+  command{ "go", function(context) run{ countdown, args = { context.player }, id = context.player } end }
 
   run{ function()                        -- every 2 seconds, forever
     while true do
-      for _, p in ipairs(online_players()) do
-        particle{ player = p, particle = "heart", pos = p.pos + vec3(0, 2.2, 0) }
+      for _, player in ipairs(online_players()) do
+        particle{ player = player, particle = "heart", pos = player.pos + vec3(0, 2.2, 0) }
       end
       wait("2s")
     end
   end }
   ```
   - `id =` allows one running task per id: a simple cooldown.
-  - `final = function() ... end` runs whenever the task ends; `stop{ task = t }` ends one.
-  - After a wait, check `p.online`.
+  - `final = function() ... end` runs whenever the task ends; `stop{ task = task }` ends one.
+  - After a wait, check `player.online`.
   - Reload and restart run every file from the top again: variables reset and tasks end. Scripts can't save their own data yet.
 status: unconfirmed
 ]]
@@ -360,15 +360,15 @@ text:
   ```
   -- scripts/shared/util.lua
   local util = {}
-  function util.greet(p, word)
-    message{ player = p, text = word .. ", " .. p.name .. "!" }
+  function util.greet(player, word)
+    message{ player = player, text = word .. ", " .. player.name .. "!" }
   end
   return util
   ```
   ```
   -- scripts/welcome.lua
   local util = import("shared/util")
-  after{ "PlayerJoinEvent", function(e) util.greet(e.player, "Welcome") end }
+  after{ "PlayerJoinEvent", function(event) util.greet(event.player, "Welcome") end }
   ```
   The path starts at `scripts`, without `.lua`. More: [import( )](#import).
 status: unconfirmed
@@ -387,7 +387,7 @@ text:
   local running, score = false, {}
 
   local function tell_all(text)
-    for _, p in ipairs(online_players()) do message{ player = p, text = text } end
+    for _, player in ipairs(online_players()) do message{ player = player, text = text } end
   end
 
   local function round()
@@ -395,21 +395,21 @@ text:
     tell_all("Zombie hunt! 60 seconds, go!")
     wait("60s")
     local best, most = nil, 0
-    for p, n in pairs(score) do if n > most then best, most = p, n end end
+    for player, count in pairs(score) do if count > most then best, most = player, count end end
     tell_all(best and (best.name .. " wins with " .. most) or "Nobody got a zombie")
   end
 
-  command{ "hunt", function(c)
+  command{ "hunt", function(context)
     if not running then run{ round, final = function() running = false end } end
   end, permission = "hunt.start" }
 
-  after{ "EntityDeathEvent", function(e)
-    if not running or e.entity_type ~= "zombie" then return end
-    local killer = e.damage_source.causing
+  after{ "EntityDeathEvent", function(event)
+    if not running or event.entity_type ~= "zombie" then return end
+    local killer = event.damage_source.causing
     if killer and type_of(killer) == "player" then score[killer] = (score[killer] or 0) + 1 end
   end }
   ```
-  `final` resets `running` even after an error or reload. Not counting? `print(e.entity_type)` shows the real name.
+  `final` resets `running` even after an error or reload. Not counting? `print(event.entity_type)` shows the real name.
   Try: skeletons for two points, `/hunt score`, a sound for the winner.
 status: unconfirmed
 ]]
@@ -426,17 +426,17 @@ text:
   ```
   -- scripts/arena.lua
   local function new_round()
-    for _, w in ipairs(worlds()) do                -- the old round's arena, also after a restart
-      if w.id == "minecraft:arena" then delete_world{ id = "arena" } end
+    for _, world in ipairs(worlds()) do                -- the old round's arena, also after a restart
+      if world.id == "minecraft:arena" then delete_world{ id = "arena" } end
     end
     copy_world{ from = "arena_map", to = "arena" } -- waits; the server keeps running
     local arena = load_world{ id = "arena" }
-    for _, p in ipairs(online_players()) do
-      teleport{ entity = p, location = location(arena, vec3(0.5, 65, 0.5)) }
+    for _, player in ipairs(online_players()) do
+      teleport{ entity = player, location = location(arena, vec3(0.5, 65, 0.5)) }
     end
   end
 
-  command{ "newround", function(c) new_round() end, permission = "arena.admin" }
+  command{ "newround", function(context) new_round() end, permission = "arena.admin" }
   ```
   - `delete_world{ }` sends the players in the old arena to the main spawn first, then they come over to the new one.
   - Several arenas at once: name the copies `"arena_1"`, `"arena_2"`, ...

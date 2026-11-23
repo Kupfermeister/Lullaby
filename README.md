@@ -7,8 +7,8 @@ comes with scripting.
 
 ```lua
 -- plugins/lullaby/scripts/hello.lua
-command{ "hello", function(c)
-  message{ player = c.player, text = "Hello, " .. c.player.name .. "!" }
+command{ "hello", function(context)
+  message{ player = context.player, text = "Hello, " .. context.player.name .. "!" }
 end }
 ```
 

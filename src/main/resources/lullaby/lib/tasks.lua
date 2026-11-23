@@ -1,7 +1,7 @@
 -- Lullaby library: tasks (run, wait, stop) and the scheduler that resumes waiting tasks each tick.
 --
 -- A task is one running function inside its own coroutine. Event handlers run as tasks automatically.
---   run{ f, args = { ... }, final = g, id = x }   starts f(...) now; returns the task, or nil if a task of the same
+--   run{ func, args = { ... }, final = g, id = x }   starts f(...) now; returns the task, or nil if a task of the same
 --                                                 function (same place in the code) with the same id is running
 --   wait(duration)                                pauses the current task: number = seconds, or "3t" "2s" "1m" "1h" "1d"
 --   stop{ task = t }                              ends t and runs its final; force = true skips the final
@@ -169,12 +169,12 @@ name: task
 kind: type
 group: Tasks
 words: task handle alive running
-syntax: t.alive   t.id
-lead: A running function, from run{ }. t.alive is true until it ended; t.id is the id given to run{ } (or nil). Fields can't be changed. Stop it with stop{ task = t }.
+syntax: task.alive   task.id
+lead: A running function, from run{ }. task.alive is true until it ended; task.id is the id given to run{ } (or nil). Fields can't be changed. Stop it with stop{ task = task }.
 expert: Java object | none: a Lua coroutine
-expert: Stays valid | the handle always; t.alive turns false when the task ended (also on reload)
+expert: Stays valid | the handle always; task.alive turns false when the task ended (also on reload)
 expert: Compare | == is the same task; every run{ } makes a new one
-expert: Cost | t.alive and t.id 20–100 ns (guess, not measured)
+expert: Cost | task.alive and task.id 20–100 ns (guess, not measured)
 status: unconfirmed
 ]]
 local TASK_META = {
@@ -202,10 +202,10 @@ name: run{ }
 kind: doing
 group: Tasks
 words: task start coroutine async thread
-syntax: run{ f, args = { ... }, final = function, id = value }
-lead: Starts f as a task that may wait. Returns the task, or nil if a task of the same function with that id is running.
+syntax: run{ func, args = { ... }, final = function, id = value }
+lead: Starts func as a task that may wait. Returns the task, or nil if a task of the same function with that id is running.
 arg: 1 | function | The function to run.
-arg: args? | table | A list: f gets args[1], args[2], ...; final gets the same values.
+arg: args? | table | A list: func gets args[1], args[2], ...; final gets the same values.
 arg: final? | function | Runs when the task ends, also on stop, error, reload and server stop. Never waits.
 arg: id? | any | One running task per function and id. Same function means the same place in the code, so a function written inside a handler counts as one.
 returns: task · nil
@@ -219,7 +219,7 @@ expert: Time limit | each task has its own clock and a wait starts it again; che
 status: unconfirmed
 ]]
 function lib.run(a)
-	if type(a) ~= "table" then error("run{} needs { }: run{ f, args = { ... } }", 2) end
+	if type(a) ~= "table" then error("run{} needs { }: run{ func, args = { ... } }", 2) end
 	local f, args, final, id = a[1], a.args, a.final, a.id
 	if type(f) ~= "function" then error("run{}: the first value must be a function, got " .. I.type_name(f), 2) end
 	if args ~= nil and type(args) ~= "table" then error("run{}: args must be a table { ... }, got " .. I.type_name(args), 2) end

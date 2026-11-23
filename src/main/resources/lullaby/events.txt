@@ -7,7 +7,8 @@
 #   <TAB> enum: its class's simple name, ":" and its words when 16 or fewer (Result:deny,default,allow);
 #   - where there is none
 # KINDS: player entity world block chunk location vec3 block_pos aabb block_state damage item_stack component
-#   text enum key uuid boolean integer number block_snapshot profile, and list:<kind> (a List, Set or
+#   text enum key uuid boolean integer number block_snapshot profile address effect played_sound sender, and
+#   list:<kind> (a List, Set or
 #   Collection); a list field without a setter can still have a write kind: Paper's list is meant to be changed
 #   ?Type: Lullaby can't read (or set) a Type yet
 paper-api	26.3.build.249-stable
@@ -51,15 +52,15 @@ AsyncChatEvent	io.papermc.paper.event.player.AsyncChatEvent	Player	cancellable,a
 AsyncPlayerConnectionConfigureEvent	io.papermc.paper.event.connection.configuration.AsyncPlayerConnectionConfigureEvent	Connection	async
 	connection	getConnection	?PlayerConfigurationConnection	-	-	-	-
 AsyncPlayerPreLoginEvent	org.bukkit.event.player.AsyncPlayerPreLoginEvent	Player	async
-	address	getAddress	?InetAddress	-	-	-	-
+	address	getAddress	address	-	-	-	-
 	connection	getConnection	?PlayerLoginConnection	-	-	-	-
 	hostname	getHostname	text	-	-	-	-
 	kick_message	kickMessage	component	kickMessage	net.kyori.adventure.text.Component	component	-
 	login_result	getLoginResult	enum	setLoginResult	org.bukkit.event.player.AsyncPlayerPreLoginEvent$Result	enum	Result:allowed,kick_full,kick_banned,kick_whitelist,kick_other
 	name	getName	text	-	-	-	-
 	player_profile	getPlayerProfile	profile	setPlayerProfile	com.destroystokyo.paper.profile.PlayerProfile	?PlayerProfile	-
-	raw_address	getRawAddress	?InetAddress	-	-	-	-
-	raw_socket_address	getRawSocketAddress	?SocketAddress	-	-	-	-
+	raw_address	getRawAddress	address	-	-	-	-
+	raw_socket_address	getRawSocketAddress	address	-	-	-	-
 	transferred	isTransferred	boolean	-	-	-	-
 	unique_id	getUniqueId	uuid	-	-	-	-
 AsyncPlayerSendCommandsEvent	com.destroystokyo.paper.event.brigadier.AsyncPlayerSendCommandsEvent	Brigadier	async
@@ -103,7 +104,7 @@ AsyncTabCompleteEvent	com.destroystokyo.paper.event.server.AsyncTabCompleteEvent
 	completions	getCompletions	list:text	completions	java.util.List	list:text	-
 	handled	isHandled	boolean	setHandled	boolean	boolean	-
 	location	getLocation	location	-	-	-	-
-	sender	getSender	?CommandSender	-	-	-	-
+	sender	getSender	sender	-	-	-	-
 BatToggleSleepEvent	org.bukkit.event.entity.BatToggleSleepEvent	Entity	cancellable
 	awake	isAwake	boolean	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
@@ -118,7 +119,7 @@ BeaconDeactivatedEvent	io.papermc.paper.event.block.BeaconDeactivatedEvent	Block
 BeaconEffectEvent	com.destroystokyo.paper.event.block.BeaconEffectEvent	Block	cancellable
 	block	getBlock	block	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	effect	getEffect	?PotionEffect	setEffect	org.bukkit.potion.PotionEffect	?PotionEffect	-
+	effect	getEffect	effect	setEffect	org.bukkit.potion.PotionEffect	?PotionEffect	-
 	player	getPlayer	player	-	-	-	-
 	primary	isPrimary	boolean	-	-	-	-
 BellResonateEvent	org.bukkit.event.block.BellResonateEvent	Block	-
@@ -250,7 +251,7 @@ BlockLockCheckEvent	io.papermc.paper.event.block.BlockLockCheckEvent	Block	-
 	block_state	getBlockState	?LockableTileState	-	-	-	-
 	key_item	getKeyItem	item_stack	setKeyItem	org.bukkit.inventory.ItemStack	item_stack	-
 	locked_message	getLockedMessage	component	setLockedMessage	net.kyori.adventure.text.Component	component	-
-	locked_sound	getLockedSound	?Sound	setLockedSound	net.kyori.adventure.sound.Sound	?Sound	-
+	locked_sound	getLockedSound	played_sound	setLockedSound	net.kyori.adventure.sound.Sound	?Sound	-
 	player	getPlayer	player	-	-	-	-
 	result	getResult	enum	setResult	org.bukkit.event.Event$Result	enum	Result:deny,default,allow
 	using_custom_key_item_stack	isUsingCustomKeyItemStack	boolean	-	-	-	-
@@ -338,7 +339,7 @@ BrewingStartEvent	org.bukkit.event.block.BrewingStartEvent	Block	-
 BroadcastMessageEvent	org.bukkit.event.server.BroadcastMessageEvent	Server	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	message	message	component	message	net.kyori.adventure.text.Component	component	-
-	recipients	getRecipients	?list of CommandSender	-	-	-	-
+	recipients	getRecipients	list:sender	-	-	-	-
 CampfireStartEvent	org.bukkit.event.block.CampfireStartEvent	Block	-
 	block	getBlock	block	-	-	-	-
 	recipe	getRecipe	key	-	-	-	-
@@ -833,8 +834,8 @@ EntityPotionEffectEvent	org.bukkit.event.entity.EntityPotionEffectEvent	Entity	c
 	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 	modified_type	getModifiedType	key	-	-	-	-
-	new_effect	getNewEffect	?PotionEffect	-	-	-	-
-	old_effect	getOldEffect	?PotionEffect	-	-	-	-
+	new_effect	getNewEffect	effect	-	-	-	-
+	old_effect	getOldEffect	effect	-	-	-	-
 	override	isOverride	boolean	setOverride	boolean	boolean	-
 	source	getSource	entity	-	-	-	-
 EntityPushedByEntityAttackEvent	io.papermc.paper.event.entity.EntityPushedByEntityAttackEvent	Entity	cancellable
@@ -1019,7 +1020,7 @@ FurnaceStartSmeltEvent	org.bukkit.event.inventory.FurnaceStartSmeltEvent	Invento
 	source	getSource	item_stack	-	-	-	-
 	total_cook_time	getTotalCookTime	integer	setTotalCookTime	int	integer	-
 GS4QueryEvent	com.destroystokyo.paper.event.server.GS4QueryEvent	Server	-
-	querier_address	getQuerierAddress	?InetAddress	-	-	-	-
+	querier_address	getQuerierAddress	address	-	-	-	-
 	query_type	getQueryType	enum	-	-	-	QueryType:basic,full
 	response	getResponse	?QueryResponse	setResponse	com.destroystokyo.paper.event.server.GS4QueryEvent$QueryResponse	?QueryResponse	-
 GenericGameEvent	org.bukkit.event.world.GenericGameEvent	World	cancellable
@@ -1212,7 +1213,7 @@ NotePlayEvent	org.bukkit.event.block.NotePlayEvent	Block	cancellable
 	instrument	getInstrument	enum	setInstrument	org.bukkit.Instrument	enum	Instrument:
 	note	getNote	?Note	setNote	org.bukkit.Note	?Note	-
 PaperServerListPingEvent	com.destroystokyo.paper.event.server.PaperServerListPingEvent	Server	cancellable
-	address	getAddress	?InetAddress	-	-	-	-
+	address	getAddress	address	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	client	getClient	?StatusClient	-	-	-	-
 	hostname	getHostname	text	-	-	-	-
@@ -1223,7 +1224,7 @@ PaperServerListPingEvent	com.destroystokyo.paper.event.server.PaperServerListPin
 	protocol_version	getProtocolVersion	integer	setProtocolVersion	int	integer	-
 	server_icon	getServerIcon	?CachedServerIcon	setServerIcon	org.bukkit.util.CachedServerIcon	?CachedServerIcon	-
 	should_hide_players	shouldHidePlayers	boolean	-	-	-	-
-	socket_address	getSocketAddress	?SocketAddress	-	-	-	-
+	socket_address	getSocketAddress	address	-	-	-	-
 	version	getVersion	text	setVersion	java.lang.String	text	-
 PhantomPreSpawnEvent	com.destroystokyo.paper.event.entity.PhantomPreSpawnEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
@@ -1390,10 +1391,10 @@ PlayerCommandSendEvent	org.bukkit.event.player.PlayerCommandSendEvent	Player	-
 	commands	getCommands	list:text	-	-	list:text	-
 	player	getPlayer	player	-	-	-	-
 PlayerConnectionCloseEvent	com.destroystokyo.paper.event.player.PlayerConnectionCloseEvent	Player	-
-	ip_address	getIpAddress	?InetAddress	-	-	-	-
+	ip_address	getIpAddress	address	-	-	-	-
 	player_name	getPlayerName	text	-	-	-	-
 	player_unique_id	getPlayerUniqueId	uuid	-	-	-	-
-	socket_address	getSocketAddress	?SocketAddress	-	-	-	-
+	socket_address	getSocketAddress	address	-	-	-	-
 PlayerConnectionInitialConfigureEvent	io.papermc.paper.event.connection.configuration.PlayerConnectionInitialConfigureEvent	Connection	-
 	connection	getConnection	?PlayerConfigurationConnection	-	-	-	-
 PlayerConnectionReconfigureEvent	io.papermc.paper.event.connection.configuration.PlayerConnectionReconfigureEvent	Connection	-
@@ -2063,7 +2064,7 @@ RegionizedServerInitEvent	io.papermc.paper.threadedregions.RegionizedServerInitE
 RemoteServerCommandEvent	org.bukkit.event.server.RemoteServerCommandEvent	Server	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	command	getCommand	text	setCommand	java.lang.String	text	-
-	sender	getSender	?CommandSender	-	-	-	-
+	sender	getSender	sender	-	-	-	-
 SculkBloomEvent	org.bukkit.event.block.SculkBloomEvent	Block	cancellable
 	block	getBlock	block	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
@@ -2071,16 +2072,16 @@ SculkBloomEvent	org.bukkit.event.block.SculkBloomEvent	Block	cancellable
 ServerCommandEvent	org.bukkit.event.server.ServerCommandEvent	Server	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	command	getCommand	text	setCommand	java.lang.String	text	-
-	sender	getSender	?CommandSender	-	-	-	-
+	sender	getSender	sender	-	-	-	-
 ServerExceptionEvent	com.destroystokyo.paper.event.server.ServerExceptionEvent	Server	-
 	exception	getException	?ServerException	-	-	-	-
 ServerListPingEvent	org.bukkit.event.server.ServerListPingEvent	Server	-
-	address	getAddress	?InetAddress	-	-	-	-
+	address	getAddress	address	-	-	-	-
 	hostname	getHostname	text	-	-	-	-
 	max_players	getMaxPlayers	integer	setMaxPlayers	int	integer	-
 	motd	motd	component	motd	net.kyori.adventure.text.Component	component	-
 	num_players	getNumPlayers	integer	-	-	-	-
-	socket_address	getSocketAddress	?SocketAddress	-	-	-	-
+	socket_address	getSocketAddress	address	-	-	-	-
 ServerLoadEvent	org.bukkit.event.server.ServerLoadEvent	Server	-
 	type	getType	enum	-	-	-	LoadType:startup,reload
 ServerResourcesReloadedEvent	io.papermc.paper.event.server.ServerResourcesReloadedEvent	Server	-
@@ -2220,7 +2221,7 @@ TabCompleteEvent	org.bukkit.event.server.TabCompleteEvent	Server	cancellable
 	command	isCommand	boolean	-	-	-	-
 	completions	getCompletions	list:text	setCompletions	java.util.List	list:text	-
 	location	getLocation	location	-	-	-	-
-	sender	getSender	?CommandSender	-	-	-	-
+	sender	getSender	sender	-	-	-	-
 TameableDeathMessageEvent	io.papermc.paper.event.entity.TameableDeathMessageEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	death_message	deathMessage	component	deathMessage	net.kyori.adventure.text.Component	component	-
@@ -2289,7 +2290,7 @@ UnknownCommandEvent	org.bukkit.event.command.UnknownCommandEvent	Command	-
 	command_line	getCommandLine	text	-	-	-	-
 	command_source	getCommandSource	?CommandSourceStack	-	-	-	-
 	message	message	component	message	net.kyori.adventure.text.Component	component	-
-	sender	getSender	?CommandSender	-	-	-	-
+	sender	getSender	sender	-	-	-	-
 VaultChangeStateEvent	io.papermc.paper.event.block.VaultChangeStateEvent	Block	cancellable
 	block	getBlock	block	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
@@ -2425,7 +2426,7 @@ WorldDifficultyChangeEvent	io.papermc.paper.event.world.WorldDifficultyChangeEve
 	world	getWorld	world	-	-	-	-
 WorldGameRuleChangeEvent	io.papermc.paper.event.world.WorldGameRuleChangeEvent	World	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	command_sender	getCommandSender	?CommandSender	-	-	-	-
+	command_sender	getCommandSender	sender	-	-	-	-
 	game_rule	getGameRule	key	-	-	-	-
 	value	getValue	text	setValue	java.lang.String	text	-
 	world	getWorld	world	-	-	-	-

@@ -147,6 +147,60 @@ public final class ToLua {
                 pushOrNil(L, textures == null ? null : textures.getSignature());
                 return 5;
             }
+            case java.net.InetAddress a -> { // an IP address as text: "1.2.3.4" or "::1"
+                L.push("v");
+                L.push(a.getHostAddress());
+                return 2;
+            }
+            case java.net.InetSocketAddress a -> { // "1.2.3.4:25565", an IPv6 address in brackets: "[::1]:25565"
+                L.push("v");
+                String host = a.getAddress() != null ? a.getAddress().getHostAddress() : a.getHostString();
+                L.push((host.contains(":") ? "[" + host + "]" : host) + ":" + a.getPort());
+                return 2;
+            }
+            case java.net.SocketAddress a -> { // another sort of address (a local socket): Java's own text for it
+                L.push("v");
+                L.push(a.toString());
+                return 2;
+            }
+            case org.bukkit.potion.PotionEffect e -> {
+                // id, amplifier, duration in ticks (-1: infinite), ambient, particles, icon
+                L.push("effect");
+                L.push(e.getType().getKey().toString());
+                L.push(e.getAmplifier());
+                L.push(e.getDuration());
+                L.push(e.isAmbient());
+                L.push(e.hasParticles());
+                L.push(e.hasIcon());
+                return 7;
+            }
+            case net.kyori.adventure.sound.Sound s -> {
+                // sound id, source (vanilla's name: "block", "record", ...), volume, pitch, seed (nil if none)
+                L.push("played_sound");
+                L.push(s.name().asString());
+                L.push(net.kyori.adventure.sound.Sound.Source.NAMES.key(s.source()));
+                L.push((Number) (double) s.volume());
+                L.push((Number) (double) s.pitch());
+                if (s.seed().isPresent()) L.push((Number) (double) s.seed().getAsLong());
+                else L.pushNil();
+                return 6;
+            }
+            // whoever ran a command (players and entities are caught above): a command block gives its block, the
+            // console and rcon give the server object, a sender running "as" someone (/execute) gives who started it
+            case org.bukkit.command.BlockCommandSender b -> {
+                return object(L, b.getBlock(), addSlot);
+            }
+            case org.bukkit.command.ConsoleCommandSender c -> {
+                L.push("server");
+                return 1;
+            }
+            case org.bukkit.command.RemoteConsoleCommandSender c -> {
+                L.push("server");
+                return 1;
+            }
+            case org.bukkit.command.ProxiedCommandSender p -> {
+                return object(L, p.getCaller(), addSlot);
+            }
             case Component c -> {
                 // a component table: wire bytes plus the count of item slots in show_item hovers
                 Object[] out = Codecs.componentOut(Codecs.vanilla(c), addSlot);
@@ -171,6 +225,8 @@ public final class ToLua {
                 return 2;
             }
             default -> {
+                // a sender of a sort Lullaby doesn't know (another plugin's own): nil, as the docs say
+                if (o instanceof org.bukkit.command.CommandSender) return 0;
                 Object item = Nms.vanillaItem(o); // a copy: changing it in Lua doesn't change the Java stack
                 if (item == null) return 0;
                 L.push("item_stack");

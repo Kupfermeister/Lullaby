@@ -219,14 +219,6 @@ final class JavaFunctions {
             L.push(Entities.teleport(Wire.read(L.toBuffer(1)), slots::get));
             return 1;
         });
-        add(lua, "entity_velocity", L -> {
-            L.push(Entities.velocity(Wire.read(L.toBuffer(1)), slots::get));
-            return 1;
-        });
-        add(lua, "entity_set_health", L -> {
-            L.push(Entities.setHealth(Wire.read(L.toBuffer(1)), slots::get));
-            return 1;
-        });
         // Chunks: a world slot and the chunk's x, z (a chunk object has no slot of its own, like a block).
         add(lua, "chunk_loaded", L -> {
             L.push(Entities.chunkLoaded(slots.get(slot(L, 1)), (int) L.toInteger(2), (int) L.toInteger(3)));

@@ -533,7 +533,7 @@ public final class Docs {
         f.put("kind", "event");
         f.put("group", "Events");
         f.put("sub", p[2]);
-        f.put("syntax", "on{ \"" + name + "\", function(e) ... end }");
+        f.put("syntax", "on{ \"" + name + "\", function(event) ... end }");
         f.put("status", "generated");
         f.put("words", p[2].toLowerCase(Locale.ROOT) + " event");
         f.put("paper", "https://jd.papermc.io/paper/" + minecraft + "/" + java.replace('.', '/').replace('$', '.') + ".html");
@@ -555,7 +555,8 @@ public final class Docs {
             text = "can't be read yet: Lullaby has no " + type + " for scripts yet";
         } else {
             type = switch (read) {
-                case "enum", "key", "uuid" -> "text";
+                case "enum", "key", "uuid", "address" -> "text";
+                case "sender" -> "player · entity · block · server · nil";
                 case "integer" -> "number";
                 default -> read.startsWith("list:") ? "list of " + read.substring(5) : read;
             };
@@ -566,6 +567,9 @@ public final class Docs {
                 }
                 case "key" -> "an id like \"minecraft:stone\"";
                 case "uuid" -> "a UUID";
+                case "address" -> "an IP address like \"1.2.3.4\", with the port: \"1.2.3.4:25565\" (IPv6 in brackets)";
+                case "sender" -> "who ran it: a player, an entity (command minecart), a command block's block, or the "
+                        + "server object for the console and rcon; nil for another plugin's own sender";
                 case "integer" -> "a whole number";
                 default -> "";
             };
@@ -593,7 +597,7 @@ public final class Docs {
         f.put("dot", async ? "unusable" : !marks.contains("tested") ? "untested" : changeable ? "changeable" : "readonly");
         StringBuilder lead = new StringBuilder("Paper's " + e.id() + ", made from Paper's own class. When it fires: "
                 + "Paper's page (↗ Paper, at the top).");
-        if (cancellable) lead.append(" It can be cancelled: e.cancelled = true in on{ }.");
+        if (cancellable) lead.append(" It can be cancelled: event.cancelled = true in on{ }.");
         if (!changeable && !async) lead.append(" Nothing in it can be changed yet: on{ } only reads it, like after{ }.");
         f.put("lead", lead.toString());
         List<String> notes = new ArrayList<>();
@@ -677,14 +681,14 @@ public final class Docs {
             }
             if (!e.fields().isEmpty()) {
                 b.append("\n| field | type | |\n|---|---|---|\n");
-                for (String[] a : e.fields()) b.append("| `").append("event".equals(f.get("kind")) ? "e." : ".").append(a[0]).append("` | ").append(a[1]).append(" | ").append(a[2]).append(" |\n");
+                for (String[] a : e.fields()) b.append("| `").append("event".equals(f.get("kind")) ? "event." : ".").append(a[0]).append("` | ").append(a[1]).append(" | ").append(a[2]).append(" |\n");
             }
             if (!e.tree().isEmpty()) {
                 b.append('\n');
                 for (String[] t : e.tree()) {
                     String[] path = t[0].split("\\.");
-                    String name = path.length == 1 ? "e.packet == \"" + path[0] + "\"" : path.length == 2 ? "e." + path[1]
-                            : "e." + path[1] + " == \"" + path[2] + "\"";
+                    String name = path.length == 1 ? "event.packet == \"" + path[0] + "\"" : path.length == 2 ? "event." + path[1]
+                            : "event." + path[1] + " == \"" + path[2] + "\"";
                     b.append("  ".repeat(path.length - 1)).append("- `").append(name).append('`')
                             .append(t[1].isEmpty() ? "" : " (" + t[1] + ")").append(": ").append(t[2]).append('\n');
                 }
@@ -747,9 +751,9 @@ public final class Docs {
                 for (String[] a : e.args())
                     for (String n : a[0].replace("?", "").split("/"))
                         b.append("---@field ").append(n.trim().matches("\\d+") ? "[" + n.trim() + "]" : n.trim()).append("? ").append(luaType(a[1])).append(' ').append(a[2]).append('\n');
-                b.append("---@param a lullaby.").append(e.id()).append("_args\n");
+                b.append("---@param args lullaby.").append(e.id()).append("_args\n");
                 appendReturn(b, e);
-                b.append("function ").append(e.id()).append("(a) end\n");
+                b.append("function ").append(e.id()).append("(args) end\n");
             } else {
                 for (String[] a : e.args()) b.append("---@param ").append(a[0].replace("?", "").split("/")[0].trim()).append(' ').append(luaType(a[1])).append('\n');
                 StringJoiner params = new StringJoiner(", ");

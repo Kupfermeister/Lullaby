@@ -101,7 +101,7 @@ function I.java_door()
 				if class_of[self] then return result(D.call(slot_of[self], name, mask, unpack(scratch, 1, n))) end
 				if class_id[self] then return result(D.static_call(class_id[self], name, mask, unpack(scratch, 1, n))) end
 				-- FORMAT: a method called with . instead of :
-				error(name .. " is a Java method: call it with a colon, obj:" .. name .. "(...)", 2)
+				error(name .. " is a Java method: call it with a colon, object:" .. name .. "(...)", 2)
 			end
 			methods[name] = f
 		end
@@ -111,7 +111,7 @@ function I.java_door()
 	local function constructor(self, ...)
 		local id = class_id[self]
 		-- FORMAT: new called with . instead of :
-		if not id then error("new is called with a colon: C:new(...)", 2) end
+		if not id then error("new is called with a colon: Class:new(...)", 2) end
 		local mask, n = prepare("new", ...)
 		return result(D.new(id, mask, unpack(scratch, 1, n)))
 	end
@@ -179,8 +179,8 @@ kind: reading
 group: Java door
 words: raw java class import reflection bukkit paper nms
 syntax: java.class( "org.bukkit.Bukkit" ) → java_class
-lead: Loads a Java class by its full name: Paper's and Bukkit's, Minecraft's own (net.minecraft...), Java's, or any plugin's. Call its static methods with a colon (C:getServer()), read static fields with a dot (C.STONE), make objects with C:new(...). Only with unlock.java in the config.
-arg: name | text · java | The full class name, or a raw java.lang.Class (from obj:getClass()).
+lead: Loads a Java class by its full name: Paper's and Bukkit's, Minecraft's own (net.minecraft...), Java's, or any plugin's. Call its static methods with a colon (Class:getServer()), read static fields with a dot (Class.STONE), make objects with Class:new(...). Only with unlock.java in the config.
+arg: name | text · java | The full class name, or a raw java.lang.Class (from object:getClass()).
 returns: java_class
 example:
   local Bukkit = java.class("org.bukkit.Bukkit")
@@ -207,13 +207,13 @@ name: java.raw( )
 kind: reading
 group: Java door
 words: raw java bukkit player world block event item unwrap handle
-syntax: java.raw( x ) → java | nil
+syntax: java.raw( object ) → java | nil
 lead: The Java object behind a Lullaby object: a player gives Bukkit's Player (an OfflinePlayer when offline), an entity its Bukkit entity, a world Bukkit's World, a block Bukkit's Block, an item_stack a Bukkit ItemStack copy, an event the Paper event itself (only while its handler runs). nil for an entity that is gone, or a world or block whose world isn't loaded. Only with unlock.java in the config.
-arg: x | player · entity · world · block · item_stack · event | The Lullaby object.
+arg: object | player · entity · world · block · item_stack · event | The Lullaby object.
 returns: java · nil
 example:
-  after{ "PlayerJoinEvent", function(e)
-    java.raw(e.player):setPlayerListName("[new] " .. e.player.name)
+  after{ "PlayerJoinEvent", function(event)
+    java.raw(event.player):setPlayerListName("[new] " .. event.player.name)
   end }
 expert: Thread | main thread, like every script
 expert: Cost | 1–10 µs (guess, not measured)
@@ -253,13 +253,13 @@ name: java.wrap( )
 kind: reading
 group: Java door
 words: raw java bukkit player entity world block chunk location vector item wrap
-syntax: java.wrap( obj ) → a Lullaby value · nil
+syntax: java.wrap( object ) → a Lullaby value · nil
 lead: The Lullaby value for a raw Java object, where Lullaby has one: a Bukkit Player or OfflinePlayer gives a player, any other Bukkit entity an entity, a World a world, a Block a block, a Chunk a chunk, a Location a location, a Vector a vec3, a BoundingBox an aabb, a BlockData a block_state, a DamageSource a damage, an adventure Component a component, a Bukkit or Minecraft ItemStack an item_stack copy. nil for anything else. Only with unlock.java in the config.
-arg: obj | java | A raw Java object.
+arg: object | java | A raw Java object.
 returns: player · entity · world · block · chunk · location · vec3 · aabb · block_state · damage · component · item_stack · nil
 example:
   local Bukkit = java.class("org.bukkit.Bukkit")
-  local p = java.wrap(Bukkit:getPlayer("Notch")) -- nil if Notch is offline
+  local player = java.wrap(Bukkit:getPlayer("Notch")) -- nil if Notch is offline
 expert: Thread | main thread, like every script
 expert: Cost | 1–10 µs; an item stack is copied: 10–50 µs (guess, not measured)
 expert: Under the hood | JavaDoor.java turns a known Bukkit or Minecraft object into its Lullaby object
@@ -290,7 +290,7 @@ kind: lua
 group: Java door
 words: raw java unlock reflection bukkit paper nms plugin api expert tps
 syntax: unlock = { java = true }   (plugins/lullaby/config.lua)
-lead: For experts who need something the library doesn't have yet: scripts use any Java directly, from Paper's and Bukkit's API, Minecraft's own classes or other plugins. Locked by default; with java = true under unlock in the config, every script gets the table java: java.class( ) loads a class, java.raw( ) gives the Java object behind a player, world, block, item_stack or event, and java.wrap( ) turns one back. Objects work as in Java, with a colon for methods: obj:getName(), obj.field, obj.field = v, C:new(...). Arrays count from 1, like Lua tables: arr[1] is Java's arr[0], arr.length their size. nil, true/false, numbers and text cross as Lua values (Java's whole numbers past 2^53 lose their last digits), everything else stays a raw Java object.
+lead: For experts who need something the library doesn't have yet: scripts use any Java directly, from Paper's and Bukkit's API, Minecraft's own classes or other plugins. Locked by default; with java = true under unlock in the config, every script gets the table java: java.class( ) loads a class, java.raw( ) gives the Java object behind a player, world, block, item_stack or event, and java.wrap( ) turns one back. Objects work as in Java, with a colon for methods: object:getName(), object.field, object.field = value, Class:new(...). Arrays count from 1, like Lua tables: arr[1] is Java's arr[0], arr.length their size. nil, true/false, numbers and text cross as Lua values (Java's whole numbers past 2^53 lose their last digits), everything else stays a raw Java object.
 note: Unlocking java is like unlocking io, os and ffi at once, for every script on the server, and raw code can break on any Minecraft update. The details are below.
 expert: What it allows |everything Java can do. Unlocking it is like unlocking io, os and ffi at once: a script can read and delete any file, run programs, change any plugin, and reach into Lullaby itself. Unlock it only when every script on the server is trusted. Only public methods and fields are reachable.
 expert: What it can break | anything. Raw code is not checked the way library functions are: a wrong call can corrupt a world, kick every player or crash the server. Nothing is promised across updates: Minecraft's own classes (net.minecraft...) change names on almost every update, and Paper's API changes too. Lullaby checks none of it at startup.

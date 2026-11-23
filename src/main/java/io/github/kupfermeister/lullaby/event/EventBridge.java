@@ -58,7 +58,7 @@ public final class EventBridge implements Listener {
     /** What Lullaby makes of a field's Java type: the kind words of events.txt (a word not here is a Lullaby bug). */
     private enum Kind {
         PLAYER, ENTITY, WORLD, BLOCK, CHUNK, LOCATION, VEC3, BLOCK_POS, AABB, BLOCK_STATE, DAMAGE, ITEM_STACK, COMPONENT,
-        TEXT, ENUM, KEY, UUID, BOOLEAN, INTEGER, NUMBER, BLOCK_SNAPSHOT, PROFILE,
+        TEXT, ENUM, KEY, UUID, BOOLEAN, INTEGER, NUMBER, BLOCK_SNAPSHOT, PROFILE, ADDRESS, EFFECT, PLAYED_SOUND, SENDER,
         /** a List, Set or Collection: events.txt writes "list:<element kind>" */
         LIST
     }

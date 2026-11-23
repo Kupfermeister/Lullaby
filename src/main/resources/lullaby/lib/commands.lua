@@ -267,20 +267,20 @@ name: command{ }
 kind: doing
 group: Commands
 words: slash brigadier cmd argument
-syntax: command{ "name", function(c) ... end, args = { ... }, branches = { ... }, permission = text, show = function(p), aliases = { ... } }
-lead: Adds a script command. Its args are values typed one after the other; at the end it may split into branches: a key like buy = { ... } is a word to type, an unnamed { args = { ... } } starts with a value. Every branch takes the same fields again. The function gets c: c.player (nil from the console) and c.args.<name>.
+syntax: command{ "name", function(context) ... end, args = { ... }, branches = { ... }, permission = text, show = function(player), aliases = { ... } }
+lead: Adds a script command. Its args are values typed one after the other; at the end it may split into branches: a key like buy = { ... } is a word to type, an unnamed { args = { ... } } starts with a value. Every branch takes the same fields again. The function gets context: context.player (nil from the console) and context.args.<name>.
 arg: 1 | text | The command name, without /.
 arg: 2? | function | Runs when the line is typed to its end. Without it, the command only leads to its branches.
-arg: args? | list of table | Each: { name = text, type = "word" | "text" | "integer" | "number" | "bool" | "player", min, max, suggest = list or function(p), check = function(value, p), optional = true }. text takes the rest of the line (last only); optional values only at the very end.
+arg: args? | list of table | Each: { name = text, type = "word" | "text" | "integer" | "number" | "bool" | "player", min, max, suggest = list or function(player), check = function(value, player), optional = true }. text takes the rest of the line (last only); optional values only at the very end.
 arg: branches? | table | Words and value steps that follow.
 arg: permission? | text | Needed permission.
-arg: show? | function | function(p) returns true if p may see it.
+arg: show? | function | function(player) returns true if player may see it.
 arg: aliases? | list of text | Other names (word steps only).
 returns: nothing
 note: Works only while scripts load (at the top of a file). permission, show and suggest are worked out on join, after /lullaby reload and with refresh_commands{ }; check runs when the command runs and its text is shown in red.
 example:
-  command{ "heal", function(c)
-    message{ player = c.player, text = "Healed " .. c.args.amount }
+  command{ "heal", function(context)
+    message{ player = context.player, text = "Healed " .. context.args.amount }
   end, args = { { name = "amount", type = "integer", min = 1, max = 20 } } }
 expert: Thread | main thread, like every script
 expert: Cost | registering: 20–500 µs per command at load; running one: 5–30 µs plus the function (guess, not measured)

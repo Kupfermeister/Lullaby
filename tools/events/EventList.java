@@ -116,7 +116,8 @@ public final class EventList {
         lines.add("#   <TAB> enum: its class's simple name, \":\" and its words when 16 or fewer (Result:deny,default,allow);");
         lines.add("#   - where there is none");
         lines.add("# KINDS: player entity world block chunk location vec3 block_pos aabb block_state damage item_stack component");
-        lines.add("#   text enum key uuid boolean integer number block_snapshot profile, and list:<kind> (a List, Set or");
+        lines.add("#   text enum key uuid boolean integer number block_snapshot profile address effect played_sound sender, and");
+        lines.add("#   list:<kind> (a List, Set or");
         lines.add("#   Collection); a list field without a setter can still have a write kind: Paper's list is meant to be changed");
         lines.add("#   ?Type: Lullaby can't read (or set) a Type yet");
         lines.add("paper-api\t" + api);
@@ -289,6 +290,11 @@ public final class EventList {
         if (t == DamageSource.class) return "damage";
         if (t == org.bukkit.block.BlockState.class) return "block_snapshot"; // only the interface: Sign, Beacon, ... later
         if (t == com.destroystokyo.paper.profile.PlayerProfile.class) return "profile";
+        if (t == java.net.InetAddress.class || t == java.net.SocketAddress.class) return "address"; // text "1.2.3.4(:port)"
+        if (t == org.bukkit.potion.PotionEffect.class) return "effect";
+        if (t == net.kyori.adventure.sound.Sound.class) return "played_sound"; // a sound with source, volume, pitch, seed
+        // whoever ran a command: player, entity, command block or the server (console, rcon)
+        if (t == org.bukkit.command.CommandSender.class) return "sender";
         String common = common(t);
         if (common != null) return common;
         if (t.isEnum()) return "enum";

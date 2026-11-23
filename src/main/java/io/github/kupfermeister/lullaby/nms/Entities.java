@@ -29,7 +29,7 @@ import org.bukkit.util.Vector;
 
 /**
  * Entities for scripts: what an entity object's slot holds, the fields scripts read, the actions that change an entity
- * (modify_entity{ }, teleport{ }, velocity{ }, set_health{ }) and the entities of a chunk. A player is an entity too: a player object's slot holds its UUID (see objects.lua), every other entity's slot
+ * (modify_entity{ }, teleport{ }) and the entities of a chunk. A player is an entity too: a player object's slot holds its UUID (see objects.lua), every other entity's slot
  * a {@link Ref}. Main thread only (vanilla's entities are not thread-safe).
  *
  * <p>Identity is the UUID, as in vanilla's /tp and saves: the same Lua object stays valid when its chunk unloads and
@@ -65,9 +65,44 @@ public final class Entities {
     /**
      * What modify_entity{ } changes, owned here: the field name is the constant's name in lowercase, and each one is
      * also a {@link Field} of the same name, so a script reads back what it changed (e.fire_time). prepare checks the
-     * value and the entity's kind and returns the change, which runs only after every field was checked.
+     * value and the entity's kind and returns the change, which runs only after every field was checked. The changes
+     * run in this order: max_health before health, so health = 40 fits a max_health = 40 given in the same call.
      */
     private enum Change {
+        MAX_HEALTH { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
+            double max = finite(a, f);
+            LivingEntity living = living(e, f);
+            var attribute = living.getAttribute(Attributes.MAX_HEALTH);
+            // vanilla keeps the base in the attribute's range (1 to 1024) and health under the new max
+            return () -> { if (attribute != null) attribute.setBaseValue(max); };
+        } },
+        HEALTH { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
+            float health = (float) finite(a, f);
+            LivingEntity living = living(e, f);
+            return () -> living.setHealth(health); // vanilla keeps it in 0..max_health; 0 kills
+        } },
+        ABSORPTION { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
+            double absorption = finite(a, f);
+            // FORMAT: modify_entity{} absorption below 0
+            if (absorption < 0) throw a.wrong(f, "0 or more (0: no yellow hearts)", a.raw(f));
+            LivingEntity living = living(e, f);
+            return () -> {
+                // vanilla keeps absorption under the max_absorption attribute (0 unless an effect raises it): raise its
+                // base just enough, so the hearts stay until they are hit away, as with a golden apple
+                var cap = living.getAttribute(Attributes.MAX_ABSORPTION);
+                if (cap != null && cap.getValue() < absorption) cap.setBaseValue(cap.getBaseValue() + absorption - cap.getValue());
+                living.setAbsorptionAmount((float) absorption);
+            };
+        } },
+        VELOCITY { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
+            double[] v = a.vec3(f);
+            return () -> {
+                e.setDeltaMovement(v[0], v[1], v[2]);
+                // vanilla's flag of markHurt (knockback): the tracker sends the new velocity to everyone who sees the
+                // entity AND to the entity's own player, whose game moves them itself (needsSync would skip that player)
+                e.syncVelocity = true;
+            };
+        } },
         CUSTOM_NAME { Runnable prepare(Fields a, String f, Entity e, IntFunction<Object> slots) {
             Object v = a.raw(f);
             Component name;
@@ -355,6 +390,11 @@ public final class Entities {
         throw only(f, e, "mobs");
     }
 
+    private static LivingEntity living(Entity e, String f) {
+        if (e instanceof LivingEntity l) return l;
+        throw only(f, e, "entities with health");
+    }
+
     private static ServerPlayer player(Entity e, String f) {
         if (e instanceof ServerPlayer p) return p;
         throw only(f, e, "players");
@@ -367,7 +407,7 @@ public final class Entities {
     }
 
     /**
-     * modify_entity{ entity = e, fire_time = ..., ai = ..., food = ..., ... }: every value and the entity's kind are
+     * modify_entity{ entity = e, health = ..., velocity = ..., ai = ..., food = ..., ... }: every value and the entity's kind are
      * checked before anything changes, so a wrong one never leaves half a change. Returns false if the entity is gone.
      */
     public static boolean modify(Object wire, IntFunction<Object> slots) {
@@ -411,67 +451,6 @@ public final class Entities {
         if (!Level.isInSpawnableBounds(BlockPos.containing(at[0], at[1], at[2])))
             throw new IllegalArgumentException("teleport{}: location is outside the world (/tp refuses it too)");
         return e != null && teleport(e, level, at);
-    }
-
-    /** velocity{ entity = e, velocity = v }: its new motion. Returns false if the entity is gone. */
-    public static boolean velocity(Object wire, IntFunction<Object> slots) {
-        Fields a = new Fields("velocity{}", wire);
-        Entity e = named(a, slots);
-        a.required("velocity", "a vec3");
-        double[] v = a.vec3("velocity");
-        a.done();
-        if (e == null) return false;
-        e.setDeltaMovement(v[0], v[1], v[2]);
-        // vanilla's flag of markHurt (knockback): the tracker sends the new velocity to everyone who sees the entity
-        // AND to the entity's own player, whose game moves them itself (needsSync would skip that player)
-        e.syncVelocity = true;
-        return true;
-    }
-
-    /**
-     * set_health{ entity = e, health | add | full, max_health, absorption }: applied in that order of meaning: first
-     * max_health, then the health itself, then absorption. Returns false if the entity is gone.
-     */
-    public static boolean setHealth(Object wire, IntFunction<Object> slots) {
-        String what = "set_health{}";
-        Fields a = new Fields(what, wire);
-        Entity e = named(a, slots);
-        Double max = a.has("max_health") ? finite(a, "max_health") : null;
-        Double health = a.has("health") ? finite(a, "health") : null;
-        Double add = a.has("add") ? finite(a, "add") : null;
-        boolean full = a.bool("full", false);
-        Double absorption = a.has("absorption") ? finite(a, "absorption") : null;
-        a.done();
-        if ((health != null ? 1 : 0) + (add != null ? 1 : 0) + (full ? 1 : 0) > 1) {
-            // FORMAT: set_health{} with more than one of health, add and full
-            throw new IllegalArgumentException(what + ": give only one of health, add or full");
-        }
-        if (max == null && health == null && add == null && !full && absorption == null) {
-            // FORMAT: set_health{} with nothing to change
-            throw new IllegalArgumentException(what + ": nothing to change (give health, add, full, max_health or absorption)");
-        }
-        // FORMAT: set_health{} absorption below 0
-        if (absorption != null && absorption < 0) throw a.wrong("absorption", "0 or more (0: no yellow hearts)", a.raw("absorption"));
-        if (e == null) return false;
-        // FORMAT: set_health{} on an entity without health
-        if (!(e instanceof LivingEntity living)) throw new IllegalArgumentException(what + ": a "
-                + EntityType.getKey(e.getType()) + " has no health");
-
-        if (max != null) {
-            var attribute = living.getAttribute(Attributes.MAX_HEALTH);
-            if (attribute != null) attribute.setBaseValue(max); // vanilla keeps it in the attribute's range, health under it
-        }
-        if (health != null) living.setHealth((float) (double) health); // vanilla keeps it in 0..max
-        if (add != null) living.setHealth(living.getHealth() + (float) (double) add);
-        if (full) living.setHealth(living.getMaxHealth());
-        if (absorption != null) {
-            // vanilla keeps absorption under the max_absorption attribute (0 unless an effect raises it): raise its base
-            // just enough, so the hearts stay until they are hit away, as with a golden apple
-            var cap = living.getAttribute(Attributes.MAX_ABSORPTION);
-            if (cap != null && cap.getValue() < absorption) cap.setBaseValue(cap.getBaseValue() + absorption - cap.getValue());
-            living.setAbsorptionAmount((float) (double) absorption);
-        }
-        return true;
     }
 
     /** As vanilla's /tp does it (TeleportCommand.performTeleport), without its look-at part. */

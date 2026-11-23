@@ -3,20 +3,20 @@
 -- Every .lua file in this folder (and its folders) loads; names starting with "--" are on standby (not loaded).
 
 -- Greet players when they join:
--- on{ "PlayerJoinEvent", function(e)
---   message{ player = e.player, text = "Welcome, " .. e.player.name .. "!" }
+-- on{ "PlayerJoinEvent", function(event)
+--   message{ player = event.player, text = "Welcome, " .. event.player.name .. "!" }
 -- end }
 
 -- A countdown as its own task (the player is passed in args):
--- local function countdown(p)
+-- local function countdown(player)
 --   for i = 3, 1, -1 do
---     message{ player = p, text = tostring(i) }
+--     message{ player = player, text = tostring(i) }
 --     wait(1)
 --   end
 -- end
--- on{ "PlayerJoinEvent", function(e) run{ countdown, args = { e.player } } end }
+-- on{ "PlayerJoinEvent", function(event) run{ countdown, args = { event.player } } end }
 
 -- A command: /pay <target> <amount>
--- command{ "pay", function(c)
---   message{ player = c.args.target, text = "You got " .. c.args.amount .. " coins" }
+-- command{ "pay", function(context)
+--   message{ player = context.args.target, text = "You got " .. context.args.amount .. " coins" }
 -- end, args = { { name = "target", type = "player" }, { name = "amount", type = "integer", min = 1 } } }

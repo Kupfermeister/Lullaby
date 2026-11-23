@@ -5,19 +5,19 @@
 -- make a new value instead (v + vec3(5, 0, 0), p:offset(...)). Every value is checked completely where it is made
 -- (type, NaN, infinity, whole numbers, int range), never again in the math, so loops stay fast.
 --
---   block_pos(x, y, z)       whole numbers (vanilla BlockPos)    + - ==  :offset(dx, dy, dz) :vec3() :chunk_pos()
+--   block_pos(x, y, z)       whole numbers (vanilla BlockPos)    + - ==  :offset(x, y, z) :vec3() :chunk_pos()
 --                                                                       :section_pos()
 --   section_pos(x, y, z)     whole numbers (vanilla SectionPos: a 16x16x16 cube)   ==  :offset  :chunk_pos()
 --                                                                       :contains(block_pos)
---   chunk_pos(x, z)          whole numbers (vanilla ChunkPos: a 16x16 column)      ==  :offset(dx, dz)
+--   chunk_pos(x, z)          whole numbers (vanilla ChunkPos: a 16x16 column)      ==  :offset(x, z)
 --   vec3(x, y, z)            decimals (vanilla Vec3; also Vector3f fields and armor stand Rotations)
 --                            + - * / (by a number) unary - ==  :length() :normalize() :dot(v) :cross(v)
---                            :distance_to(v) :lerp(v, t) :x_rot(deg) :y_rot(deg) :z_rot(deg) :rotate(q) :block_pos()
+--                            :distance_to(v) :lerp(v, t) :x_rot(degrees) :y_rot(degrees) :z_rot(degrees) :rotate(quaternion) :block_pos()
 --   yaw_pitch(yaw, pitch)    degrees  ==  :direction() -> vec3;  yaw_pitch.from_direction(vec3)
 --   quaternion(x, y, z, w)   * (combine) ==  :rotate(vec3);  quaternion.from_yaw_pitch(yp),
 --                            quaternion.from_axis_angle(axis vec3, degrees)
 --   aabb(min, max)           vec3 corners, max side open (vanilla AABB)  ==  :contains(vec3) :intersects(aabb)
---                            :grow(n) :move(vec3) :center() :size()
+--                            :grow(amount) :move(vec3) :center() :size()
 --   bounding_box(min, max)   block_pos corners, both sides included (vanilla BoundingBox)  ==
 --                            :contains(block_pos) :intersects(bounding_box) :center()
 --   global_pos(dimension, block_pos)   a block position in a dimension (vanilla GlobalPos); dimension is an id
@@ -207,7 +207,7 @@ kind: reading
 group: Values
 words: position block coordinates xyz
 syntax: block_pos( x, y, z ) → block_pos
-lead: A block position: whole numbers (vanilla BlockPos). + - == :offset(dx, dy, dz) :vec3() :chunk_pos() :section_pos(). Also takes a value of its own type (returned as is), a table { 1, 2, 3 } or { x = , y = , z = }, or command text like "1 64 -3".
+lead: A block position: whole numbers (vanilla BlockPos). + - == :offset(x, y, z) :vec3() :chunk_pos() :section_pos(). Also takes a value of its own type (returned as is), a table { 1, 2, 3 } or { x = , y = , z = }, or command text like "1 64 -3".
 arg: x, y, z | number | Whole numbers.
 returns: block_pos
 expert: Thread | main thread, like every script
@@ -229,7 +229,7 @@ kind: reading
 group: Values
 words: section cube
 syntax: section_pos( x, y, z ) → section_pos
-lead: A 16×16×16 cube of blocks: whole numbers (vanilla SectionPos). == :offset(dx, dy, dz) :chunk_pos() :contains(block_pos). Also takes a value of its own type (returned as is), a table { 1, 2, 3 } or { x = , y = , z = }, or command text like "1 4 -3".
+lead: A 16×16×16 cube of blocks: whole numbers (vanilla SectionPos). == :offset(x, y, z) :chunk_pos() :contains(block_pos). Also takes a value of its own type (returned as is), a table { 1, 2, 3 } or { x = , y = , z = }, or command text like "1 4 -3".
 arg: x, y, z | number | Whole numbers.
 returns: section_pos
 expert: Thread | main thread, like every script
@@ -251,7 +251,7 @@ kind: reading
 group: Values
 words: chunk column
 syntax: chunk_pos( x, z ) → chunk_pos
-lead: A 16×16 column of blocks: whole numbers (vanilla ChunkPos). == :offset(dx, dz). Also takes a value of its own type (returned as is), a table { 1, 2 } or { x = , z = }, or command text like "1 -3".
+lead: A 16×16 column of blocks: whole numbers (vanilla ChunkPos). == :offset(x, z). Also takes a value of its own type (returned as is), a table { 1, 2 } or { x = , z = }, or command text like "1 -3".
 arg: x, z | number | Whole numbers.
 returns: chunk_pos
 expert: Thread | main thread, like every script
@@ -353,7 +353,7 @@ kind: reading
 group: Values
 words: vector position direction
 syntax: vec3( x, y, z ) → vec3
-lead: An exact position or direction: decimals (vanilla Vec3). + - * / unary - == :length() :normalize() :dot(v) :cross(v) :distance_to(v) :lerp(v, t) :x_rot(deg) :y_rot(deg) :z_rot(deg) :rotate(q) :block_pos(). Also takes a value of its own type (returned as is), a table { 1, 2, 3 } or { x = , y = , z = }, or command text like "1.5 64 -3".
+lead: An exact position or direction: decimals (vanilla Vec3). + - * / unary - == :length() :normalize() :dot(other) :cross(other) :distance_to(other) :lerp(other, amount) :x_rot(degrees) :y_rot(degrees) :z_rot(degrees) :rotate(quaternion) :block_pos(). Also takes a value of its own type (returned as is), a table { 1, 2, 3 } or { x = , y = , z = }, or command text like "1.5 64 -3".
 arg: x, y, z | number | Decimals.
 returns: vec3
 expert: Thread | main thread, like every script
@@ -482,7 +482,7 @@ kind: reading
 group: Values
 words: rotation direction look angle yaw pitch
 syntax: yaw_pitch( yaw, pitch ) → yaw_pitch   yaw_pitch.from_direction( vec3 )
-lead: A direction as yaw and pitch, in degrees. == :direction() gives the vec3 it looks along (length 1); yaw_pitch.from_direction(v) goes the other way.
+lead: A direction as yaw and pitch, in degrees. == :direction() gives the vec3 it looks along (length 1); yaw_pitch.from_direction(direction) goes the other way.
 arg: yaw | number | Degrees around the vertical axis.
 arg: pitch | number | Degrees up or down.
 returns: yaw_pitch
@@ -531,8 +531,8 @@ name: quaternion( )
 kind: reading
 group: Values
 words: rotation rotate 3d axis angle
-syntax: quaternion( x, y, z, w ) → quaternion   quaternion.from_yaw_pitch( yp )   quaternion.from_axis_angle( axis, degrees )
-lead: A rotation in 3D. a * b rotates by b first, then by a. q:rotate(v) turns a vec3; vec3:rotate(q) does the same.
+syntax: quaternion( x, y, z, w ) → quaternion   quaternion.from_yaw_pitch( yaw_pitch )   quaternion.from_axis_angle( axis, degrees )
+lead: A rotation in 3D. first * second rotates by second first, then by first. quaternion:rotate(vector) turns a vec3; vector:rotate(quaternion) does the same.
 arg: x, y, z, w | number | The four parts.
 returns: quaternion
 expert: Thread | main thread, like every script
@@ -647,7 +647,7 @@ kind: reading
 group: Values
 words: box area region hitbox
 syntax: aabb( min, max ) → aabb
-lead: A box between two vec3 corners; a point exactly on the max side is outside (vanilla AABB). == :contains(vec3) :intersects(aabb) :grow(n) :move(vec3) :center() :size().
+lead: A box between two vec3 corners; a point exactly on the max side is outside (vanilla AABB). == :contains(vec3) :intersects(aabb) :grow(amount) :move(vec3) :center() :size().
 arg: min, max | vec3 | The corners.
 returns: aabb
 expert: Thread | main thread, like every script

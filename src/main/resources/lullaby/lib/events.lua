@@ -101,18 +101,18 @@ name: on{ }
 kind: event
 group: Events
 words: listen hook before cancel
-syntax: on{ "EventName", function(e) ... end, order = number, stage = text }
-lead: Runs the function before the event happens; it may change e (e.cancelled = true, ...).
+syntax: on{ "EventName", function(event) ... end, order = number, stage = text }
+lead: Runs the function before the event happens; it may change event (event.cancelled = true, ...).
 arg: 1 | text | The event name, like "PlayerJoinEvent" (every Paper event: the Events list), or Lullaby's own "reload" or "input".
-arg: 2 | function | Gets the event e.
+arg: 2 | function | Gets the event.
 arg: order? | number | Lower runs first; ties by load order. Default 0.
 arg: stage? | text | Place among other plugins: lowest, low, normal, high, highest. Default normal.
 returns: nothing
-note: Each handler runs as its own task and may wait; after its first wait the event is over and changes only give a warning. Keep values, not e: once every handler has ended without waiting, e can't be read any more.
+note: Each handler runs as its own task and may wait; after its first wait the event is over and changes only give a warning. Keep values, not event: once every handler has ended without waiting, event can't be read any more.
 expert: Thread | main thread, like every script
 expert: Cost | unused events cost zero; one event with a handler reading two fields: goal ~10 µs, guess 5–30 µs (not measured); registering: 5–50 µs once (guess, not measured)
 expert: Under the hood | EventBridge.java: the event's class and methods are looked up the first time a script uses it; one Bukkit listener per event, kind and stage, made only when a script uses it; fields go by number, never by name; the event is freed at once when no handler waited; an event that comes off the main thread is skipped (said once in the console)
-expert: Can fail | an unknown field (the error lists the ones it takes), at load: unknown event (the error names close ones), an event Paper fires off the main thread, bad order or stage; while running: an unknown field written, a field Lullaby can't read or set yet, a wrong value type, e used after its handlers ended
+expert: Can fail | an unknown field (the error lists the ones it takes), at load: unknown event (the error names close ones), an event Paper fires off the main thread, bad order or stage; while running: an unknown field written, a field Lullaby can't read or set yet, a wrong value type, event used after its handlers ended
 expert: Reload | every listener is removed; scripts register again while loading
 expert: Time limit | each handler is its own task with its own clock, except for an event a script's own call fires (teleport{ } teleporting, a Java door call): that handler runs inside the call and shares the caller's clock; checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
@@ -123,16 +123,16 @@ name: after{ }
 kind: event
 group: Events
 words: listen hook monitor
-syntax: after{ "EventName", function(e) ... end, order = number }
-lead: Runs the function once the event happened and was not cancelled; e is read only. Every Paper event: the Events list.
+syntax: after{ "EventName", function(event) ... end, order = number }
+lead: Runs the function once the event happened and was not cancelled; event is read only. Every Paper event: the Events list.
 arg: 1 | text | The event name, or "reload" or "input".
-arg: 2 | function | Gets the event e.
+arg: 2 | function | Gets the event.
 arg: order? | number | Lower runs first; ties by load order. Default 0.
 returns: nothing
 expert: Thread | main thread, like every script
 expert: Cost | as on{ }: goal ~10 µs per event with a handler reading two fields, guess 5–30 µs (not measured)
-expert: Under the hood | a Bukkit listener at MONITOR priority that skips cancelled events; e is read only
-expert: Can fail | an unknown field (the error lists the ones it takes), at load: unknown event, a stage given; while running: any write to e
+expert: Under the hood | a Bukkit listener at MONITOR priority that skips cancelled events; event is read only
+expert: Can fail | an unknown field (the error lists the ones it takes), at load: unknown event, a stage given; while running: any write to event
 expert: Reload | every listener is removed; scripts register again while loading
 expert: Time limit | each handler is its own task; checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
@@ -536,11 +536,11 @@ id: events
 name: Event fields
 kind: event
 group: Events
-words: fields e player cancelled
-lead: The e an event handler gets. Its fields are the event's Paper getters by one rule: getJoinMessage() is e.join_message, isCancelled() is e.cancelled. Each event's page lists its fields, what they hold and whether they can be changed; fields are writable in on{ }, read only in after{ }. A name the event doesn't have is an error that lists its fields, never nil. A list field (e.drops) is a plain Lua list and a block snapshot (e.new_state) a block_snapshot, the same one for every read in the handler: change it (table.remove(e.drops, 1), e.drops[1].count = 2, e.new_state.state = ...) and the change goes back into the event when the handler ends or first waits; where it can't (after{ }, a list Paper gives read only) that is a red error, never a silent loss. Fields Lullaby can't hand to scripts yet (inventories, ...) give a red error too. Enum fields are lowercase words ("right_click_block"), keys are ids ("minecraft:stone").
+words: fields event player cancelled
+lead: The event an event handler gets. Its fields are the event's Paper getters by one rule: getJoinMessage() is event.join_message, isCancelled() is event.cancelled. Each event's page lists its fields, what they hold and whether they can be changed; fields are writable in on{ }, read only in after{ }. A name the event doesn't have is an error that lists its fields, never nil. A list field (event.drops) is a plain Lua list and a block snapshot (event.new_state) a block_snapshot, the same one for every read in the handler: change it (table.remove(event.drops, 1), event.drops[1].count = 2, event.new_state.state = ...) and the change goes back into the event when the handler ends or first waits; where it can't (after{ }, a list Paper gives read only) that is a red error, never a silent loss. Fields Lullaby can't hand to scripts yet (inventories, ...) give a red error too. Enum fields are lowercase words ("right_click_block"), keys are ids ("minecraft:stone").
 example:
-  on{ "BlockBreakEvent", function(e)
-    if e.player.name == "Notch" then e.cancelled = true end
+  on{ "BlockBreakEvent", function(event)
+    if event.player.name == "Notch" then event.cancelled = true end
   end }
 expert: Thread | main thread, like every script
 expert: Cost | one field read or write: 0.5–3 µs, one Java call (guess, not measured); a player or block field reuses its object; an item_stack field is copied each read: 10–50 µs (guess, not measured)
@@ -556,12 +556,12 @@ name: reload
 kind: event
 group: Events
 words: reload restart loaded scripts
-syntax: after{ "reload", function(e) ... end }
-lead: Lullaby's own event: runs after /lullaby reload has loaded every script. e is read only: e.scripts (files loaded), e.errors, e.ms (how long it took), e.cause ("command") and e.player (who reloaded; nil from the console).
+syntax: after{ "reload", function(event) ... end }
+lead: Lullaby's own event: runs after /lullaby reload has loaded every script. event is read only: event.scripts (files loaded), event.errors, event.ms (how long it took), event.cause ("command") and event.player (who reloaded; nil from the console).
 expert: Thread | main thread, like every script
 expert: Cost | runs once per reload: as its handlers (guess, not measured)
-expert: Under the hood | Lullaby's own: fired after every script loaded and online players' commands were refreshed; e is a plain read-only table
-expert: Can fail | any write to e
+expert: Under the hood | Lullaby's own: fired after every script loaded and online players' commands were refreshed; event is a plain read-only table
+expert: Can fail | any write to event
 expert: Reload | it is the reload
 expert: Time limit | each handler is its own task; checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
@@ -572,17 +572,17 @@ name: input
 kind: event
 group: Events
 words: keys keyboard mouse click press jump space sneak shift sprint punch swing attack hit right left use place break dig drop swap hotbar scroll middle pick fly elytra spear stab packet
-syntax: on{ "input", function(e) ... end, order = number }
-lead: Lullaby's own event for what a player's game sends when they press a key or click: one event per vanilla input packet, right before vanilla acts on it. e.packet says which packet; each packet has its own fields (Mojang's names), listed in the tree below with when it comes and how to tell it apart. on{ } may cancel it: vanilla never sees the packet, and the player's game gets what vanilla sends when it refuses that input itself (the block or the hotbar is shown again as it is). after{ } runs once vanilla has handled it (the block is placed, the item dropped); e is read only there.
+syntax: on{ "input", function(event) ... end, order = number }
+lead: Lullaby's own event for what a player's game sends when they press a key or click: one event per vanilla input packet, right before vanilla acts on it. event.packet says which packet; each packet has its own fields (Mojang's names), listed in the tree below with when it comes and how to tell it apart. on{ } may cancel it: vanilla never sees the packet, and the player's game gets what vanilla sends when it refuses that input itself (the block or the hotbar is shown again as it is). after{ } runs once vanilla has handled it (the block is placed, the item dropped); event is read only there.
 field: packet | text | Which packet: a name from the tree below.
 field: player | player | Who sent it.
 field: cancelled | boolean | true cancels the packet (on{ } only, before a wait). The tree says what can't be cancelled; trying is a red error.
-note: This is the raw input, before vanilla checks it: reach, game mode, cooldowns. A cheating client can send anything (an attack across the map), so for rules that must hold use the checked Paper events (BlockBreakEvent, PrePlayerAttackEntityEvent, ...). Some input never reaches the server, so no event sees it: E (own inventory), T, Tab, F3, Esc, and a right click on air with an empty hand. Reading a field another packet has is a red error (e.pressed on a punch): check e.packet first; e.packet == "player_input" and e.pressed.jump is safe, because Lua stops at the first false.
+note: This is the raw input, before vanilla checks it: reach, game mode, cooldowns. A cheating client can send anything (an attack across the map), so for rules that must hold use the checked Paper events (BlockBreakEvent, PrePlayerAttackEntityEvent, ...). Some input never reaches the server, so no event sees it: E (own inventory), T, Tab, F3, Esc, and a right click on air with an empty hand. Reading a field another packet has is a red error (event.pressed on a punch): check event.packet first; event.packet == "player_input" and event.pressed.jump is safe, because Lua stops at the first false.
 example:
-  on{ "input", function(e)
+  on{ "input", function(event)
     -- double jump: space pressed in the air
-    if e.packet == "player_input" and e.pressed.jump and not e.player.on_ground then
-      velocity{ entity = e.player, velocity = vec3(0, 0.8, 0) }
+    if event.packet == "player_input" and event.pressed.jump and not event.player.on_ground then
+      modify_entity{ entity = event.player, velocity = vec3(0, 0.8, 0) }
     end
   end }
 tree-from: src/main/java/io/github/kupfermeister/lullaby/nms/Input.java Kind
@@ -594,12 +594,12 @@ tree: player_input.right | boolean | D is down now.
 tree: player_input.jump | boolean | Space is down now. The key, not a jump: also in water, flying or riding.
 tree: player_input.shift | boolean | Shift (sneak) is down now.
 tree: player_input.sprint | boolean | The sprint key is down now; whether they really sprint is player_command start_sprinting.
-tree: player_input.pressed | keys | The keys that went down with this packet, by the same seven names: e.pressed.jump is true only at the moment space goes down. Lullaby's own: it compares with the player's keys before.
-tree: player_input.released | keys | The keys that went up with this packet: e.released.shift when they stop sneaking.
+tree: player_input.pressed | keys | The keys that went down with this packet, by the same seven names: event.pressed.jump is true only at the moment space goes down. Lullaby's own: it compares with the player's keys before.
+tree: player_input.released | keys | The keys that went up with this packet: event.released.shift when they stop sneaking.
 tree: punch | | A left click: the arm swing, on air, a block or an entity alike. Hitting an entity also sends attack; holding the button on a block sends punch again and again while it breaks (the breaking itself is player_action). Cancelled: no swing.
 tree: attack | | A left click on an entity: the hit. Not with a spear held (that is player_action stab). Cancelled: no hit.
 tree: attack.entity | entity · player · nil | Who was hit; nil if the game knows no such entity (gone meanwhile, or a cheating client).
-tree: interact | | A right click on an entity: trade, ride, shear, name tag, ... The player's game tries main_hand first and off_hand only if the main hand did nothing, so one click can send two (check e.hand). Cancelled: nothing happens, the player's inventory and the entity are shown again as they are.
+tree: interact | | A right click on an entity: trade, ride, shear, name tag, ... The player's game tries main_hand first and off_hand only if the main hand did nothing, so one click can send two (check event.hand). Cancelled: nothing happens, the player's inventory and the entity are shown again as they are.
 tree: interact.entity | entity · player · nil | What was clicked; nil if the game knows no such entity.
 tree: interact.hand | text | "main_hand" or "off_hand".
 tree: interact.location | vec3 | Where on the entity the click hit, measured from the entity's position (its feet).
@@ -615,7 +615,7 @@ tree: use_item_on.direction | text | The side clicked: "down", "up", "north", "s
 tree: use_item_on.location | vec3 | The exact point clicked, in world positions.
 tree: use_item_on.inside | boolean | The click started inside the block (vanilla's "inside": the player's eyes are in it).
 tree: use_item_on.world_border_hit | boolean | The click hit the world border.
-tree: player_action | | Breaking, dropping, swapping and letting go; e.action says which.
+tree: player_action | | Breaking, dropping, swapping and letting go; event.action says which.
 tree: player_action.action | text | What they did:
 tree: player_action.action.start_destroy_block | | Left button held on a block: breaking starts (in creative the block breaks at once). Cancelled: no breaking, the block is shown again.
 tree: player_action.action.change_destroy_direction | | Still breaking the same block, now looking at another side of it.
@@ -628,12 +628,12 @@ tree: player_action.action.swap_item_with_offhand | | F: swap the hands. Cancell
 tree: player_action.action.stab | | A left click with a spear (an item with the piercing_weapon component): the spear's hit. Vanilla ignores attack while one is held. Cancelled: no hit.
 tree: player_action.block | block | The block, for the destroy actions; for the others vanilla sends the block at 0 0 0.
 tree: player_action.direction | text | The side of the block, for the destroy actions; "down" for the others.
-tree: player_command | | A state their game switched; e.action says which.
+tree: player_command | | A state their game switched; event.action says which.
 tree: player_command.action | text | What switched:
 tree: player_command.action.stop_sleeping | | "Leave Bed" clicked. Cancelled: they stay in bed.
 tree: player_command.action.start_sprinting | | Sprinting starts (sprint key, double-tap W). Can't be cancelled.
 tree: player_command.action.stop_sprinting | | Sprinting stops. Can't be cancelled.
-tree: player_command.action.start_riding_jump | | A jump on a mount that jumps (horse, camel, ...); e.data is its strength. Cancelled: no jump.
+tree: player_command.action.start_riding_jump | | A jump on a mount that jumps (horse, camel, ...); event.data is its strength. Cancelled: no jump.
 tree: player_command.action.stop_riding_jump | | The mount's jump ended.
 tree: player_command.action.open_inventory | | E while riding a mount with an inventory (horse, llama, ...): its inventory, not their own. Cancelled: nothing opens.
 tree: player_command.action.start_fall_flying | | Space in the air with an elytra: gliding starts. Cancelled: they stop gliding (vanilla's own refusal).
@@ -651,7 +651,7 @@ tree: player_abilities.flying | boolean | true: flying starts; false: it stops.
 expert: Thread | main thread, like every script; the packets arrive on the network threads and wait in vanilla's own queue, in the order they came
 expert: Cost | no handler: nothing in the network at all; with a handler: one event per input packet (a few per second per player), guess 10–40 µs each (not measured)
 expert: Under the hood | nms/Input.java: a hook in each player's network pipeline (only while a script listens) wraps the input packets; vanilla queues them for the main thread as always, where the on handlers run, then vanilla (unless cancelled), then the after handlers; fields are read from the packet by number. Paper's packet limiter counts them for its all-packets limit, but a limit set for one packet in paper-global.yml (packet-limiter overrides) doesn't see them while a script listens
-expert: Can fail | at load: a stage given; while running: a field the packet doesn't have (the error lists the ones it has), a field written (only cancelled can be), cancelling what can't be cancelled, e used after its handlers ended
+expert: Can fail | at load: a stage given; while running: a field the packet doesn't have (the error lists the ones it has), a field written (only cancelled can be), cancelling what can't be cancelled, event used after its handlers ended
 expert: Reload | the hook leaves every pipeline; scripts listen again while loading. Packets already waiting go to vanilla unchanged
 expert: Time limit | each handler is its own task; checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed

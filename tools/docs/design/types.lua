@@ -395,7 +395,7 @@ T.entity = {
 	identity = "uuid; packets use the network id, Lullaby converts", arg = "EntityArgument (@e, @p, names)",
 	save = "uuid", note = "removed: fields read nil, actions return false",
 	built = "2026-11-15: entity( ), fields uuid type alive world pos location velocity on_ground health max_health "
-		.. "custom_name vehicle (list owned by nms/Entities.java), teleport{ }, velocity{ }, set_health{ }; 2026-11-23: modify_entity{ } with custom_name custom_name_visible glowing silent gravity invulnerable persistent visible collidable fire_time freeze_time fall_distance no_damage_time air ai aware target can_pickup_items angry left_handed food saturation exhaustion xp xp_level (list owned by Entities.java Change). "
+		.. "custom_name vehicle (list owned by nms/Entities.java), teleport{ }; 2026-11-23: modify_entity{ } with max_health health absorption velocity custom_name custom_name_visible glowing silent gravity invulnerable persistent visible collidable fire_time freeze_time fall_distance no_damage_time air ai aware target can_pickup_items angry left_handed food saturation exhaustion xp xp_level (list owned by Entities.java Change). "
 		.. "One type for every sort (living or not: fields a sort lacks read nil). Players have every entity field.",
 }
 T.world = {

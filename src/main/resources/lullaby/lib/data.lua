@@ -597,13 +597,13 @@ kind: type
 group: Scripts
 words: save saved data store persist keep flag variable reload restart
 syntax: server.data.coins = 10
-lead: The server itself. server.data is a table that stays: it is saved with the world (autosave, /save-all, server stop) and before /lullaby reload, and comes back after a reload or restart. Every script file sees the same server.data. Use it like any table: server.data.round = (server.data.round or 0) + 1. While the server runs it is a plain Lua table, so it costs nothing extra. Worlds and chunks have their own: w.data (see world( )) and c.data (see chunk( )).
+lead: The server itself. server.data is a table that stays: it is saved with the world (autosave, /save-all, server stop) and before /lullaby reload, and comes back after a reload or restart. Every script file sees the same server.data. Use it like any table: server.data.round = (server.data.round or 0) + 1. While the server runs it is a plain Lua table, so it costs nothing extra. Worlds and chunks have their own: world.data (see world( )) and context.data (see chunk( )).
 field: data | table | Saved data. Can be text, numbers, true/false, tables (lists, or text keys), players, worlds, positions and the other small values, location, item_stack, block_state and component. Other things (functions, entities, tasks, events, tables with their own metatable, nan and inf, tables more than 98 deep) are left out when saving, with a red error naming the place. Keys can't be empty text, and keys starting with "lullaby:" are kept for Lullaby. server.data = { } starts over.
 note: The file is plugins/lullaby/data/server.snbt, readable text in vanilla's SNBT (what /data get shows). You may edit it: a change by hand wins, so Lullaby doesn't save over it and loads it at the next /lullaby reload (changes scripts made since the last save are then dropped, the console says so). /lullaby data server [path] shows the data, with tab completion of the keys. A table used in two places is saved twice and loads as two tables.
 example:
-  on{ "PlayerJoinEvent", function(e)
+  on{ "PlayerJoinEvent", function(event)
     local joins = server.data.joins or {}
-    joins[e.player.uuid] = (joins[e.player.uuid] or 0) + 1
+    joins[event.player.uuid] = (joins[event.player.uuid] or 0) + 1
     server.data.joins = joins
   end }
 expert: Java object | none while the server runs: server.data is a plain Lua table. Saving builds vanilla NBT once (nms/SavedData.java) and writes the file on a worker thread

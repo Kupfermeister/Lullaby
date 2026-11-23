@@ -45,8 +45,8 @@ syntax: worlds( ) → { { id = text, loaded = boolean }, ... }
 lead: Every world the server has: the loaded ones and every world folder on disk, sorted by id. Each entry is a table with id (the full id, "minecraft:arena_7") and loaded. world( id ) gives the world of a loaded one.
 returns: list of table
 example:
-  for _, w in ipairs(worlds()) do
-    if not w.loaded then load_world{ id = w.id } end
+  for _, world in ipairs(worlds()) do
+    if not world.loaded then load_world{ id = world.id } end
   end
 expert: Thread | main thread, like every script
 expert: Cost | reads the world folders on disk: 0.1–2 ms (guess, not measured); don't call it every tick

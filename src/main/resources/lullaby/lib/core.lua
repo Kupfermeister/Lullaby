@@ -397,9 +397,9 @@ name: pairs( ) and next( )
 kind: reading
 group: Values
 words: loop iterate table fields
-syntax: for k, v in pairs(t) do ... end
+syntax: for key, value in pairs(table) do ... end
 lead: Lua's pairs and next, made to also work on item stacks: those load every part first. On other tables they work exactly like Lua's.
-arg: t | table | The table.
+arg: table | table | The table.
 expert: Thread | main thread, like every script
 expert: Cost | plain tables: as Lua's own; an item stack: 5–50 µs once to load its parts (guess, not measured)
 expert: Under the hood | Lua's next; an item stack's parts are loaded from Java first
@@ -432,9 +432,9 @@ name: pcall( ) and xpcall( )
 kind: reading
 group: Values
 words: try catch error protected
-syntax: local ok, result = pcall( f, ... )
-lead: Lua's pcall and xpcall: run f and catch its errors. A stop is never caught: stop{ } of the running task and the config's script_time_limit still end the task (coroutine.resume passes them on too).
-arg: f | function | What to run.
+syntax: local success, result = pcall( func, ... )
+lead: Lua's pcall and xpcall: run func and catch its errors. A stop is never caught: stop{ } of the running task and the config's script_time_limit still end the task (coroutine.resume passes them on too).
+arg: func | function | What to run.
 arg: ... | any | Its arguments (xpcall: the error handler first).
 returns: true and f's results · false and the error
 expert: Thread | main thread, like every script

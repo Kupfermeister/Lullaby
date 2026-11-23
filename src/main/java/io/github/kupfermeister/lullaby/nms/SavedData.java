@@ -85,7 +85,7 @@ public final class SavedData {
     }
 
     /** Where a value is, for error texts: built into text only when there is a problem (no text per entry). */
-    private record Place(Place parent, Object key) {
+    record Place(Place parent, Object key) {
         Place child(Object key) {
             return new Place(this, key);
         }

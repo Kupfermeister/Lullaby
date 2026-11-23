@@ -37,8 +37,8 @@ import org.bukkit.craftbukkit.persistence.CraftPersistentDataContainer;
  * <ul>
  * <li>attached: the chunk is loaded and Lua holds its table. When the chunk unloads (ChunkUnloadEvent, before the
  * server writes the chunk) and at every save of its world, the table is written into the chunk.</li>
- * <li>written: the chunk unloaded; this class remembers what it wrote. Lua keeps the table as long as some script
- * still holds it ("keep alive", agreed with Kupfermeister 2026-11-23). At each save Lua sends those tables again: one
+ * <li>written: the chunk unloaded; this class remembers what it wrote. Lua keeps the table until the next reload
+ * ("keep alive", agreed with Kupfermeister 2026-11-23; why not shorter: data.lua). At each save Lua sends those tables again: one
  * that changed is written into the chunk (loaded in the background at an autosave, at once at reload, stop and world
  * unload). When a script reads c.data again, the kept table is reused if the chunk still holds what Lullaby wrote;
  * if something else changed it (a tool), the chunk's version wins and data.lua locks the old table.</li>
@@ -312,8 +312,67 @@ public final class ChunkData {
         List<String> problems = new ArrayList<>();
         if (!luaProblems.isEmpty()) problems.addAll(List.of(luaProblems.split("\n")));
         CompoundTag root = SavedData.encodeRoot(tree, name, slots, problems);
+        if (root != null && root.get("data") instanceof CompoundTag data) {
+            fits(data, new SavedData.Place(null, name), problems);
+            if (data.isEmpty()) root = null;
+        }
         SavedData.report(reporter, file(world, x, z), "error", "saving " + name, problems);
         return root;
+    }
+
+    // A chunk is saved in vanilla's binary NBT, where one text (a value or a key) holds at most 65535 bytes (Java's
+    // modified UTF-8). A longer one makes the server fail to write the WHOLE chunk (blocks too), so it is left out here
+    // with a red error. Files (server.data, w.data) are SNBT text and have no such limit.
+    private static final int MAX_TEXT = 65535;
+
+    private static int textBytes(String s) {
+        int n = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            n += (c >= 1 && c <= 0x7F) ? 1 : c <= 0x7FF ? 2 : 3;
+        }
+        return n;
+    }
+
+    /** False if the tag must be left out; too long texts and keys are taken out (a list with one goes whole). */
+    private static boolean fits(Tag tag, SavedData.Place at, List<String> problems) {
+        switch (tag) {
+            case net.minecraft.nbt.StringTag s -> {
+                int bytes = textBytes(s.value());
+                if (bytes <= MAX_TEXT) return true;
+                // FORMAT: a text too long for a chunk
+                problems.add(at.text() + " can't be saved: the text is " + bytes + " bytes, but a chunk holds at most "
+                        + MAX_TEXT + " in one text (keep longer text in w.data or server.data)");
+                return false;
+            }
+            case CompoundTag c -> {
+                for (String key : List.copyOf(c.keySet())) {
+                    SavedData.Place child = at.child(key);
+                    if (textBytes(key) > MAX_TEXT) {
+                        // FORMAT: a key too long for a chunk
+                        problems.add(child.text() + " can't be saved: its key is longer than " + MAX_TEXT
+                                + " bytes, the most a chunk holds in one text");
+                        c.remove(key);
+                    } else if (!fits(c.get(key), child, problems)) {
+                        c.remove(key);
+                    }
+                }
+                return true;
+            }
+            case net.minecraft.nbt.ListTag list -> {
+                for (int i = 0; i < list.size(); i++) {
+                    if (!fits(list.get(i), at.child(i + 1), problems)) {
+                        String whole = " (so the whole list is left out)"; // FORMAT
+                        if (!problems.getLast().endsWith(whole)) problems.set(problems.size() - 1, problems.getLast() + whole);
+                        return false;
+                    }
+                }
+                return true;
+            }
+            default -> {
+                return true;
+            }
+        }
     }
 
     /** Puts the data into the chunk only when it differs (a change makes the server save the chunk). */

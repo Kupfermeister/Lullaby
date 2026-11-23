@@ -19,11 +19,13 @@
 --                When the world unloads, its table is LOCKED (emptied; any use is a red error that says why).
 --   c.data       inside the chunk's own save (nms/ChunkData.java). Read on the first c.data, only while the chunk is
 --                loaded. "Keep alive" (agreed with Kupfermeister 2026-11-23): when the chunk unloads, the table is
---                written into the chunk and then kept for as long as some script still holds it (a weak table), so
---                `local d = c.data` never turns into a copy that is no longer saved: at the next save, a kept table
---                that changed is written into its chunk again (Java loads the chunk for that), and c.data gives the
---                same table again when the chunk is back. Only if something else changed the chunk's data meanwhile
---                does the chunk's version win; the old table is then locked.
+--                written into the chunk and then KEPT until the next reload, so `local d = c.data` never turns into a
+--                copy that is no longer saved: at every save, a kept table that changed is written into its chunk
+--                again (Java loads the chunk for that), and c.data gives the same table again when the chunk is back.
+--                Kept until reload, not "while a script holds it" (a weak table): a script may change a table and
+--                let go of it before the next save, or hold only a table inside it (local claims = c.data.claims);
+--                a weak table would then be thrown away with the change, silently. Only if something else changed
+--                the chunk's data meanwhile does the chunk's version win; the old table is then locked.
 local J, lib, I = ...
 
 local type, error, tostring, tonumber, rawget, rawset, pcall, unpack, setmetatable =
@@ -36,7 +38,6 @@ local slot_of = I.slot_of
 
 local PREFIX = "lullaby:"
 local WEAK_KEYS = { __mode = "k" }
-local WEAK_VALUES = { __mode = "v" }
 local NOTHING = {}
 
 -- Small values saved by their fields and made again with their maker (lib.<type>(field1, field2, ...)), which checks
@@ -409,7 +410,7 @@ end
 -- ---------------------------------------------------------------------------------------------------------------
 
 local attached = {} -- world id -> { ["x|z"] = table } of loaded chunks (Lua holds them)
-local kept = {}     -- world id -> weak { ["x|z"] = table } of unloaded chunks, alive while some script holds one
+local kept = {}     -- world id -> { ["x|z"] = table } of unloaded chunks read since the last reload (see the top)
 
 local function attach(id, xz, t)
 	local here = attached[id]
@@ -475,13 +476,13 @@ function I.chunk_data_unload(id, x, z)
 	if not t then return I.wire(NOTHING), "" end
 	here[xz] = nil
 	local keep = kept[id]
-	if not keep then keep = setmetatable({}, WEAK_VALUES); kept[id] = keep end
+	if not keep then keep = {}; kept[id] = keep end
 	keep[xz] = t
 	local tree, found = save_tree(t, chunk_name(id, x, z))
 	return I.wire(tree), found
 end
 
--- A save of one world: Java first asks how many chunk tables there are (attached, then kept ones still alive), then
+-- A save of one world: Java first asks how many chunk tables there are (attached, then kept ones), then
 -- takes them one by one (I.chunk_data_entry), so each chunk's data has the wire's full depth.
 local entries, entries_world = {}, nil
 local function add_entries(list, is_kept)

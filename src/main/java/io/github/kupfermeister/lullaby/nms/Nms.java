@@ -144,6 +144,18 @@ public final class Nms {
         return level == null ? null : level.dimension().identifier().toString();
     }
 
+    /** A file as errors show it: from the server's folder ("world/dimensions/minecraft/arena_7/data/lullaby.snbt"). */
+    public static String shownPath(java.nio.file.Path file) {
+        java.nio.file.Path root = java.nio.file.Path.of("").toAbsolutePath();
+        java.nio.file.Path full = file.toAbsolutePath().normalize();
+        return (full.startsWith(root) ? root.relativize(full) : full).toString().replace('\\', '/');
+    }
+
+    /** world.data's file: lullaby.snbt in the data folder of the world's own folder (where vanilla keeps its own data). */
+    public static java.nio.file.Path worldDataFile(ResourceKey<Level> world) {
+        return server().storageSource.getDimensionPath(world).resolve("data").resolve("lullaby.snbt");
+    }
+
     /** The key of a loaded world by its full id (the library checked it exists), kept in a world's slot. */
     public static ResourceKey<Level> worldKey(String id) {
         return ResourceKey.create(Registries.DIMENSION, Identifier.parse(id));

@@ -7,22 +7,27 @@ import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import com.mojang.brigadier.tree.LiteralCommandNode;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.command.brigadier.Commands;
+import io.papermc.paper.command.brigadier.argument.ArgumentTypes;
+import io.github.kupfermeister.lullaby.nms.Nms;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.entity.Player;
 
 /**
  * The built-in commands (Kupfermeister: everything necessary inside, nothing else built in): {@code /lullaby} with
- * {@code reload}, {@code version} and {@code data server [path]}, and {@code /lul}, which does exactly what
+ * {@code reload}, {@code version} and {@code data server|world <world>|chunk [path]} (chunk: the one you stand in),
+ * and {@code /lul}, which does exactly what
  * {@code /lullaby reload} does. Registered as a Brigadier command like LightForce. It needs the permission
  * {@code lullaby.command}, which ops have by default (paper-plugin.yml); {@code data} also needs {@code lullaby.data}.
  * Reload is in Java so it works even when every script is broken.
  *
- * <p>Tab completion of {@code data server} can be asked for off the main thread; the keys live in Lua, so the
+ * <p>Tab completion of {@code data} paths can be asked for off the main thread; the keys live in Lua, so the
  * suggestions are then worked out on the main thread and handed back later (Brigadier waits for them).
  */
 final class LullabyCommand {
@@ -44,12 +49,54 @@ final class LullabyCommand {
                 .then(Commands.literal("data")
                         .requires(source -> source.getSender().hasPermission("lullaby.data"))
                         .then(Commands.literal("server")
-                                .executes(context -> showData(plugin, context.getSource(), ""))
+                                .executes(context -> showData(plugin, context.getSource(), "server", ""))
                                 .then(Commands.argument("path", StringArgumentType.greedyString())
-                                        .suggests((context, builder) -> suggestKeys(plugin, builder))
+                                        .suggests((context, builder) -> suggestKeys(plugin, "server", builder))
+                                        .executes(context -> showData(plugin, context.getSource(), "server",
+                                                StringArgumentType.getString(context, "path")))))
+                        .then(Commands.literal("world")
+                                .then(Commands.argument("world", ArgumentTypes.world())
                                         .executes(context -> showData(plugin, context.getSource(),
+                                                world(context.getArgument("world", World.class)), ""))
+                                        .then(Commands.argument("path", StringArgumentType.greedyString())
+                                                .suggests((context, builder) -> suggestKeys(plugin,
+                                                        world(context.getArgument("world", World.class)), builder))
+                                                .executes(context -> showData(plugin, context.getSource(),
+                                                        world(context.getArgument("world", World.class)),
+                                                        StringArgumentType.getString(context, "path"))))))
+                        .then(Commands.literal("chunk")
+                                .executes(context -> showChunk(plugin, context.getSource(), ""))
+                                .then(Commands.argument("path", StringArgumentType.greedyString())
+                                        .suggests((context, builder) -> {
+                                            String which = chunk(context.getSource());
+                                            return which == null ? builder.buildFuture() : suggestKeys(plugin, which, builder);
+                                        })
+                                        .executes(context -> showChunk(plugin, context.getSource(),
                                                 StringArgumentType.getString(context, "path"))))))
                 .build();
+    }
+
+    /** "world minecraft:arena_7" for Engine.viewData. */
+    private static String world(World world) {
+        return "world " + Nms.worldIdOf(world);
+    }
+
+    /** "chunk minecraft:overworld 3 -5": the chunk the command's player (or command block, ...) is in; null for the console. */
+    private static String chunk(CommandSourceStack source) {
+        if (source.getExecutor() == null && !(source.getSender() instanceof Player)) return null;
+        Location at = source.getLocation();
+        return "chunk " + Nms.worldIdOf(at.getWorld()) + " " + (at.getBlockX() >> 4) + " " + (at.getBlockZ() >> 4);
+    }
+
+    private static int showChunk(Lullaby plugin, CommandSourceStack source, String path) {
+        String which = chunk(source);
+        if (which == null) {
+            // FORMAT: /lullaby data chunk from the console
+            source.getSender().sendMessage(Component.text("/lullaby data chunk shows the chunk you stand in: use it in"
+                    + " the game", NamedTextColor.RED));
+            return 0;
+        }
+        return showData(plugin, source, which, path);
     }
 
     /** {@code /lul}: exactly {@code /lullaby reload}, short for typing it often. Same permission. */
@@ -75,14 +122,14 @@ final class LullabyCommand {
         return Command.SINGLE_SUCCESS;
     }
 
-    /** server.data (or one place in it, "stats.joins") as it is in memory now, colored like /data get. */
-    private static int showData(Lullaby plugin, CommandSourceStack source, String path) {
+    /** Saved data (or one place in it, "stats.joins") as it is in memory now, colored like /data get. */
+    private static int showData(Lullaby plugin, CommandSourceStack source, String which, String path) {
         Object[] view;
         try {
-            view = plugin.engine().viewData(path.strip());
+            view = plugin.engine().viewData(which, path.strip());
         } catch (RuntimeException e) {
             // FORMAT: /lullaby data failed
-            source.getSender().sendMessage(Component.text("Can't show server.data: " + e.getMessage(), NamedTextColor.RED));
+            source.getSender().sendMessage(Component.text("Can't show the data: " + e.getMessage(), NamedTextColor.RED));
             return 0;
         }
         String name = (String) view[1];
@@ -97,18 +144,18 @@ final class LullabyCommand {
     }
 
     /** The keys one level below what was typed: "sta" -> "stats", "stats." -> "stats.joins", "stats.kills". */
-    private static CompletableFuture<Suggestions> suggestKeys(Lullaby plugin, SuggestionsBuilder builder) {
-        if (Bukkit.isPrimaryThread()) return CompletableFuture.completedFuture(keys(plugin, builder));
+    private static CompletableFuture<Suggestions> suggestKeys(Lullaby plugin, String which, SuggestionsBuilder builder) {
+        if (Bukkit.isPrimaryThread()) return CompletableFuture.completedFuture(keys(plugin, which, builder));
         CompletableFuture<Suggestions> later = new CompletableFuture<>();
-        Bukkit.getScheduler().runTask(plugin, () -> later.complete(keys(plugin, builder)));
+        Bukkit.getScheduler().runTask(plugin, () -> later.complete(keys(plugin, which, builder)));
         return later;
     }
 
-    private static Suggestions keys(Lullaby plugin, SuggestionsBuilder builder) {
+    private static Suggestions keys(Lullaby plugin, String which, SuggestionsBuilder builder) {
         String typed = builder.getRemaining();
         int dot = typed.lastIndexOf('.');
         String parent = dot < 0 ? "" : typed.substring(0, dot);
-        List<String> keys = plugin.engine().dataKeys(parent);
+        List<String> keys = plugin.engine().dataKeys(which, parent);
         String lower = typed.toLowerCase(Locale.ROOT);
         for (String key : keys) {
             String full = parent.isEmpty() ? key : parent + "." + key;

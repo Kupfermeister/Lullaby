@@ -33,8 +33,8 @@ Java, under `src/main/java/io/github/kupfermeister/lullaby/`:
 | File | What it does |
 |---|---|
 | [Lullaby.java](src/main/java/io/github/kupfermeister/lullaby/Lullaby.java) | Plugin entry: the version lock, the per-tick job, `/lullaby` registration. |
-| [Engine.java](src/main/java/io/github/kupfermeister/lullaby/Engine.java) | One load of the scripts: Lua state, listeners, files in `plugins/lullaby`. A reload saves `server.data`, throws it all away and builds it new. |
-| [LullabyCommand.java](src/main/java/io/github/kupfermeister/lullaby/LullabyCommand.java) | `/lullaby reload`, `/lullaby version`, `/lullaby data server [path]` (with tab completion of the keys) and `/lul` (exactly `/lullaby reload`), the built-in commands. In Java so it works when every script is broken. |
+| [Engine.java](src/main/java/io/github/kupfermeister/lullaby/Engine.java) | One load of the scripts: Lua state, listeners, files in `plugins/lullaby`. A reload saves `server.data`, every `w.data` and `c.data`, throws it all away and builds it new. It also decides when saved data is saved (world saves, world and chunk unloads). |
+| [LullabyCommand.java](src/main/java/io/github/kupfermeister/lullaby/LullabyCommand.java) | `/lullaby reload`, `/lullaby version`, `/lullaby data server|world <world>|chunk [path]` (with tab completion of the keys; chunk: the one you stand in) and `/lul` (exactly `/lullaby reload`), the built-in commands. In Java so it works when every script is broken. |
 | [lua/LuaRuntime.java](src/main/java/io/github/kupfermeister/lullaby/lua/LuaRuntime.java) | The LuaJIT state; loads the library files in a fixed order (`LIBRARY`). |
 | [lua/JavaFunctions.java](src/main/java/io/github/kupfermeister/lullaby/lua/JavaFunctions.java) | The raw Java functions the library calls (table `J`). Scripts never see them. |
 | [lua/Wire.java](src/main/java/io/github/kupfermeister/lullaby/lua/Wire.java) | Lua tables as bytes in LuaJIT's own `string.buffer` format, so a whole table crosses in one call. |
@@ -62,7 +62,8 @@ never goes through it, so this rule stays true for Lullaby itself. Names are Moj
 | [SoundSeeds.java](src/main/java/io/github/kupfermeister/lullaby/nms/SoundSeeds.java) | `sound_seed()`: runs the game's own file pick over vanilla's `sounds.json` (downloaded at build) to find the seed for one exact file. |
 | [Entities.java](src/main/java/io/github/kupfermeister/lullaby/nms/Entities.java) | Entities: what an entity object's slot holds (its UUID and the vanilla entity last seen, found again by UUID after an unload or a world change), the entity field list (its owner), `set{}`, and the entities of a chunk. |
 | [Input.java](src/main/java/io/github/kupfermeister/lullaby/nms/Input.java) | Lullaby's own `input` event: owns the input packets, their fields and action words (startup checks them against vanilla); a hook in each player's network pipeline, only while a script listens; what a cancelled packet gets back (vanilla's own refusal). |
-| [SavedData.java](src/main/java/io/github/kupfermeister/lullaby/nms/SavedData.java) | `server.data` on disk: `plugins/lullaby/data/server.snbt` through vanilla's SNBT printer and parser, codecs and data fixer. A hand edit wins, a file that didn't load cleanly is never saved over, past `data_max_size` nothing is saved. Lives as long as the plugin, so it outlasts reloads. |
+| [SavedData.java](src/main/java/io/github/kupfermeister/lullaby/nms/SavedData.java) | One saved data file: `server.data` (`plugins/lullaby/data/server.snbt`) or one world's `w.data` (`data/lullaby.snbt` in the world's folder), through vanilla's SNBT printer and parser, codecs and data fixer; also the value conversion ChunkData uses. A hand edit wins, a file that didn't load cleanly is never saved over, past `data_max_size` nothing is saved. One per file, living as long as the plugin, so it outlasts reloads. |
+| [ChunkData.java](src/main/java/io/github/kupfermeister/lullaby/nms/ChunkData.java) | `c.data` inside each chunk (one entry in the chunk's plugin data, saved by the server with the chunk): read when a script first touches it, written when the chunk unloads and when its world saves, only when changed. Remembers what it wrote for tables scripts still hold after an unload ("keep alive") and loads the chunk to write a later change. |
 | [Worlds.java](src/main/java/io/github/kupfermeister/lullaby/nms/Worlds.java) | Worlds as folders: `worlds()`, `create_world{}`, `load_world{}`, `unload_world{}`, `copy_world{}`, `delete_world{}`. Creating and loading go through Paper's WorldCreator on purpose (Paper rewrites world loading, so vanilla's own classes would break with every update); vanilla's dimension folders, registries and seed rule. Copies are built in `plugins/lullaby/temp` and moved into place, so a crash never leaves half a world; a deleted world is moved there whole and kept as a last chance until the next start, which empties temp. Lives as long as the plugin, so a copy outlasts a reload. |
 | [Nms.java](src/main/java/io/github/kupfermeister/lullaby/nms/Nms.java) | Small vanilla reads and actions without a bigger class yet. |
 
@@ -78,7 +79,7 @@ what it holds and gets three tables: `J` Java functions, `lib` what scripts see 
 | [objects.lua](src/main/resources/lullaby/lib/objects.lua) | Player, entity, world, block, chunk, block state, damage; `set{}`, `message`, `particle{}`, `sound{}`, `stop_sound{}`. |
 | [lazy.lua](src/main/resources/lullaby/lib/lazy.lua) | The wire, item stacks, components, `from_json`, Lullaby's own `pairs`/`next` (LuaJIT ignores `__pairs`). |
 | [commands.lua](src/main/resources/lullaby/lib/commands.lua) | `command{}`, `refresh_commands{}`, `online_players()`. |
-| [data.lua](src/main/resources/lullaby/lib/data.lua) | `server` and `server.data`: a plain Lua table while running, turned into a save tree for SavedData.java and back. |
+| [data.lua](src/main/resources/lullaby/lib/data.lua) | `server.data`, `w.data` and `c.data`: plain Lua tables while running, turned into save trees for SavedData.java and ChunkData.java and back; the kept tables of unloaded chunks; locked tables. |
 | [worlds.lua](src/main/resources/lullaby/lib/worlds.lua) | World folders: list, create, load, unload, copy (waits for the worker), delete. Turns world and location objects into names and numbers; Worlds.java checks everything else. |
 | [loader.lua](src/main/resources/lullaby/lib/loader.lua) | Loading script files, `import`. |
 | [java.lua](src/main/resources/lullaby/lib/java.lua) | The raw Java door's Lua side (table `java`, only when `unlock.java` is on) and its docs page. |
@@ -122,9 +123,11 @@ Today five places meet other threads:
 - [Input.java](src/main/java/io/github/kupfermeister/lullaby/nms/Input.java): while a script listens to `input`,
   a hook on the network threads wraps the input packets (it reads one field and touches nothing else). Vanilla queues
   them for the main thread as it queues every packet, in their order; the handlers run there.
-- [SavedData.java](src/main/java/io/github/kupfermeister/lullaby/nms/SavedData.java): after an autosave the file is
-  written on its one worker thread from bytes made on the main thread; every other step waits for that write first.
-  Tab completion of `/lullaby data server` may be asked for off the main thread: the keys are then worked out on the
+- [SavedData.java](src/main/java/io/github/kupfermeister/lullaby/nms/SavedData.java): after an autosave each file is
+  written on the one data writer thread from bytes made on the main thread; every other step on a file waits for its
+  write first. [ChunkData.java](src/main/java/io/github/kupfermeister/lullaby/nms/ChunkData.java) loads a chunk in the
+  background (Paper) to write a kept table's change; the answer comes back on the main thread and is dropped after a
+  reload. Tab completion of `/lullaby data` paths may be asked for off the main thread: the keys are then worked out on the
   main thread and handed back later ([LullabyCommand.java](src/main/java/io/github/kupfermeister/lullaby/LullabyCommand.java)).
 - [Worlds.java](src/main/java/io/github/kupfermeister/lullaby/nms/Worlds.java): world folders are copied, and temp is
   emptied at start, on its one worker thread, which touches only folders no world uses (a temp folder, an unloaded source, a target that
@@ -327,6 +330,6 @@ server and say which build is needed.
 Marked so nobody mistakes them for features: event fields Lullaby can't read yet (inventories, menus, lists of
 those, merchant offers, ...; `?` kinds in events.txt), new block snapshots in a changed list (only existing ones can be
 kept, removed or given another state), and events Paper fires off the main thread (chat, pre-login); saved data on players,
-entities, items, blocks and chunks (only `server.data` exists so far); a generated packet system (`on_packet`, `send_packet`) on the same send core;
+entities and items (`server.data`, `w.data` and `c.data` exist so far); a generated packet system (`on_packet`, `send_packet`) on the same send core;
 inventories; more entity fields and actions (spawning, removing, equipment, effects); worker threads for big block
 edits; mixins as an optional add-on.

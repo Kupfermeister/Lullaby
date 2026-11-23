@@ -301,11 +301,16 @@ id: world
 name: world( )
 kind: reading
 group: Worlds
-words: dimension level overworld nether end
+words: dimension level overworld nether end save saved data store persist
 syntax: world( "overworld" ) → world | nil
-lead: A loaded world by its id: "overworld" means "minecraft:overworld". nil if there is none. Each world exists once, so == works.
+lead: A loaded world by its id: "overworld" means "minecraft:overworld". nil if there is none. Each world exists once, so == works. tostring(w) gives its id.
 arg: id | text · world | The world's id (a world is returned as is).
 returns: world · nil
+field: data | table | Saved data of this world, a table that stays like server.data (it takes the same values, see server). It is saved when this world saves (autosave, /save-all, server stop) and before /lullaby reload, into the world's own folder, so it travels with the world: copy_world{ } copies it, delete_world{ } deletes it. Only while the world is loaded. w.data = { } starts over.
+note: w.data lives in the world's folder as data/lullaby.snbt (world/dimensions/minecraft/<name>/data/lullaby.snbt), readable SNBT you may edit: as with server.data, a change by hand wins and loads at the next /lullaby reload. When the world unloads (unload_world{ }, delete_world{ }, another plugin), its table is emptied and locked: using it is a red error, load the world and read w.data again. unload_world{ save = false } doesn't save it, like the world itself. /lullaby data world <world> [path] shows it.
+example:
+  local arena = world("arena")
+  arena.data.rounds = (arena.data.rounds or 0) + 1
 expert: Thread | main thread, like every script
 expert: Cost | first time per world 2–10 µs, then 50–200 ns (guess, not measured)
 expert: Under the hood | vanilla's dimension id; one object per world, kept
@@ -523,14 +528,25 @@ local CHUNK_META = {
 			local text = J.chunk_entities(slot_of[I.world_by_id(p[1])], p[2], p[3])
 			return text and entity_list(text) or nil
 		end
-		I.no_field("chunk", key, "world, pos, loaded, entities", 2)
+		if key == "data" then return I.chunk_data(c, 2) end -- data.lua
+		I.no_field("chunk", key, "world, pos, loaded, entities, data", 2)
 	end,
-	__newindex = read_only("chunk"),
+	__newindex = function(c, key, value)
+		if key == "data" then return I.set_chunk_data(c, value, 2) end -- data.lua
+		-- FORMAT: a chunk field that can't be changed
+		error("chunk fields can't be changed (." .. tostring(key) .. "), only c.data", 2)
+	end,
 	-- FORMAT: a chunk as text
 	__tostring = function(c) local p = chunk_pos[c] return "chunk " .. p[2] .. " " .. p[3] .. " in " .. p[1] end,
 	__metatable = false,
 }
 I.object_meta.chunk = CHUNK_META
+
+-- A chunk's world id, x and z (data.lua keeps c.data by them).
+function I.chunk_parts(c)
+	local p = chunk_pos[c]
+	return p[1], p[2], p[3]
+end
 
 -- world: the world's full id; x, z: whole numbers in int range (checked by the caller).
 function I.chunk_at(world, x, z)
@@ -549,7 +565,7 @@ end
 name: chunk( )
 kind: reading
 group: Worlds
-words: column area entities loaded
+words: column area entities loaded save saved data store persist claim
 syntax: chunk( world, chunk_pos ) → chunk
 lead: A chunk: a 16 × 16 column of a world, full height. It is a place, so it always exists, loaded or not; each chunk exists once, so == works. location:chunk() gives the chunk a location is in. Reading never loads a chunk.
 arg: world | world | The world.
@@ -559,15 +575,18 @@ field: world | world | Its world.
 field: pos | chunk_pos | Its position, in chunks.
 field: loaded | boolean | Whether it is loaded right now.
 field: entities | list of entity · nil | Every entity whose position is in this chunk, players too, as a new list each read; nil while the chunk isn't loaded.
+field: data | table | Saved data of this chunk, a table that stays like server.data (it takes the same values, see server). It is saved inside the chunk itself, so it travels with the chunk: a chunk that is reset or regenerated loses it. Reading it needs the chunk loaded (else a red error: check c.loaded). Keep data of single blocks here too, under a key of your own, like c.data[x .. "," .. y .. "," .. z]. c.data = { } starts over.
+note: A table you keep (local d = c.data) stays the chunk's real data, also after the chunk unloads: changes are still saved (at the next autosave Lullaby loads the chunk in the background to write them) and c.data gives the same table when the chunk is back. Only if something else changed the chunk's saved data meanwhile (a world editing tool) the chunk's version wins: the old table is then emptied and locked, and using it is a red error. The same happens when the chunk's world unloads. /lullaby data chunk [path] shows the data of the chunk you stand in.
 example:
-  local list = p.location:chunk().entities
-  print(#list .. " entities in my chunk")
+  -- a simple claim
+  local c = p.location:chunk()
+  if c.data.owner == nil then c.data.owner = p end
 expert: Thread | main thread, like every script
-expert: Cost | chunk( ): 0.5–2 µs, no Java; c.loaded 1–3 µs; c.entities 5 µs plus 1–3 µs per entity (guess, not measured)
-expert: Under the hood | world + chunk_pos in Lua; loaded: vanilla getChunkNow (never loads); entities: vanilla's entity lookup over the chunk's box, then kept if their chunk position matches
-expert: Can fail | world not a world, pos not a chunk_pos
-expert: Reload | chunk objects are made new after reload
-expert: Time limit | not checked by chunk( ) (plain Lua); checked by c.loaded and c.entities (they call into the game)
+expert: Cost | chunk( ): 0.5–2 µs, no Java; c.loaded 1–3 µs; c.entities 5 µs plus 1–3 µs per entity; c.data: the first read in a chunk 10–100 µs (it reads the chunk's saved data), then as any Lua table (guess, not measured)
+expert: Under the hood | world + chunk_pos in Lua; loaded: vanilla getChunkNow (never loads); entities: vanilla's entity lookup over the chunk's box, then kept if their chunk position matches; data: one entry "lullaby:data" in the chunk's plugin data (ChunkBukkitValues in the region file), written when the chunk unloads and when its world saves, only when it changed (nms/ChunkData.java)
+expert: Can fail | world not a world, pos not a chunk_pos; c.data while the chunk isn't loaded
+expert: Reload | chunk objects are made new after reload; c.data is written into the chunks before and read again after
+expert: Time limit | not checked by chunk( ) (plain Lua); checked by c.loaded, c.entities and the first c.data in a chunk (they call into the game)
 status: unconfirmed
 ]]
 function lib.chunk(world, pos)

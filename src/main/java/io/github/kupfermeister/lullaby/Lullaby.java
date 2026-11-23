@@ -70,8 +70,8 @@ public final class Lullaby extends JavaPlugin {
     public void onDisable() {
         tickTarget = null;
         if (engine != null) {
-            engine.unload(false); // finals of running tasks run here, then server.data is saved
-            engine.data().close();
+            engine.unload(false); // finals of running tasks run here, then server.data, w.data and c.data are saved
+            engine.closeData();
             engine.worlds().close();
             engine.watchdog().shutdown();
         }

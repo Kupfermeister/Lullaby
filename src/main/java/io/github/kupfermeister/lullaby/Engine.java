@@ -5,6 +5,7 @@ import io.github.kupfermeister.lullaby.error.ErrorReporter;
 import io.github.kupfermeister.lullaby.event.EventBridge;
 import io.github.kupfermeister.lullaby.lua.LuaRuntime;
 import io.github.kupfermeister.lullaby.lua.Watchdog;
+import io.github.kupfermeister.lullaby.nms.ChunkData;
 import io.github.kupfermeister.lullaby.nms.Input;
 import io.github.kupfermeister.lullaby.nms.Nms;
 import io.github.kupfermeister.lullaby.nms.SavedData;
@@ -18,17 +19,33 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.function.Consumer;
+import java.util.function.ToIntFunction;
 import java.util.stream.Stream;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.Level;
 import org.bukkit.Bukkit;
+import org.bukkit.craftbukkit.CraftWorld;
+import org.bukkit.craftbukkit.persistence.CraftPersistentDataContainer;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.world.ChunkUnloadEvent;
 import org.bukkit.event.world.WorldSaveEvent;
+import org.bukkit.event.world.WorldUnloadEvent;
 import org.bukkit.plugin.IllegalPluginAccessException;
 
 /**
@@ -54,9 +71,26 @@ public final class Engine {
     // Owns the join/quit listeners for script commands; registered only while scripts declare commands.
     private final Listener commandPlayers = new Listener() {
     };
-    private final Listener saves = new Listener() { // WorldSaveEvent, for the plugin's whole life
+    private final Listener saves = new Listener() { // WorldSaveEvent and WorldUnloadEvent, for the plugin's whole life
     };
+    // ChunkUnloadEvent: only from the first c.data a script reads until the next reload, so unused it costs nothing
+    private final Listener chunkUnloads = new Listener() {
+    };
+    private boolean listeningChunks;
+    // One writer thread for every saved data file (written there after an autosave); lives as long as the plugin.
+    private final ExecutorService dataWriter = Executors.newSingleThreadExecutor(task -> {
+        Thread thread = new Thread(task, "Lullaby data writer");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private final SavedData.Reporter dataReporter;
+    private final Consumer<Runnable> onMainThread;
     private final SavedData data; // server.data's file; lives as long as the plugin, so it outlasts reloads
+    // w.data files, one per world, made on the first read; kept for the plugin's life (each remembers its file's state)
+    private final Map<ResourceKey<Level>, SavedData> worldFiles = new HashMap<>();
+    private final Set<ResourceKey<Level>> worldsRead = new HashSet<>(); // this load: worlds whose w.data a script read
+    private final Set<ResourceKey<Level>> unloading = new HashSet<>(); // between WorldUnloadEvent and the next tick
+    private final ChunkData chunks; // c.data inside the chunks; reset at every reload
     private final Worlds worlds; // world folders; lives as long as the plugin, so a copy outlasts a reload
 
     Engine(Lullaby plugin) {
@@ -66,39 +100,146 @@ public final class Engine {
         this.errors = new ErrorReporter(plugin.getComponentLogger());
         this.events = new EventBridge(this);
         this.watchdog = new Watchdog(plugin.getSLF4JLogger());
-        this.data = new SavedData(dataFolder,
-                (kind, via, message) -> errors.report(kind, SavedData.FILE_TEXT, -1, via, message),
-                task -> {
-                    try {
-                        Bukkit.getScheduler().runTask(plugin, task);
-                    } catch (IllegalPluginAccessException e) {
-                        task.run(); // the plugin is turning off: nothing else runs on the main thread any more
-                    }
-                });
+        this.dataReporter = (kind, file, via, message) -> errors.report(kind, file, -1, via, message);
+        this.onMainThread = task -> {
+            try {
+                Bukkit.getScheduler().runTask(plugin, task);
+            } catch (IllegalPluginAccessException e) {
+                task.run(); // the plugin is turning off: nothing else runs on the main thread any more
+            }
+        };
+        this.data = new SavedData(dataFolder.resolve("data").resolve("server.snbt"), "plugins/lullaby/data/server.snbt",
+                "server.data", dataReporter, onMainThread, dataWriter);
+        this.chunks = new ChunkData(dataReporter, this::listenForChunkUnloads);
         listenForSaves();
         this.worlds = new Worlds(dataFolder.resolve("temp"));
-    }
-
-    public SavedData data() {
-        return data;
     }
 
     public Worlds worlds() {
         return worlds;
     }
 
+    public ChunkData chunks() {
+        return chunks;
+    }
+
+    /** Plugin off (after {@link #unload}): waits for the last file writes and stops the writer thread. */
+    void closeData() {
+        data.waitForWrite();
+        worldFiles.values().forEach(SavedData::waitForWrite);
+        dataWriter.shutdown();
+    }
+
     /**
-     * server.data is saved when the world is: Paper fires WorldSaveEvent once per world at each autosave, /save-all
-     * and stop, so only the main world's counts. (At stop, plugins turn off before the worlds save: {@link #unload}
-     * saves then.) Registered once for the plugin's life.
+     * Saved data is saved when the world is: Paper fires WorldSaveEvent once per world at each autosave, /save-all
+     * and stop. server.data goes with the main world, w.data and c.data with their own world. (At stop, plugins turn
+     * off before the worlds save: {@link #unload} saves then.) A world that unloads: Paper fires WorldUnloadEvent
+     * first and then saves it (only if the unload asks for saving, which then fires WorldSaveEvent), so at the unload
+     * event every c.data of it goes into its chunks; the tick after, its tables are locked. Registered once for the
+     * plugin's life.
      */
     private void listenForSaves() {
         Bukkit.getPluginManager().registerEvent(WorldSaveEvent.class, saves, EventPriority.MONITOR, (listener, e) -> {
-            if (e instanceof WorldSaveEvent save && !Bukkit.getWorlds().isEmpty()
-                    && save.getWorld().equals(Bukkit.getWorlds().getFirst())) {
+            if (!(e instanceof WorldSaveEvent save)) return;
+            if (!Bukkit.getWorlds().isEmpty() && save.getWorld().equals(Bukkit.getWorlds().getFirst())) {
                 saveData(false, false);
             }
+            ResourceKey<Level> world = ((CraftWorld) save.getWorld()).getHandle().dimension();
+            boolean going = unloading.contains(world);
+            saveWorld(world, going, going, false);
         }, plugin);
+        Bukkit.getPluginManager().registerEvent(WorldUnloadEvent.class, saves, EventPriority.MONITOR, (listener, e) -> {
+            if (!(e instanceof WorldUnloadEvent unload) || runtime == null) return;
+            ResourceKey<Level> world = ((CraftWorld) unload.getWorld()).getHandle().dimension();
+            unloading.add(world);
+            saveChunks(world, true); // into the chunks now: Paper saves them right after (if the unload saves)
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                unloading.remove(world);
+                if (MinecraftServer.getServer().getLevel(world) == null) worldGone(world);
+            });
+        }, plugin, true);
+    }
+
+    /** c.data needs to know when a chunk it read unloads; turned on by the first read (ChunkData). */
+    private void listenForChunkUnloads() {
+        if (listeningChunks) return;
+        listeningChunks = true;
+        Bukkit.getPluginManager().registerEvent(ChunkUnloadEvent.class, chunkUnloads, EventPriority.MONITOR,
+                (listener, e) -> {
+                    if (!(e instanceof ChunkUnloadEvent unload) || runtime == null) return;
+                    ResourceKey<Level> world = ((CraftWorld) unload.getWorld()).getHandle().dimension();
+                    int x = unload.getChunk().getX(), z = unload.getChunk().getZ();
+                    if (!chunks.isAttached(world, x, z)) return;
+                    try {
+                        runtime.chunkUnloaded(chunks, world, x, z,
+                                (CraftPersistentDataContainer) unload.getChunk().getPersistentDataContainer());
+                    } catch (RuntimeException ex) {
+                        internalError("saving " + ChunkData.name(world, x, z), ex);
+                    }
+                }, plugin);
+    }
+
+    /**
+     * One world's w.data (if a script read it) and c.data. {@code wait}: write the file now; {@code now}: a changed
+     * table of an unloaded chunk loads the chunk at once; {@code reloading}: a load follows.
+     */
+    private void saveWorld(ResourceKey<Level> world, boolean wait, boolean now, boolean reloading) {
+        if (runtime == null) return;
+        SavedData file = worldFiles.get(world);
+        if (file != null && worldsRead.contains(world)) {
+            try {
+                String refusal = file.refusal(reloading);
+                if (refusal != null) {
+                    errors.report("warning", file.fileText(), -1, "saving " + file.name(), refusal);
+                } else {
+                    runtime.saveWorldData(world.identifier().toString(), file, wait);
+                }
+            } catch (RuntimeException e) {
+                internalError("saving " + file.name(), e);
+            }
+        }
+        saveChunks(world, now);
+    }
+
+    private void saveChunks(ResourceKey<Level> world, boolean now) {
+        if (runtime == null || !chunks.uses(world)) return;
+        try {
+            runtime.saveChunkData(chunks, world, now);
+        } catch (RuntimeException e) {
+            internalError("saving the chunk data of " + world.identifier(), e);
+        }
+    }
+
+    /** A world unloaded (the tick after its unload event): its w.data and c.data tables are locked and forgotten. */
+    private void worldGone(ResourceKey<Level> world) {
+        worldsRead.remove(world);
+        chunks.forget(world);
+        if (runtime == null) return;
+        try {
+            runtime.worldGone(world.identifier().toString());
+        } catch (RuntimeException e) {
+            internalError("a world unloading", e);
+        }
+    }
+
+    /** w.data read from its file: {false} if the world isn't loaded, else {true, wire bytes or null}. */
+    public Object[] readWorldData(Object key, ToIntFunction<Object> addSlot) {
+        @SuppressWarnings("unchecked")
+        ResourceKey<Level> world = (ResourceKey<Level>) key;
+        if (MinecraftServer.getServer().getLevel(world) == null) return new Object[]{false};
+        SavedData file = worldFiles.computeIfAbsent(world, w -> {
+            Path path = Nms.worldDataFile(w);
+            return new SavedData(path, Nms.shownPath(path), "world(\"" + w.identifier() + "\").data", dataReporter,
+                    onMainThread, dataWriter);
+        });
+        worldsRead.add(world);
+        return new Object[]{true, file.read(addSlot)};
+    }
+
+    /** What data.lua couldn't make again from a world's file (one per line, "" if none). */
+    public void worldDataLoaded(Object key, String problems) {
+        SavedData file = worldFiles.get(key);
+        if (file != null) file.loaded(problems);
     }
 
     /**
@@ -110,7 +251,7 @@ public final class Engine {
         try {
             String refusal = data.refusal(reloading);
             if (refusal != null) {
-                errors.report("warning", SavedData.FILE_TEXT, -1, "saving server.data", refusal);
+                errors.report("warning", data.fileText(), -1, "saving server.data", refusal);
                 return;
             }
             runtime.saveData(data, wait);
@@ -119,17 +260,20 @@ public final class Engine {
         }
     }
 
-    /** /lullaby data server [path]: the view and the place's name; view null: nothing there (or no scripts loaded). */
-    public Object[] viewData(String path) {
-        if (runtime == null) return new Object[]{null, "server.data"};
-        return runtime.dataView(path);
+    /**
+     * /lullaby data: the view and the place's name; view null: nothing there (or no scripts loaded). {@code which}:
+     * "server", "world <id>" or "chunk <id> <x> <z>".
+     */
+    public Object[] viewData(String which, String path) {
+        if (runtime == null) return new Object[]{null, "the data (no scripts are loaded)"}; // FORMAT
+        return runtime.dataView(which, path);
     }
 
-    /** Tab completion of /lullaby data server: the keys at one place. Main thread. */
-    public List<String> dataKeys(String path) {
+    /** Tab completion of /lullaby data: the keys at one place. Main thread. */
+    public List<String> dataKeys(String which, String path) {
         if (runtime == null) return List.of();
         try {
-            return runtime.dataKeys(path);
+            return runtime.dataKeys(which, path);
         } catch (RuntimeException e) {
             internalError("listing server.data keys", e);
             return List.of();
@@ -277,9 +421,19 @@ public final class Engine {
                 internalError("stopping the tasks", e);
             }
             saveData(true, reloading);
+            // every loaded world's w.data and c.data, written now (changed tables of unloaded chunks load them)
+            for (ServerLevel level : MinecraftServer.getServer().getAllLevels()) {
+                saveWorld(level.dimension(), true, true, reloading);
+            }
             runtime.close();
             runtime = null;
         }
+        // The new Lua state reads w.data and c.data again from the files and chunks.
+        chunks.reset();
+        worldsRead.clear();
+        unloading.clear();
+        HandlerList.unregisterAll(chunkUnloads);
+        listeningChunks = false;
         worlds.forgetJobs();
         if (commands != null) {
             commands.clear();

@@ -8,6 +8,7 @@ import io.github.kupfermeister.lullaby.nms.Fields;
 import io.github.kupfermeister.lullaby.nms.Input;
 import io.github.kupfermeister.lullaby.nms.Nms;
 import io.github.kupfermeister.lullaby.nms.Packets;
+import io.github.kupfermeister.lullaby.nms.SavedData;
 import io.github.kupfermeister.lullaby.nms.ScriptCommands;
 import io.github.kupfermeister.lullaby.nms.SoundSeeds;
 import io.github.kupfermeister.lullaby.nms.Worlds;
@@ -85,8 +86,25 @@ final class JavaFunctions {
 
         // config data_max_size in megabytes (0: no limit), once per load (data.lua)
         addFree(lua, "data_limit", L -> {
-            engine.data().setLimit(L.toNumber(1));
+            SavedData.setLimit(L.toNumber(1));
             return 0;
+        });
+        // w.data and c.data (data.lua; nms/SavedData.java, nms/ChunkData.java): a world slot, and a chunk's x, z. A read
+        // gives true and the wire bytes (nil: nothing saved), or false when the world or chunk isn't loaded.
+        add(lua, "world_data_read", L -> pushRead(L, engine.readWorldData(slots.get(slot(L, 1)), slots::add)));
+        add(lua, "world_data_loaded", L -> {
+            engine.worldDataLoaded(slots.get(slot(L, 1)), string(L, 2));
+            return 0;
+        });
+        add(lua, "chunk_data_read", L -> pushRead(L, engine.chunks().read(slots.get(slot(L, 1)), (int) L.toInteger(2),
+                (int) L.toInteger(3), slots::add)));
+        add(lua, "chunk_data_loaded", L -> {
+            engine.chunks().loaded(slots.get(slot(L, 1)), (int) L.toInteger(2), (int) L.toInteger(3), string(L, 4));
+            return 0;
+        });
+        add(lua, "chunk_data_reattach", L -> {
+            L.push(engine.chunks().reattach(slots.get(slot(L, 1)), (int) L.toInteger(2), (int) L.toInteger(3)));
+            return 1;
         });
         addFree(lua, "wire_kinds", L -> {
             push(L, Codecs.kindList());
@@ -463,6 +481,18 @@ final class JavaFunctions {
     /** "a\nb" -> [a, b]; "" -> []. */
     private static List<String> lines(String text) {
         return text.isEmpty() ? List.of() : List.of(text.split("\n"));
+    }
+
+    /** A saved data read ({loaded, bytes or null}): false, or true and the bytes (nil: nothing saved). */
+    private static int pushRead(Lua L, Object[] read) {
+        if (!(Boolean) read[0]) {
+            L.push(false);
+            return 1;
+        }
+        L.push(true);
+        if (read[1] == null) L.pushNil();
+        else L.push((ByteBuffer) read[1]);
+        return 2;
     }
 
     private static int pushComponent(Lua L, Object[] out) {

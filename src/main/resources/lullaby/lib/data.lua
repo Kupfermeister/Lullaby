@@ -1,25 +1,43 @@
--- Lullaby library: saved data (server.data), which outlives /lullaby reload and restarts.
+-- Lullaby library: saved data, which outlives /lullaby reload and restarts: server.data, w.data (one per world) and
+-- c.data (one per chunk).
 --
--- While the server runs, server.data is a PLAIN Lua table: reading and writing it costs what any Lua table costs, no
--- Java, no file. Only saving and loading turn it into something else:
---   save (Java asks: autosave, /save-all, server stop, before /lullaby reload): I.data_save walks the table once and
---     builds a SAVE TREE (plain tables, text keys or lists only) that goes to Java over the wire; Java writes it as
---     plugins/lullaby/data/server.snbt (nms/SavedData.java). What can't be saved (functions, entities, tables with their
---     own metatable, ...) is a red error naming its place (server.data.shop.on_buy) and is left out; the rest is saved.
---   load (each start and reload, before the scripts): Java reads the file and hands the tree back; I.data_load turns it
---     into Lua values again (players, worlds, positions, item stacks, ...).
+-- While the server runs, every one of them is a PLAIN Lua table: reading and writing it costs what any Lua table
+-- costs, no Java, no file. Only saving and loading turn it into something else:
+--   save: save_tree walks the table once and builds a SAVE TREE (plain tables, text keys or lists only) that goes to
+--     Java over the wire; Java turns it into vanilla NBT (nms/SavedData.java). What can't be saved (functions,
+--     entities, tables with their own metatable, ...) is a red error naming its place (server.data.shop.on_buy) and
+--     is left out; the rest is saved.
+--   load: Java hands the tree back; load_tree turns it into Lua values again (players, worlds, item stacks, ...).
 -- In the save tree a Lullaby value is a table with ONE key "lullaby:<type>" (in the file: {"lullaby:vec3": {x: 1, ...}}).
--- So scripts can't use keys starting with "lullaby:" in server.data: they are refused with a clear error.
--- Shared by every script file (it is one table), unlike a file's own globals.
+-- So scripts can't use keys starting with "lullaby:" in saved data: they are refused with a clear error.
+--
+-- Where each one lives (Java):
+--   server.data  plugins/lullaby/data/server.snbt, saved with the main world (autosave, /save-all), before /lullaby
+--                reload and at stop. Read before the scripts load.
+--   w.data       the world's own folder, data/lullaby.snbt (it travels with the world folder), saved when that world
+--                saves, before /lullaby reload and at stop. Read on the first w.data, only while the world is loaded.
+--                When the world unloads, its table is LOCKED (emptied; any use is a red error that says why).
+--   c.data       inside the chunk's own save (nms/ChunkData.java). Read on the first c.data, only while the chunk is
+--                loaded. "Keep alive" (agreed with Kupfermeister 2026-11-23): when the chunk unloads, the table is
+--                written into the chunk and then kept for as long as some script still holds it (a weak table), so
+--                `local d = c.data` never turns into a copy that is no longer saved: at the next save, a kept table
+--                that changed is written into its chunk again (Java loads the chunk for that), and c.data gives the
+--                same table again when the chunk is back. Only if something else changed the chunk's data meanwhile
+--                does the chunk's version win; the old table is then locked.
 local J, lib, I = ...
 
-local type, error, tostring, tonumber, rawget, pcall, unpack, setmetatable =
-	type, error, tostring, tonumber, rawget, pcall, unpack, setmetatable
+local type, error, tostring, tonumber, rawget, rawset, pcall, unpack, setmetatable =
+	type, error, tostring, tonumber, rawget, rawset, pcall, unpack, setmetatable
 local raw_next = next
-local find, sub, format, concat, sort = string.find, string.sub, string.format, table.concat, table.sort
+local find, sub, format, match, concat, sort = string.find, string.sub, string.format, string.match, table.concat,
+	table.sort
 local kind_of, kind_by_meta, meta_of, value_fields = I.kind_of, I.kind_by_meta, I.debug_getmetatable, I.value_fields
+local slot_of = I.slot_of
 
 local PREFIX = "lullaby:"
+local WEAK_KEYS = { __mode = "k" }
+local WEAK_VALUES = { __mode = "v" }
+local NOTHING = {}
 
 -- Small values saved by their fields and made again with their maker (lib.<type>(field1, field2, ...)), which checks
 -- what comes back from the file. Item stacks, text components and block states go through vanilla's codecs (Java).
@@ -29,10 +47,15 @@ local BY_CODEC = { item_stack = true, component = true, block_state = true }
 
 local data = {} -- server.data
 
+-- The names in errors: the script code that reaches the data (Java's own errors use the same, see ChunkData.name).
+local function world_name(id) return "world(\"" .. id .. "\").data" end -- FORMAT
+local function chunk_name(id, x, z) return "chunk(world(\"" .. id .. "\"), chunk_pos(" .. x .. ", " .. z .. ")).data" end -- FORMAT
+
 -- ---------------------------------------------------------------------------------------------------------------
--- Where a problem is: the keys from server.data down, kept as a stack (no text is built unless there is a problem)
+-- Where a problem is: the keys from the data's root down, kept as a stack (no text is built unless there is a problem)
 -- ---------------------------------------------------------------------------------------------------------------
 
+local root_name = "server.data" -- the data being saved, loaded or shown right now
 local path, depth = {}, 0
 
 local function key_text(key)
@@ -43,7 +66,7 @@ local function key_text(key)
 end
 
 local function place()
-	local parts = { "server.data" }
+	local parts = { root_name }
 	for i = 1, depth do parts[i + 1] = key_text(path[i]) end
 	return concat(parts)
 end
@@ -79,7 +102,7 @@ local copy
 -- A problem at the current place: while saving it is collected (and the value left out), while viewing it becomes a
 -- note text in the view, so /lullaby data shows what will be missing.
 local function problem(why)
-	-- FORMAT: one thing in server.data that can't be saved
+	-- FORMAT: one thing in saved data that can't be saved
 	local text = place() .. " can't be saved: " .. why
 	if problems then
 		problems[#problems + 1] = text
@@ -90,9 +113,9 @@ end
 
 local function copy_table(t)
 	if on_path[t] then return problem("the table holds itself (a loop)") end
-	-- Loading goes through the wire, which takes 100 levels counting server.data and the last values: so a table
-	-- may be at most 98 levels below server.data.
-	if depth > 98 then return problem("it is nested more than 98 tables deep inside server.data") end -- FORMAT
+	-- Loading goes through the wire, which takes 100 levels counting the data's root and the last values: so a table
+	-- may be at most 98 levels below the root.
+	if depth > 98 then return problem("it is nested more than 98 tables deep inside " .. root_name) end -- FORMAT
 	-- A list (keys exactly 1..n) stays a list; anything else needs text keys.
 	local n, list = 0, true
 	for key in raw_next, t do
@@ -176,15 +199,22 @@ function copy(v)
 	return problem(why_not(v))
 end
 
--- Java calls this to save: the save tree as wire bytes, and the problems (one text per line; Java shows the first 10).
-function I.data_save()
+-- One data table as its save tree and the problems (one text per line; Java shows the first 10).
+local function save_tree(t, name)
+	root_name = name
 	problems = {}
 	depth = 0
 	on_path = {}
-	local tree = copy_table(data) or {}
+	local tree = copy_table(t) or {}
 	local found = problems
 	problems = nil
-	return I.wire(tree), concat(found, "\n")
+	return tree, concat(found, "\n")
+end
+
+-- Java calls this to save server.data: the save tree as wire bytes, and the problems.
+function I.data_save()
+	local tree, found = save_tree(data, "server.data")
+	return I.wire(tree), found
 end
 
 -- ---------------------------------------------------------------------------------------------------------------
@@ -194,7 +224,7 @@ end
 local load_problems
 
 local function load_problem(why)
-	-- FORMAT: one thing from server.snbt that can't be loaded
+	-- FORMAT: one thing from saved data that can't be loaded
 	load_problems[#load_problems + 1] = place() .. " can't be loaded: " .. why
 	return nil
 end
@@ -272,27 +302,245 @@ function revive(t)
 	return t
 end
 
--- Java calls this before the scripts load: bytes = the saved tree (nil: nothing saved yet). Returns the problems,
--- one per line ("" if none); Java shows them and won't save over a file that didn't load cleanly.
-function I.data_load(bytes)
-	data = {}
-	if bytes == nil then return "" end
+-- Wire bytes from Java (nil: nothing saved yet) -> the data table, and the problems, one per line ("" if none); Java
+-- shows them and won't save over data that didn't load cleanly.
+local function load_tree(bytes, name)
+	if bytes == nil then return {}, "" end
+	root_name = name
 	load_problems = {}
 	depth = 0
+	local t = {}
 	local tree = I.decode(bytes)
-	if type(tree) == "table" then data = revive(tree) or {} end
+	if type(tree) == "table" then t = revive(tree) or {} end
 	local found = load_problems
 	load_problems = nil
-	return concat(found, "\n")
+	return t, concat(found, "\n")
+end
+
+-- Java calls this before the scripts load: bytes = the saved server.data (nil: nothing saved yet).
+function I.data_load(bytes)
+	local found
+	data, found = load_tree(bytes, "server.data")
+	return found
 end
 
 -- ---------------------------------------------------------------------------------------------------------------
--- /lullaby data server (LullabyCommand.java): looking at the data as it is in memory now
+-- Locked tables: data whose home is gone (its world unloaded, or the chunk's data was changed by something else)
 -- ---------------------------------------------------------------------------------------------------------------
 
--- "stats.joins" -> the value there; nil and the place that is missing. A number part also finds a list entry.
-local function at(text)
-	local value = data
+local locked_why = setmetatable({}, WEAK_KEYS) -- locked table -> why, said by every use
+local LOCKED = {
+	__index = function(t) error(locked_why[t], 2) end,
+	__newindex = function(t) error(locked_why[t], 2) end,
+	__metatable = false,
+}
+
+-- Empties the table and every plain table inside it and locks them, so a script that still holds one gets a red
+-- error (with file and line) instead of writing into something that is no longer saved.
+local function lock(t, why)
+	local stack, seen = { t }, {}
+	while #stack > 0 do
+		local u = stack[#stack]
+		stack[#stack] = nil
+		if not seen[u] and meta_of(u) == nil then
+			seen[u] = true
+			local keys = {}
+			for key, value in raw_next, u do
+				keys[#keys + 1] = key
+				if type(value) == "table" then stack[#stack + 1] = value end
+			end
+			for i = 1, #keys do rawset(u, keys[i], nil) end
+			locked_why[u] = why
+			setmetatable(u, LOCKED)
+		end
+	end
+end
+
+-- Lua checks only what Java can't see: that a new data table is a plain table.
+local function check_table(name, value, level)
+	if type(value) ~= "table" or meta_of(value) ~= nil then
+		error(name .. " must be a table { }, got " .. I.type_name(value), level + 1) -- FORMAT
+	end
+end
+
+-- ---------------------------------------------------------------------------------------------------------------
+-- w.data
+-- ---------------------------------------------------------------------------------------------------------------
+
+local world_tables = {} -- world id -> its data table (read on the first w.data)
+
+-- level: where an error points (1 = this function).
+local function world_data(w, level)
+	local id = tostring(w)
+	local t = world_tables[id]
+	if t then return t end
+	local loaded, bytes = J.world_data_read(slot_of[w])
+	-- FORMAT: w.data of a world that isn't loaded
+	if not loaded then error("world " .. id .. " isn't loaded: its data can only be used while it is loaded", level + 1) end
+	local found
+	t, found = load_tree(bytes, world_name(id))
+	J.world_data_loaded(slot_of[w], found)
+	world_tables[id] = t
+	return t
+end
+
+local WORLD_META = I.object_meta.world
+WORLD_META.__index = function(w, key)
+	if key == "data" then return world_data(w, 2) end
+	I.no_field("world", key, "data; tostring gives its id", 2)
+end
+WORLD_META.__newindex = function(w, key, value)
+	if key ~= "data" then error("world has no field " .. tostring(key) .. " to change (it has data)", 2) end -- FORMAT
+	check_table("w.data", value, 2)
+	world_data(w, 2) -- read first: Java then knows the world's data is in use, and a file that didn't load stays safe
+	world_tables[tostring(w)] = value
+end
+
+-- Java calls this when the world saves: its save tree as wire bytes and the problems; nil if no script read w.data.
+function I.world_data_save(id)
+	local t = world_tables[id]
+	if t == nil then return nil, "" end
+	local tree, found = save_tree(t, world_name(id))
+	return I.wire(tree), found
+end
+
+-- ---------------------------------------------------------------------------------------------------------------
+-- c.data
+-- ---------------------------------------------------------------------------------------------------------------
+
+local attached = {} -- world id -> { ["x|z"] = table } of loaded chunks (Lua holds them)
+local kept = {}     -- world id -> weak { ["x|z"] = table } of unloaded chunks, alive while some script holds one
+
+local function attach(id, xz, t)
+	local here = attached[id]
+	if not here then here = {}; attached[id] = here end
+	here[xz] = t
+end
+
+-- c.data; level: where an error points (1 = this function).
+function I.chunk_data(c, level)
+	local id, x, z = I.chunk_parts(c)
+	local xz = x .. "|" .. z
+	local here = attached[id]
+	local t = here and here[xz]
+	if t then return t end
+	local slot = slot_of[I.world_by_id(id)]
+	local keep = kept[id]
+	t = keep and keep[xz]
+	if t then
+		local state = J.chunk_data_reattach(slot, x, z)
+		if state == 0 then return t end -- still unloaded: changes reach the chunk at the next save
+		keep[xz] = nil
+		if state == 1 then
+			attach(id, xz, t)
+			return t
+		end
+		-- FORMAT: a kept chunk table whose chunk was changed by something else
+		lock(t, "this was " .. chunk_name(id, x, z) .. ", but something else changed the chunk's data while it was"
+			.. " unloaded, and the chunk's version counts: read c.data again")
+	end
+	local loaded, bytes = J.chunk_data_read(slot, x, z)
+	if not loaded then
+		-- FORMAT: c.data of a chunk that isn't loaded
+		error("chunk " .. x .. " " .. z .. " in " .. id .. " isn't loaded: its data can only be read while it is"
+			.. " loaded (check c.loaded first)", level + 1)
+	end
+	local found
+	t, found = load_tree(bytes, chunk_name(id, x, z))
+	J.chunk_data_loaded(slot, x, z, found)
+	attach(id, xz, t)
+	return t
+end
+
+-- c.data = { }: starts over; only while the chunk is loaded.
+function I.set_chunk_data(c, value, level)
+	check_table("c.data", value, level + 1)
+	I.chunk_data(c, level + 1)
+	local id, x, z = I.chunk_parts(c)
+	local here = attached[id]
+	local xz = x .. "|" .. z
+	if not (here and here[xz]) then
+		-- FORMAT: c.data = ... while the chunk is unloaded
+		error("chunk " .. x .. " " .. z .. " in " .. id .. " isn't loaded: c.data = { } needs it loaded", level + 1)
+	end
+	here[xz] = value
+end
+
+-- Java calls this when an attached chunk unloads: its save tree as wire bytes and the problems. The table is kept as
+-- long as some script holds it.
+function I.chunk_data_unload(id, x, z)
+	local xz = x .. "|" .. z
+	local here = attached[id]
+	local t = here and here[xz]
+	if not t then return I.wire(NOTHING), "" end
+	here[xz] = nil
+	local keep = kept[id]
+	if not keep then keep = setmetatable({}, WEAK_VALUES); kept[id] = keep end
+	keep[xz] = t
+	local tree, found = save_tree(t, chunk_name(id, x, z))
+	return I.wire(tree), found
+end
+
+-- A save of one world: Java first asks how many chunk tables there are (attached, then kept ones still alive), then
+-- takes them one by one (I.chunk_data_entry), so each chunk's data has the wire's full depth.
+local entries, entries_world = {}, nil
+local function add_entries(list, is_kept)
+	for xz, t in raw_next, list do
+		local x, z = match(xz, "^(-?%d+)|(-?%d+)$")
+		entries[#entries + 1] = { tonumber(x), tonumber(z), is_kept, t }
+	end
+end
+function I.chunk_data_save(id)
+	entries, entries_world = {}, id
+	add_entries(attached[id] or NOTHING, false)
+	add_entries(kept[id] or NOTHING, true)
+	return #entries
+end
+
+-- Entry i of the last I.chunk_data_save: x, z, kept, the save tree as wire bytes, the problems.
+function I.chunk_data_entry(i)
+	local e = entries[i]
+	if i == #entries then entries = {} end -- the last one: nothing is held longer than the save
+	local tree, found = save_tree(e[4], chunk_name(entries_world, e[1], e[2]))
+	return e[1], e[2], e[3], I.wire(tree), found
+end
+
+-- Java calls this the tick after a world unloaded: its w.data and every c.data of it are locked.
+function I.world_gone(id)
+	local t = world_tables[id]
+	world_tables[id] = nil
+	-- FORMAT: w.data after its world unloaded
+	if t then lock(t, "this is " .. world_name(id) .. ", and that world was unloaded: load it and read w.data again") end
+	for _, list in raw_next, { attached[id] or NOTHING, kept[id] or NOTHING } do
+		for xz, c in raw_next, list do
+			local x, z = match(xz, "^(-?%d+)|(-?%d+)$")
+			-- FORMAT: c.data after its world unloaded
+			lock(c, "this is " .. chunk_name(id, x, z) .. ", and its world was unloaded: load it and read c.data again")
+		end
+	end
+	attached[id] = nil
+	kept[id] = nil
+end
+
+-- ---------------------------------------------------------------------------------------------------------------
+-- /lullaby data (LullabyCommand.java): looking at the data as it is in memory now
+-- ---------------------------------------------------------------------------------------------------------------
+
+-- Java names the data: "server", "world <id>" or "chunk <id> <x> <z>". Gives the table and its name.
+local function target(which)
+	if which == "server" then return data, "server.data" end
+	local kind, id, x, z = match(which, "^(%a+) (%S+) ?(%S*) ?(%S*)$")
+	if kind == "world" then return world_data(I.world_by_id(id), 2), world_name(id) end
+	if kind == "chunk" then
+		x, z = tonumber(x), tonumber(z)
+		return I.chunk_data(I.chunk_at(id, x, z), 2), chunk_name(id, x, z)
+	end
+	error("Lullaby bug: unknown saved data " .. which, 0)
+end
+
+-- "stats.joins" -> the value there; nil if nothing is there. A number part also finds a list entry.
+local function at(root, text)
+	local value = root
 	depth = 0
 	if text == "" then return value end
 	for part in text:gmatch("[^.]+") do
@@ -308,21 +556,24 @@ end
 
 -- The view of one place as wire bytes (in save-tree shape, with notes where something won't be saved) and the
 -- place's name; nil and the place's name if there is nothing.
-function I.data_view(text)
-	local value = at(text)
-	local name = place()
+function I.data_view(which, text)
+	local root, name = target(which)
+	root_name = name
+	local value = at(root, text)
+	local shown = place()
 	depth = 0
-	if value == nil then return nil, name end
+	if value == nil then return nil, shown end
 	on_path = {}
 	problems = nil
 	local tree = copy(value)
-	return I.wire({ tree }), name
+	return I.wire({ tree }), shown
 end
 
 -- The keys at one place, one per line, sorted (for tab completion). Keys with a dot or a line break can't be typed
 -- as a path, so they are left out.
-function I.data_keys(text)
-	local value = at(text)
+function I.data_keys(which, text)
+	local root = target(which)
+	local value = at(root, text)
 	depth = 0
 	if type(value) ~= "table" or meta_of(value) ~= nil then return "" end
 	local keys = {}
@@ -345,7 +596,7 @@ kind: type
 group: Scripts
 words: save saved data store persist keep flag variable reload restart
 syntax: server.data.coins = 10
-lead: The server itself. server.data is a table that stays: it is saved with the world (autosave, /save-all, server stop) and before /lullaby reload, and comes back after a reload or restart. Every script file sees the same server.data. Use it like any table: server.data.round = (server.data.round or 0) + 1. While the server runs it is a plain Lua table, so it costs nothing extra.
+lead: The server itself. server.data is a table that stays: it is saved with the world (autosave, /save-all, server stop) and before /lullaby reload, and comes back after a reload or restart. Every script file sees the same server.data. Use it like any table: server.data.round = (server.data.round or 0) + 1. While the server runs it is a plain Lua table, so it costs nothing extra. Worlds and chunks have their own: w.data (see world( )) and c.data (see chunk( )).
 field: data | table | Saved data. Can be text, numbers, true/false, tables (lists, or text keys), players, worlds, positions and the other small values, location, item_stack, block_state and component. Other things (functions, entities, tasks, events, tables with their own metatable, nan and inf, tables more than 98 deep) are left out when saving, with a red error naming the place. Keys can't be empty text, and keys starting with "lullaby:" are kept for Lullaby. server.data = { } starts over.
 note: The file is plugins/lullaby/data/server.snbt, readable text in vanilla's SNBT (what /data get shows). You may edit it: a change by hand wins, so Lullaby doesn't save over it and loads it at the next /lullaby reload (changes scripts made since the last save are then dropped, the console says so). /lullaby data server [path] shows the data, with tab completion of the keys. A table used in two places is saved twice and loads as two tables.
 example:
@@ -367,9 +618,7 @@ local SERVER_META = {
 	end,
 	__newindex = function(_, key, value)
 		if key ~= "data" then error("server has no field " .. tostring(key) .. " to change (it has data)", 2) end -- FORMAT
-		if type(value) ~= "table" or meta_of(value) ~= nil then
-			error("server.data must be a table { }, got " .. I.type_name(value), 2) -- FORMAT
-		end
+		check_table("server.data", value, 2)
 		data = value
 	end,
 	__tostring = function() return "server" end,

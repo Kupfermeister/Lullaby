@@ -26,7 +26,8 @@ return {
   -- (pure math) can't be stopped. false: no limit.
   script_time_limit = 5,
 
-  -- Most megabytes server.data may take in its file (plugins/lullaby/data/server.snbt). Past it, the data is not saved
+  -- Most megabytes each saved data file may take: server.data (plugins/lullaby/data/server.snbt) and each world's
+  -- w.data (data/lullaby.snbt in the world's folder). c.data lives inside the chunks and has no limit. Past it, the data is not saved
   -- (the last saved file stays) and a red error says so, so a script stuck adding keys can't fill the disk.
   -- false: no limit.
   data_max_size = 16,

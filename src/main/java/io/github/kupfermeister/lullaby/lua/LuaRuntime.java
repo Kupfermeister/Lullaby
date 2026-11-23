@@ -3,12 +3,16 @@ package io.github.kupfermeister.lullaby.lua;
 import io.github.kupfermeister.lullaby.Engine;
 import io.github.kupfermeister.lullaby.event.EventBridge;
 import io.github.kupfermeister.lullaby.nms.Input;
+import io.github.kupfermeister.lullaby.nms.ChunkData;
 import io.github.kupfermeister.lullaby.nms.SavedData;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.UUID;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.level.Level;
+import org.bukkit.craftbukkit.persistence.CraftPersistentDataContainer;
 import party.iroiro.luajava.Lua;
 import party.iroiro.luajava.luajit.LuaJit;
 
@@ -74,7 +78,7 @@ public final class LuaRuntime {
         }
     }
 
-    // ---- server.data (data.lua, nms/SavedData.java) ----
+    // ---- saved data: server.data, w.data, c.data (data.lua, nms/SavedData.java, nms/ChunkData.java) ----
 
     /** Fills server.data from the file; called before the scripts load. */
     public void loadData(SavedData data) {
@@ -108,27 +112,104 @@ public final class LuaRuntime {
         }
     }
 
-    /** /lullaby data server [path]: the view of one place ({tree}, or null if nothing is there) and its name. */
-    public Object[] dataView(String path) {
+    /** Saves one world's w.data, if a script read it; {@code wait}: write the file now. */
+    public void saveWorldData(String world, SavedData file, boolean wait) {
         int top = lua.getTop();
         try {
-            pushInternal("data_view");
-            LuaText.push(lua, path);
-            enterLua("showing server.data", 1, 2);
-            Object tree = lua.isNil(-2) ? null : Wire.read(lua.toBuffer(-2));
-            return new Object[]{tree == null ? null : SavedData.view(tree, slots::get), LuaText.string(lua, -1)};
+            pushInternal("world_data_save");
+            LuaText.push(lua, world);
+            enterLua("saving " + file.name(), 1, 2);
+            if (lua.isNil(-2)) return;
+            Object tree = Wire.read(lua.toBuffer(-2));
+            file.saveProblems(LuaText.string(lua, -1));
+            file.save(tree, slots::get, wait);
         } finally {
             lua.setTop(top);
         }
     }
 
-    /** The keys at one place of server.data, sorted (tab completion). */
-    public List<String> dataKeys(String path) {
+    /** An attached chunk unloads: its c.data goes into the chunk (before the server writes the chunk). */
+    public void chunkUnloaded(ChunkData chunks, ResourceKey<Level> world, int x, int z,
+                              CraftPersistentDataContainer container) {
+        int top = lua.getTop();
+        try {
+            pushInternal("chunk_data_unload");
+            LuaText.push(lua, world.identifier().toString());
+            lua.push(x);
+            lua.push(z);
+            enterLua("saving " + ChunkData.name(world, x, z), 3, 2);
+            chunks.unloaded(world, x, z, container, Wire.read(lua.toBuffer(-2)), slots::get, LuaText.string(lua, -1));
+        } finally {
+            lua.setTop(top);
+        }
+    }
+
+    /**
+     * Saves every c.data of one world into its chunk (see ChunkData.save); {@code now}: a changed table of an unloaded
+     * chunk loads the chunk at once. One Lua call per chunk, so each chunk's data has the wire's full depth.
+     */
+    public void saveChunkData(ChunkData chunks, ResourceKey<Level> world, boolean now) {
+        int top = lua.getTop();
+        try {
+            pushInternal("chunk_data_save");
+            LuaText.push(lua, world.identifier().toString());
+            enterLua("saving chunk data", 1, 1);
+            int count = (int) lua.toInteger(-1);
+            lua.setTop(top);
+            ChunkData.Save save = chunks.startSave(world);
+            for (int i = 1; i <= count; i++) {
+                pushInternal("chunk_data_entry");
+                lua.push(i);
+                enterLua("saving chunk data", 1, 5);
+                save.chunk((int) lua.toInteger(-5), (int) lua.toInteger(-4), lua.toBoolean(-3),
+                        Wire.read(lua.toBuffer(-2)), LuaText.string(lua, -1), slots::get, now);
+                lua.setTop(top);
+            }
+            save.finish();
+        } finally {
+            lua.setTop(top);
+        }
+    }
+
+    /** A world unloaded: its w.data and c.data tables are locked (data.lua I.world_gone). */
+    public void worldGone(String world) {
+        int top = lua.getTop();
+        try {
+            pushInternal("world_gone");
+            LuaText.push(lua, world);
+            enterLua("a world unloading", 1, 0);
+        } finally {
+            lua.setTop(top);
+        }
+    }
+
+    /**
+     * /lullaby data: the view of one place ({tree}, or null if nothing is there) and its name. {@code which}: "server",
+     * "world <id>" or "chunk <id> <x> <z>".
+     */
+    public Object[] dataView(String which, String path) {
+        int top = lua.getTop();
+        try {
+            pushInternal("data_view");
+            LuaText.push(lua, which);
+            LuaText.push(lua, path);
+            enterLua("showing saved data", 2, 2);
+            Object tree = lua.isNil(-2) ? null : Wire.read(lua.toBuffer(-2));
+            String name = LuaText.string(lua, -1);
+            return new Object[]{tree == null ? null : SavedData.view(tree, name, slots::get), name};
+        } finally {
+            lua.setTop(top);
+        }
+    }
+
+    /** The keys at one place of saved data, sorted (tab completion); {@code which} as in {@link #dataView}. */
+    public List<String> dataKeys(String which, String path) {
         int top = lua.getTop();
         try {
             pushInternal("data_keys");
+            LuaText.push(lua, which);
             LuaText.push(lua, path);
-            enterLua("listing server.data keys", 1, 1);
+            enterLua("listing saved data keys", 2, 1);
             String keys = LuaText.string(lua, -1);
             return keys.isEmpty() ? List.of() : List.of(keys.split("\n"));
         } finally {

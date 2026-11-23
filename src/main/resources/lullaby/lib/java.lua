@@ -285,7 +285,7 @@ end
 
 --[[doc
 id: java
-name: the Java door
+name: The Java door
 kind: lua
 group: Java door
 words: raw java unlock reflection bukkit paper nms plugin api expert tps

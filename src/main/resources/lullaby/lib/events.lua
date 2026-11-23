@@ -533,7 +533,7 @@ end
 
 --[[doc
 id: events
-name: event fields
+name: Event fields
 kind: event
 group: Events
 words: fields e player cancelled

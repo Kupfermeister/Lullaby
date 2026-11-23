@@ -3,13 +3,13 @@ format as lib/*.lua; each block names itself with id:). Pages are read in this o
 links each to the previous and next one. Its first page is the site's landing page. Every line of text: is indented
 by two spaces; its small markup (## heading, - list, 1. numbered, > tip, ! warning, ``` code ```, `code`, **bold**,
 [words](#id) for a page, [words](file) for a file of the site) is explained at prose() in site.html.
-Lua syntax is explained once, on the page "lua basics", for beginners who know logic but not syntax; the other pages link there instead of repeating it
+Lua syntax is explained once, on the page "Lua basics", for beginners who know logic but not syntax; the other pages link there instead of repeating it
 (jft 2026-11-22: heavily compact, no repeats). also: keeps the addresses of older, merged pages working (the old Lua
 pages, old guide pages) and makes Lua's keywords in code link to the Lua page.
 
 --[[doc
 id: guide
-name: welcome
+name: Welcome
 kind: guide
 group: Guide
 words: guide tutorial beginner learn introduction what is lullaby why
@@ -25,59 +25,39 @@ status: unconfirmed
 
 --[[doc
 id: guide_setup
-name: setup
+name: Setup
 kind: guide
 group: Guide
-also: guide_server
-words: test server local install paper java setup localhost eula op
-lead: A private test server on your own computer.
+also: guide_server guide_editor
+words: test server local install paper java setup localhost eula op editor vscode visual studio code autocomplete suggestions hover underline lullaby.d.lua luarc luarc.json extension sumneko download
+lead: A private test server on your own computer, and VS Code set up to know every Lullaby name. Done once.
 text:
   ## Test server
   Never test on the server your players use.
   1. Install Java 25. Download Paper for the Minecraft version at the top of the side list, put it in an empty folder as `paper.jar`.
   2. Start it with `java -Xms2G -Xmx2G -jar paper.jar nogui`. Set `eula=true` in `eula.txt`, start again.
-  3. Build Lullaby (`gradlew build`, jar in `build/libs`), put the jar in `plugins`, restart.
+  3. Build Lullaby (`gradlew build`, jar in `build/libs`), put the jar in `plugins`, restart. This makes the folder `plugins/lullaby`.
   4. Join `localhost`, then type `op YourName` in the server window. Ops see script errors in chat.
 
   Scripts go in `plugins/lullaby/scripts`. Every `.lua` file there loads; a name starting with `--` switches a file or folder off. Settings are in `plugins/lullaby/config.lua`.
-status: unconfirmed
-]]
 
---[[doc
-id: guide_editor
-name: editor setup
-kind: guide
-group: Guide
-words: editor vscode visual studio code autocomplete suggestions hover underline lullaby.d.lua luarc luarc.json extension sumneko download install
-lead: Make VS Code know every Lullaby name: it suggests them while you type, shows what they do, and underlines mistakes before you reload. Done once, about five minutes.
-text:
-  ## What you install
-  - **VS Code**: a free program for writing code.
-  - **The Lua extension**: teaches VS Code the Lua language.
-  - **lullaby.d.lua**: a list of every Lullaby name with its description, made from this site. Only the editor reads it; Lullaby never runs it.
+  ## Editor
+  VS Code (free) then suggests Lullaby names while you type, shows what they do, and underlines mistakes before you reload.
+  1. **Install VS Code** from code.visualstudio.com and open it.
+  2. **Add Lua.** Click the four squares on the far left (`Ctrl+Shift+X`), search `Lua`, install **Lua** by **sumneko**.
+  3. **Open the folder.** **File → Open Folder…**, pick `plugins/lullaby` in your server folder. If asked whether you trust the authors, click **Yes**.
+  4. **Add the name list.** [Download lullaby.d.lua](lullaby.d.lua) and drag it onto the empty space on the left, **below** the files (not on `scripts`). Only the editor reads it; Lullaby never runs it.
+  5. **Tell VS Code which Lua.** Right-click the empty space on the left, **New File…**, name it `.luarc.json` (dot in front), paste `{ "runtime.version": "LuaJIT" }`, save with `Ctrl+S`. Without it, some correct code is marked wrong.
 
-  ## Steps
-  1. **Install VS Code.** Go to code.visualstudio.com, click the big download button, run the installer, open VS Code.
-  2. **Add Lua.** Click the icon of four squares on the far left (or press `Ctrl+Shift+X`). Type `Lua` into the search box. Click the result called **Lua** by **sumneko**, then the blue **Install** button.
-  3. **Open the Lullaby folder.** Menu **File → Open Folder…**. Go into your server folder (the one with `paper.jar`), then `plugins`, click `lullaby` once and press **Select Folder**. If VS Code asks whether you trust the authors, click **Yes**. The left side now shows `scripts` and `config.lua`.
-    No `lullaby` folder? Start the server once with the Lullaby jar in `plugins`; it makes the folder.
-  4. **Download the list.** Click here: [download lullaby.d.lua](lullaby.d.lua). Your browser saves it in your **Downloads** folder.
-  5. **Put it next to config.lua.** Open your Downloads folder, drag `lullaby.d.lua` into VS Code and drop it on the empty space on the left, **below** the files (not on `scripts`). It now shows next to `config.lua`.
-  6. **Tell VS Code which Lua.** Right-click the empty space on the left, **New File…**, type `.luarc.json` (with the dot in front), press Enter. Into the empty file paste `{ "runtime.version": "LuaJIT" }` and save with `Ctrl+S`. Without this, VS Code marks some correct code as wrong.
+  The left side now shows `scripts`, `.luarc.json`, `config.lua`, `lullaby.d.lua`. To check: in `scripts` make `test.lua`, type `mess` and a list pops up with `message`; point at it to see its description. Delete `test.lua` afterwards, or the next reload runs it. Nothing pops up? `Ctrl+Shift+P`, `Reload Window`.
 
-  The left side now shows: `scripts`, `.luarc.json`, `config.lua`, `lullaby.d.lua`.
-
-  ## Check it
-  Right-click `scripts`, **New File…**, name it `test.lua`. Type `mess`: a small list pops up with `message`. Press Enter, then point the mouse at `message`: its description appears. Delete `test.lua` afterwards (right-click, **Delete**), or the next reload runs it.
-  Nothing happens? Press `Ctrl+Shift+P`, type `Reload Window`, press Enter, try again.
-
-  > After a Lullaby update, do steps 4 and 5 again and replace the old file.
+  > After a Lullaby update, download `lullaby.d.lua` again and replace the old one.
 status: unconfirmed
 ]]
 
 --[[doc
 id: guide_first
-name: your first script
+name: Your first script
 kind: guide
 group: Guide
 also: guide_docs start
@@ -106,7 +86,7 @@ status: unconfirmed
 
 --[[doc
 id: lua
-name: lua basics
+name: Lua basics
 kind: guide
 group: Guide
 also: guide_lua guide_variables guide_if guide_loops comments values nil true false numbers strings and or not local tables methods if then else elseif while repeat until for in do break goto function return end varargs closures error string_lib table_lib math_lib metatables locked io os ffi debug require
@@ -270,7 +250,7 @@ status: unconfirmed
 
 --[[doc
 id: guide_problems
-name: when it goes wrong
+name: When it goes wrong
 kind: guide
 group: Guide
 words: error errors mistake mistakes debug debugging problem help fix red message line nil attempt to index concatenate common
@@ -288,7 +268,7 @@ status: unconfirmed
 
 --[[doc
 id: guide_events
-name: events
+name: Events
 kind: guide
 group: Guide
 words: event events on after listener join break block cancel cancelled handler e fields happen
@@ -314,7 +294,7 @@ status: unconfirmed
 
 --[[doc
 id: guide_commands
-name: commands
+name: Commands
 kind: guide
 group: Guide
 words: command commands arguments args permission branches sub subcommand player integer text suggest tab complete optional
@@ -337,7 +317,7 @@ status: unconfirmed
 
 --[[doc
 id: guide_waiting
-name: waiting and tasks
+name: Waiting and tasks
 kind: guide
 group: Guide
 also: guide_memory
@@ -371,7 +351,7 @@ status: unconfirmed
 
 --[[doc
 id: guide_functions
-name: sharing between files
+name: Sharing between files
 kind: guide
 group: Guide
 words: function functions reuse return import file files module folder shared library helper
@@ -396,7 +376,7 @@ status: unconfirmed
 
 --[[doc
 id: guide_together
-name: a mini game
+name: A mini game
 kind: guide
 group: Guide
 words: example project minigame complete full script kill counter zombie hunt game round
@@ -436,7 +416,7 @@ status: unconfirmed
 
 --[[doc
 id: guide_worlds
-name: worlds and arenas
+name: Worlds and arenas
 kind: guide
 group: Guide
 words: world worlds arena arenas map maps instance copy reset round void minigame template
@@ -452,7 +432,7 @@ text:
     copy_world{ from = "arena_map", to = "arena" } -- waits; the server keeps running
     local arena = load_world{ id = "arena" }
     for _, p in ipairs(online_players()) do
-      set{ entity = p, location = location(arena, vec3(0.5, 65, 0.5)) }
+      modify_entity{ entity = p, location = location(arena, vec3(0.5, 65, 0.5)) }
     end
   end
 
@@ -468,7 +448,7 @@ status: unconfirmed
 
 --[[doc
 id: guide_next
-name: where next
+name: Where next
 kind: guide
 group: Guide
 words: next more reference what now missing limits cannot not yet future planned roadmap java door locked unlock sandbox

@@ -390,12 +390,20 @@ local function world_data(w, level)
 end
 
 local WORLD_META = I.object_meta.world
+-- The world's fields (doc: world( ) in blocks.lua). id, name and loaded work for unloaded worlds too (worlds( )).
 WORLD_META.__index = function(w, key)
 	if key == "data" then return world_data(w, 2) end
-	I.no_field("world", key, "data; tostring gives its id", 2)
+	if key == "id" then return tostring(w) end
+	if key == "name" then
+		local id = tostring(w)
+		return id:sub(1, 10) == "minecraft:" and id:sub(11) or id
+	end
+	if key == "loaded" then return J.world_id(tostring(w)) ~= nil end
+	I.no_field("world", key, "id, name, loaded, data", 2)
 end
 WORLD_META.__newindex = function(w, key, value)
-	if key ~= "data" then error("world has no field " .. tostring(key) .. " to change (it has data)", 2) end -- FORMAT
+	-- FORMAT: changing a world field other than data
+	if key ~= "data" then error("world." .. tostring(key) .. " can't be changed (only world.data can)", 2) end
 	check_table("w.data", value, 2)
 	world_data(w, 2) -- read first: Java then knows the world's data is in use, and a file that didn't load stays safe
 	world_tables[tostring(w)] = value
@@ -670,6 +678,7 @@ words: save saved data store persist keep flag variable reload restart
 syntax: server.data.coins = 10
 lead: The server itself. server.data is a table that stays: it is saved with the world (autosave, /save-all, server stop) and before /lullaby reload, and comes back after a reload or restart. Every script file sees the same server.data. Use it like any table: server.data.round = (server.data.round or 0) + 1. While the server runs it is a plain Lua table, so it costs nothing extra. Worlds, chunks, entities and players have their own: world.data (see world( )), context.data (see chunk( )), entity.data (see entity( )) and player.data (see player( )).
 field: data | table | Saved data. Can be text, numbers, true/false, tables (lists, or text keys), players, worlds, positions and the other small values, location, item_stack, block_state and component. Other things (functions, entities, tasks, events, tables with their own metatable, nan and inf, tables more than 98 deep) are left out when saving, with a red error naming the place. Keys can't be empty text, and keys starting with "lullaby:" are kept for Lullaby. server.data = { } starts over.
+set: data | server.data = { } (a new table)
 note: The file is plugins/lullaby/data/server.snbt, readable text in vanilla's SNBT (what /data get shows). You may edit it: a change by hand wins, so Lullaby doesn't save over it and loads it at the next /lullaby reload (changes scripts made since the last save are then dropped, the console says so). /lullaby data server [path] shows the data, with tab completion of the keys. A table used in two places is saved twice and loads as two tables.
 example:
   on{ "PlayerJoinEvent", function(event)

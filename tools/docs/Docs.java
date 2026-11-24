@@ -32,7 +32,9 @@ import java.util.stream.Stream;
  *   of the input event as a tree; path is "packet", "packet.field" or "packet.action.word", types is empty for a packet
  *   or a word), tree-from: <java file> <enum> (the tree's owner is that Java enum: the build checks that the tree:
  *   lines name exactly its packets, fields and action words, see checkTreeFrom), is: <id> (the object is also that one and has all
- *   its fields: player has "is: entity"; VS Code's class inherits it), expert: key | value (repeatable), also (more ids that
+ *   its fields: player has "is: entity"; VS Code's class inherits it), set: field | how (repeatable: a field: of this page
+ *   that a script changes by assigning, "world.data = { }"), sets: <object> (on a doing page: its arguments change the
+ *   object's fields of the same name, modify_entity{ } has "sets: entity"; see objects()), expert: key | value (repeatable), also (more ids that
  *   lead to this page, space-separated: Lua keywords, old page names). Topic pages without a function
  *   (tools/docs/guide.txt) give id:. Guide pages (kind guide, in guide.txt) are read in order and
  *   have text: (running text over many indented lines; its small markup is explained at prose() in site.html).
@@ -50,6 +52,9 @@ import java.util.stream.Stream;
  *     "returns", "example", "status", "words", "args": [[name, types, text]], "expert": [[key, value]], "src": "file:line",
  *     "uses": [id], "usedBy": [id], "fields": [[name, type, text]], "methods": [[call, returns, text]] (only if it
  *     has some), "tree": [[path, type, text]] (only if it has one) } ] }
+ *   Object pages (group Objects, see objects()) have "props": [[name, type, text, changing page id, assignment, from]]
+ *   and maybe "madeBy" (ids, space-separated); a generated one has "object-of" (its reading page's id), and that
+ *   reading page has "object" (the object page's id).
  *   Generated event pages also have "sub" (their sub group), "dot" (untested | changeable | readonly | unusable) and
  *   "paper" (the address of Paper's own page for the event); their status is "generated".
  *   Recently new or changed pages have "fresh" (1 | 2 | 3: 1 is the newest change), "freshAs" (new | changed) and
@@ -67,6 +72,9 @@ public final class Docs {
 
     // Where each page's text lives, for fresh(): id -> { file, first line, last line } (1-based, both included).
     private static final Map<String, Object[]> SPANS = new HashMap<>();
+    // set: lines per page (field, how a script assigns it), and the rows of each object page (see objects()).
+    private static final Map<String, List<String[]>> SETS = new HashMap<>();
+    private static final Map<String, List<String[]>> PROPS = new LinkedHashMap<>();
 
     record Entry(Map<String, String> f, List<String[]> args, List<String[]> expert, Set<String> uses,
                  Set<String> usedBy, List<String[]> fields, List<String[]> tree, List<String[]> methods) {
@@ -99,6 +107,7 @@ public final class Docs {
         events(entries, minecraft);
         checkExpertRows(entries);
         fresh(entries);
+        objects(entries); // after fresh: a generated object page takes its marks from the page it is made from
 
         // Connections: documented library functions and raw Java functions called inside each body.
         for (Entry e : List.copyOf(entries.values())) {
@@ -307,7 +316,7 @@ public final class Docs {
         while (m.find()) {
             Map<String, String> f = new LinkedHashMap<>();
             List<String[]> args = new ArrayList<>(), expert = new ArrayList<>(), fields = new ArrayList<>(),
-                    tree = new ArrayList<>(), methods = new ArrayList<>();
+                    tree = new ArrayList<>(), methods = new ArrayList<>(), sets = new ArrayList<>();
             // `key: value` per line; an indented line (tab or 2 spaces) or an empty line continues the key before it,
             // keeping the line break (for `example:` code).
             String last = null;
@@ -326,6 +335,7 @@ public final class Docs {
                 else if (key.equals("tree")) tree.add(split(value, 3));
                 else if (key.equals("method")) methods.add(split(value, 3));
                 else if (key.equals("expert")) expert.add(split(value, 2));
+                else if (key.equals("set")) sets.add(split(value, 2));
                 else { f.merge(key, value, (a, b) -> a + " " + b); last = key; }
             }
             for (var kv : f.entrySet()) kv.setValue(kv.getValue().stripTrailing());
@@ -344,6 +354,7 @@ public final class Docs {
             int end = m.group(2) != null ? line : (int) text.substring(0, m.end()).chars().filter(c -> c == '\n').count();
             SPANS.put(id, new Object[]{src, first, end});
             entries.put(id, new Entry(f, args, expert, new LinkedHashSet<>(), new LinkedHashSet<>(), fields, tree, methods));
+            if (!sets.isEmpty()) SETS.put(id, sets);
             if (m.group(2) == null) continue; // a topic page: no code, no connections
             // Strings and comments are no calls.
             bodies.put(id, body(text, m.end()).replaceAll("--[^\\n]*", "")
@@ -623,6 +634,125 @@ public final class Docs {
     }
 
 
+    // ---- object pages ----------------------------------------------------------------------------------------
+
+    /**
+     * One page per object in the group Objects (jft 2026-11-24: every field a script can read, in its own place, and
+     * whether and how it can be changed). An object is a type page (block, task, ...) or a reading page with field:
+     * or method: lines (world( ), entity( ), vec3( ), ...; the object has the page's id). A type page is its object's
+     * page itself; a reading page gets a generated page "object:<id>" and points to it (f "object"), the site shows
+     * its fields only there. Rows (docs.json "props"): [name, types, text, page that changes it or "", assignment or
+     * "", the "is:" parent the field comes from or ""]. Every field of the "is:" parents is in too (player has all
+     * of entity's). How a field changes comes from two places, both checked here: a page's `set: field | how` lines
+     * (a plain assignment: world.data = { }), and a doing page with `sets: <object>` whose argument has the field's
+     * name (modify_entity{ } changes entity.health; also on objects that are an entity: player, client_entity).
+     * "madeBy": every page whose returns: names the object.
+     */
+    private static void objects(Map<String, Entry> entries) {
+        List<String> bad = new ArrayList<>();
+        Map<String, Entry> objects = new LinkedHashMap<>();
+        for (Entry e : entries.values()) {
+            String kind = e.f().get("kind");
+            if (e.f().containsKey("sub")) continue;
+            if (kind.equals("type") || kind.equals("reading") && !(e.fields().isEmpty() && e.methods().isEmpty())) {
+                objects.put(e.id(), e);
+            }
+        }
+        for (var s : SETS.entrySet()) {
+            Entry e = entries.get(s.getKey());
+            for (String[] row : s.getValue()) {
+                if (e.fields().stream().noneMatch(fl -> fl[0].equals(row[0]))) {
+                    bad.add(e.f().get("src") + "  set: " + row[0] + " has no field: line on this page");
+                }
+            }
+        }
+        Map<String, Map<String, String>> setters = new HashMap<>(); // object -> field -> page that changes it
+        for (Entry e : entries.values()) {
+            String object = e.f().get("sets");
+            if (object == null) continue;
+            Entry o = objects.get(object);
+            if (o == null) {
+                bad.add(e.f().get("src") + "  sets: " + object + " is no object (a type page or a reading page with fields)");
+                continue;
+            }
+            for (String[] a : e.args()) {
+                for (String n : a[0].replace("?", "").split("/")) {
+                    String name = n.trim();
+                    if (name.equals(object)) continue; // the argument that names the object itself
+                    if (o.fields().stream().noneMatch(fl -> fl[0].equals(name))) {
+                        bad.add(e.f().get("src") + "  " + e.id() + ": argument " + name + " is no field of " + object
+                                + " (sets: " + object + ")");
+                    } else setters.computeIfAbsent(object, k -> new HashMap<>()).put(name, e.id());
+                }
+            }
+        }
+        if (!bad.isEmpty()) {
+            // FORMAT: docs build, set: or sets: lines that don't match the fields
+            throw new IllegalStateException("docs: set: / sets: lines that don't match a field:\n  " + String.join("\n  ", bad));
+        }
+        Map<String, List<String>> madeBy = new HashMap<>();
+        for (Entry e : entries.values()) {
+            String r = e.f().get("returns");
+            if (r == null || e.f().containsKey("sub")) continue;
+            for (String t : r.replaceAll("\\(.*\\)", "").split("·")) {
+                String w = t.trim().replaceFirst("^list of ", "");
+                if (objects.containsKey(w)) madeBy.computeIfAbsent(w, k -> new ArrayList<>()).add(e.id());
+            }
+        }
+        for (Entry o : objects.values()) {
+            List<String> chain = new ArrayList<>(); // the object, its parent, the parent's parent, ...
+            for (String id = o.id(); id != null && objects.containsKey(id) && !chain.contains(id); id = objects.get(id).f().get("is")) {
+                chain.add(id);
+            }
+            List<String[]> rows = new ArrayList<>();
+            Set<String> seen = new HashSet<>();
+            for (String id : chain) {
+                Map<String, String> assign = new HashMap<>();
+                for (String[] s : SETS.getOrDefault(id, List.of())) assign.put(s[0], s[1]);
+                for (String[] fl : objects.get(id).fields()) {
+                    if (!seen.add(fl[0])) continue; // the object's own line wins over its parent's (player.data)
+                    String setter = "";
+                    for (String c : chain) {
+                        String page = setters.getOrDefault(c, Map.of()).get(fl[0]);
+                        if (page != null) { setter = page; break; }
+                    }
+                    rows.add(new String[]{fl[0], fl[1], fl[2], setter, assign.getOrDefault(fl[0], ""),
+                            id.equals(o.id()) ? "" : id});
+                }
+            }
+            Entry page = o;
+            if (!o.f().get("kind").equals("type")) {
+                Map<String, String> f = new LinkedHashMap<>();
+                String pageId = "object:" + o.id();
+                f.put("id", pageId);
+                f.put("name", o.id());
+                f.put("kind", "type");
+                f.put("object-of", o.id());
+                StringJoiner syntax = new StringJoiner("   ");
+                for (int i = 0; i < rows.size() && i < 6; i++) if (rows.get(i)[0].matches("\\w+")) syntax.add(o.id() + "." + rows.get(i)[0]);
+                if (rows.size() > 6) syntax.add("...");
+                if (syntax.length() > 0) f.put("syntax", syntax.toString());
+                String parent = o.f().get("is");
+                f.put("lead", "Everything a script can read on a " + o.id()
+                        + (parent != null ? " (its own fields, then every field of " + parent + ")" : "")
+                        + ", and how to change what can be changed. A field with nothing under change can only be read.");
+                for (String k : List.of("status", "src", "fresh", "freshAs", "freshDate")) {
+                    if (o.f().containsKey(k)) f.put(k, o.f().get(k));
+                }
+                StringJoiner words = new StringJoiner(" ", "fields properties object read change ", "");
+                for (String[] row : rows) words.add(row[0]);
+                f.put("words", words.toString());
+                page = new Entry(f, new ArrayList<>(), new ArrayList<>(), new LinkedHashSet<>(), new LinkedHashSet<>(),
+                        new ArrayList<>(), new ArrayList<>(), new ArrayList<>(o.methods()));
+                o.f().put("object", pageId);
+                entries.put(pageId, page);
+            }
+            page.f().put("group", "Objects");
+            if (madeBy.containsKey(o.id())) page.f().put("madeBy", String.join(" ", madeBy.get(o.id())));
+            PROPS.put(page.id(), rows);
+        }
+    }
+
     // ---- builders --------------------------------------------------------------------------------------------
 
     private static String json(List<Entry> list, String minecraft) {
@@ -640,6 +770,7 @@ public final class Docs {
             b.append(",\"args\":").append(rows(e.args())).append(",\"expert\":").append(rows(e.expert()));
             b.append(",\"uses\":").append(strings(e.uses())).append(",\"usedBy\":").append(strings(e.usedBy()));
             b.append(",\"fields\":").append(rows(e.fields()));
+            if (PROPS.containsKey(e.id())) b.append(",\"props\":").append(rows(PROPS.get(e.id())));
             if (!e.methods().isEmpty()) b.append(",\"methods\":").append(rows(e.methods()));
             if (!e.tree().isEmpty()) b.append(",\"tree\":").append(rows(e.tree()));
             b.append('}');
@@ -691,6 +822,16 @@ public final class Docs {
                 b.append("\n| field | type | |\n|---|---|---|\n");
                 for (String[] a : e.fields()) b.append("| `").append("event".equals(f.get("kind")) ? "event." : ".").append(a[0]).append("` | ").append(a[1]).append(" | ").append(a[2]).append(" |\n");
             }
+            if (PROPS.containsKey(e.id())) {
+                b.append("\n| field | type | change with | |\n|---|---|---|---|\n");
+                for (String[] p : PROPS.get(e.id())) {
+                    String change = String.join(" or ", Stream.of(p[3].isEmpty() ? "" : "`" + p[3] + "{ }`",
+                            p[4].isEmpty() ? "" : "`" + p[4] + "`").filter(s -> !s.isEmpty()).toList());
+                    b.append("| `.").append(p[0]).append("` | ").append(p[1]).append(" | ")
+                            .append(change.isEmpty() ? "read only" : change).append(" | ").append(p[2])
+                            .append(p[5].isEmpty() ? "" : " (from " + p[5] + ")").append(" |\n");
+                }
+            }
             if (!e.methods().isEmpty()) {
                 b.append("\n| method | returns | |\n|---|---|---|\n");
                 for (String[] a : e.methods()) b.append("| `").append(a[0]).append("` | ").append(a[1]).append(" | ").append(a[2]).append(" |\n");
@@ -726,7 +867,8 @@ public final class Docs {
         // Classes first, each followed by a blank line, so none is bound to the function of the same name below.
         Set<String> classes = new TreeSet<>();
         for (Entry e : list) {
-            if (e.f().containsKey("sub")) continue;
+            // generated object pages repeat their reading page's fields and methods, which give the class already
+            if (e.f().containsKey("sub") || e.f().containsKey("object-of")) continue;
             if (!e.fields().isEmpty() || !e.methods().isEmpty()) classes.add(e.id());
             List<String> words = new ArrayList<>();
             for (String[] a : e.args()) words.add(a[1]);

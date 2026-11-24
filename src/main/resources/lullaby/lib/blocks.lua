@@ -65,10 +65,14 @@ kind: reading
 group: Worlds
 words: dimension level overworld nether end save saved data store persist
 syntax: world( "overworld" ) → world | nil
-lead: A loaded world by its id: "overworld" means "minecraft:overworld". nil if there is none. Each world exists once, so == works. tostring(world) gives its id.
+lead: A loaded world by its id: "overworld" means "minecraft:overworld". nil if there is none (worlds( ) gives every world, also unloaded ones). Each world exists once, so == works. tostring(world) gives its id.
 arg: id | text · world | The world's id (a world is returned as is).
 returns: world · nil
+field: id | text | The full id: "minecraft:arena_7". The same as tostring(world).
+field: name | text | The name create_world{ } and load_world{ } take: "arena_7" (the id without "minecraft:"; another namespace stays: "myserver:arena_7").
+field: loaded | boolean | Whether the world is loaded right now. Worlds from worlds( ) can be unloaded; id, name and loaded work then too.
 field: data | table | Saved data of this world, a table that stays like server.data (it takes the same values, see server). It is saved when this world saves (autosave, /save-all, server stop) and before /lullaby reload, into the world's own folder, so it travels with the world: copy_world{ } copies it, delete_world{ } deletes it. Only while the world is loaded. world.data = { } starts over.
+set: data | world.data = { } (a new table; only while loaded)
 note: world.data lives in the world's folder as data/lullaby.snbt (world/dimensions/minecraft/<name>/data/lullaby.snbt), readable SNBT you may edit: as with server.data, a change by hand wins and loads at the next /lullaby reload. When the world unloads (unload_world{ }, delete_world{ }, another plugin), its table is emptied and locked: using it is a red error, load the world and read world.data again. unload_world{ save = false } doesn't save it, like the world itself. /lullaby data world <world> [path] shows it.
 example:
   local arena = world("arena")
@@ -352,6 +356,7 @@ field: pos | chunk_pos | Its position, in chunks.
 field: loaded | boolean | Whether it is loaded right now.
 field: entities | list of entity · nil | Every entity whose position is in this chunk, players too, as a new list each read; nil while the chunk isn't loaded.
 field: data | table | Saved data of this chunk, a table that stays like server.data (it takes the same values, see server). It is saved inside the chunk itself, so it travels with the chunk: a chunk that is reset or regenerated loses it. Reading it needs the chunk loaded (else a red error: check chunk.loaded). Keep data of single blocks here too, under a key of your own, like chunk.data[x .. "," .. y .. "," .. z]. One text (a value or a key) can be at most 65535 bytes here, the most a chunk holds; a longer one is left out with a red error. chunk.data = { } starts over.
+set: data | chunk.data = { } (a new table; only while loaded)
 note: A table you keep (local data = chunk.data) stays the chunk's real data, also after the chunk unloads: changes are still saved (at the next autosave Lullaby loads the chunk in the background to write them) and chunk.data gives the same table when the chunk is back. So every chunk's data read since the last /lullaby reload stays in memory and is checked for changes when its world saves. Only if something else changed the chunk's saved data meanwhile (a world editing tool) the chunk's version wins: the old table is then emptied and locked, and using it is a red error. The same happens when the chunk's world unloads. /lullaby data chunk [path] shows the data of the chunk you stand in.
 example:
   -- a simple claim
@@ -388,6 +393,7 @@ syntax: snapshot.block   snapshot.state   snapshot.state = block_state
 lead: A block and the state it has, would get or had, from events: event.new_state in BlockFormEvent, BlockGrowEvent, ..., event.blocks in StructureGrowEvent (a list of them). Changing snapshot.state inside on{ } changes what the event places, where the event's page says the field can be changed; anywhere else a change is a red error when the handler ends (never silently lost).
 field: block | block | Where.
 field: state | block_state | The state. The only field that can be changed.
+set: state | snapshot.state = block_state
 example:
   -- trees grow birch logs instead of oak logs
   on{ "StructureGrowEvent", function(event)

@@ -1,6 +1,6 @@
 -- Lullaby library: worlds as folders on disk (Java side: nms/Worlds.java).
 --
---   worlds()                                        -> { { id = "minecraft:arena_7", loaded = true }, ... }
+--   worlds()                                        -> { world, ... } every world, loaded or not (world.loaded)
 --   create_world{ id, generator, biome, layers, seed, structures }   makes and loads a new world -> world
 --   load_world{ id }                                -> world (already loaded: the same world)
 --   unload_world{ world, move_to, save }            players in it go to move_to (default: the main world's spawn)
@@ -41,13 +41,17 @@ name: worlds( )
 kind: reading
 group: Worlds
 words: list folders maps arenas levels dimensions saved
-syntax: worlds( ) → { { id = text, loaded = boolean }, ... }
-lead: Every world the server has: the loaded ones and every world folder on disk, sorted by id. Each entry is a table with id (the full id, "minecraft:arena_7") and loaded. world( id ) gives the world of a loaded one.
-returns: list of table
+syntax: worlds( ) → { world, ... }
+lead: Every world the server has, as world objects: the loaded ones and every world folder on disk, sorted by id. world.loaded says whether one is loaded, world.name is the name create_world{ } and load_world{ } take ("arena_7"), world.id the full id ("minecraft:arena_7"). Each world exists once, so a world from here == world( "arena_7" ) once it is loaded.
+returns: list of world
 example:
-  for _, world in ipairs(worlds()) do
-    if not world.loaded then load_world{ id = world.id } end
+  -- load a world, make it first if it doesn't exist
+  local exists = false
+  for _, w in ipairs(worlds()) do
+    if w.name == "arena_map" then exists = true end
   end
+  if not exists then create_world{ id = "arena_map", generator = "void" } end
+  load_world{ id = "arena_map" }
 expert: Thread | main thread, like every script
 expert: Cost | reads the world folders on disk: 0.1–2 ms (guess, not measured); don't call it every tick
 expert: Under the hood | the folders in world/dimensions/<namespace>/ that have a data or region folder, plus every loaded world (nms/Worlds.java)
@@ -58,8 +62,8 @@ status: unconfirmed
 ]]
 function lib.worlds()
 	local out = {}
-	for id, loaded in gmatch(J.world_list(), "([^\t\n]+)\t([01])\n") do
-		out[#out + 1] = { id = id, loaded = loaded == "1" }
+	for id in gmatch(J.world_list(), "([^\t\n]+)\t[01]\n") do
+		out[#out + 1] = I.world_by_id(id) -- also for unloaded worlds: world.loaded reads it live
 	end
 	return out
 end

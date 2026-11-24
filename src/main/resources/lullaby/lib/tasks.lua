@@ -171,6 +171,8 @@ group: Tasks
 words: task handle alive running
 syntax: task.alive   task.id
 lead: A running function, from run{ }. task.alive is true until it ended; task.id is the id given to run{ } (or nil). Fields can't be changed. Stop it with stop{ task = task }.
+field: alive | boolean | true until the task ended (finished, stopped, an error, or a reload).
+field: id | any | The id given to run{ }; nil if none was given.
 expert: Java object | none: a Lua coroutine
 expert: Stays valid | the handle always; task.alive turns false when the task ended (also on reload)
 expert: Compare | == is the same task; every run{ } makes a new one

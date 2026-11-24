@@ -260,8 +260,11 @@ lead: An item stack from vanilla's item text, a table { id = , count = , compone
 arg: item | text · table · item_stack | The item.
 returns: item_stack
 field: id | text | The item's id, like "minecraft:diamond_sword". Can be changed.
+set: id | it.id = "diamond_sword" (your copy)
 field: count | number | How many. Can be changed.
+set: count | it.count = 5 (your copy)
 field: components | table | EXACTLY vanilla's patch: only the changes against the item type's defaults, keys as vanilla writes them ("minecraft:custom_name"); a removed default is ["!minecraft:food"] = { }. Short keys work too (it.components.custom_name). Can be changed, in place or as a whole table.
+set: components | it.components = { ... } or it.components.custom_name = ... (your copy)
 method: a == b | boolean | Vanilla's ItemStack.matches: same item, count and components.
 method: tostring(it) | text | Vanilla's item text with the changed components, as /give takes it (no count, like vanilla).
 expert: Thread | main thread, like every script

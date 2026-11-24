@@ -118,6 +118,7 @@ field: uuid | text | The UUID, lowercase with dashes. Also while offline.
 field: name | text · nil | The name; for an offline player the one the server last saw (nil if it never saw one).
 field: online | boolean | Whether the player is online now.
 field: data | table | Saved data of this player, a table that stays like server.data (it takes the same values, see server). It is entity.data, the same field, kept in the player's own file (playerdata/<uuid>.dat in the main world's folder), so it travels with that file. Works online and offline: an offline player's data is read from the file, and a change is written into the file at the next save. A player who never joined has no file yet: then player.data is an error. player.data = { } starts over.
+set: data | player.data = { } (a new table)
 note: player.data reaches the player file when Paper saves the player: at quit, on Paper's timer for each online player (player-auto-save in paper-global.yml), at reload and stop. If something else changes an offline player's file (a tool), the file wins when they join.
 example:
   on{ "PlayerJoinEvent", function(event)
@@ -202,6 +203,7 @@ arg: uuid | text · entity | A UUID like "069a79f4-44e9-4726-a5be-fca90e38aaf5" 
 returns: entity · player · nil
 field: uuid | text | The UUID, lowercase with dashes. Also when the entity is gone.
 field: data | table | Saved data of this entity, a table that stays like server.data (it takes the same values, see server). It is kept inside the entity, so it goes where the entity goes (into other worlds too) and is gone with it when it dies or is removed. Only while the entity is loaded: when its chunk unloads, the table is saved into it and locked (any use is a red error that says why); read entity.data again when the entity is back. entity.data = { } starts over. A player's is kept in the player file, offline too: see player( ).
+set: data | entity.data = { } (a new table; only while loaded)
 field: blueprint | blueprint · nil | A copy of this entity as a blueprint: its type and every field modify_entity{ } changes (health, custom_name, display_data, ...), to make more like it with summon{ } or clientside_summon{ }. Fields Lullaby doesn't read yet (equipment, effects, other NBT) aren't in it. nil for players and gone entities.
 field: type | text | The sort, as vanilla's id: "minecraft:zombie", "minecraft:item".
 field: alive | boolean | false once it is dead or gone (removed, in an unloaded chunk, offline).
@@ -284,6 +286,7 @@ name: modify_entity{ }
 kind: doing
 group: Entities
 words: set change modify adjust health heal hearts kill max absorption yellow golden velocity motion push launch throw knockback name nametag glow outline silent sound gravity float invulnerable god despawn persistent invisible hidden collide push fire burn freeze fall air drown ai brain aware target attack pickup angry left hand food hunger saturation exhaustion xp experience level display text hologram interpolate scale rotate
+sets: entity
 syntax: modify_entity{ entity = entity | player | client_entity, health = number, velocity = vec3, glowing = boolean, ai = boolean, food = number, display_data = table, ... }
 lead: Changes an entity, an online player or a client_entity. Give the entity and one or more of the fields below: the same names as the fields you read (entity.health, entity.velocity, entity.ai). Every value is checked before anything changes. A field this entity doesn't have (food on a zombie, ai on an item, display_data on a pig) is ignored, so one call can go to entities of every sort; a name no entity has (helth) is an error. Teleporting has its own action: teleport{ }. The same fields go into blueprint{ }, summon{ } and clientside_summon{ }.
 arg: entity | entity · player · client_entity | What to change. On a client_entity only what players see changes anything (ai, target and the like do nothing there; target is ignored).

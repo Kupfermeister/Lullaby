@@ -427,7 +427,7 @@ text:
   -- scripts/arena.lua
   local function new_round()
     for _, world in ipairs(worlds()) do                -- the old round's arena, also after a restart
-      if world.id == "minecraft:arena" then delete_world{ id = "arena" } end
+      if world.name == "arena" then delete_world{ id = world } end
     end
     copy_world{ from = "arena_map", to = "arena" } -- waits; the server keeps running
     local arena = load_world{ id = "arena" }

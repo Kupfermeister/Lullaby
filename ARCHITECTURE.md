@@ -212,6 +212,10 @@ Lua's disagree, loading stops with a message starting `Lullaby bug:`. Nothing lo
 change that adds or changes it. The format is at the top of [Docs.java](tools/docs/Docs.java). The block feeds the
 docs site, VS Code autocomplete (a class per page with `field:` lines, `is:` for its parent, `@return` from a plain
 `returns:` type list) and the Markdown copy; uses and used-by are found from the code, not written.
+Every object (a type page, or a reading page with fields such as `world( )`) gets a page in the group Objects with
+all its fields, those of its `is:` parent too, and how each changes: `set: field | how` lines for a plain assignment,
+`sets: <object>` on a doing page whose arguments change the fields of the same name (`modify_entity{ }`). The build
+stops if one of those names no field (`objects` in Docs.java).
 Pages changed in the last three commits that changed any page are marked new or changed, brightest for the newest
 (`fresh` in Docs.java, from git blame over each page's lines; uncommitted changes count as the newest), so nothing
 has to be marked by hand. The GitHub job checks out the whole history for this.

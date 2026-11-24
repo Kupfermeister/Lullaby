@@ -23,7 +23,9 @@ import java.util.stream.Stream;
  *
  * A doc block sits right above `function lib.NAME(` and has one `key: value` per line:
  *   name, kind (doing | reading | event | type | lua | guide), group, syntax, lead, note, returns, example (code; indented
- *   lines below continue it), status (confirmed | unconfirmed), words (extra search words), arg: name | types | text
+ *   lines below continue it), try (one line to type in the game that shows the function working on its own:
+ *   "/lullaby run sound{ player = me, sound = \"entity.cat.ambient\" }"; every doing page that can run alone has one),
+ *   status (confirmed | unconfirmed), words (extra search words), arg: name | types | text
  *   (repeatable), field: name | types | text (repeatable: the fields of the object or value the page is about),
  *   method: call | returns | text (repeatable: what can be done with the value, written as a script writes it:
  *   ":offset(dx, dy, dz)" a method, ".from_direction(vec3)" a function on the maker, "a + b" or "a == b" an
@@ -847,6 +849,7 @@ public final class Docs {
                 }
             }
             if (f.containsKey("returns")) b.append("\nReturns: ").append(f.get("returns")).append('\n');
+            if (f.containsKey("try")) b.append("\nTry it (in the game, as op): `").append(f.get("try")).append("`\n");
             if (!e.uses().isEmpty()) b.append("\nUses: ").append(String.join(", ", e.uses())).append('\n');
             if (!e.usedBy().isEmpty()) b.append("\nUsed by: ").append(String.join(", ", e.usedBy())).append('\n');
             b.append("\nSource: ").append(f.get("src")).append('\n');

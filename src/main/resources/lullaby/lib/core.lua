@@ -279,7 +279,7 @@ end
 -- ---------------------------------------------------------------------------------------------------------------
 
 local DEFAULTS = {
-	unlock = { io = false, os = false, ffi = false, debug = false, modules = false, java = false },
+	unlock = { io = false, os = false, ffi = false, debug = false, modules = false, java = false, command_blocks = false },
 	long_wait_warning = true,
 	error_repeat_seconds = 10,
 	particle_limit = 100000,

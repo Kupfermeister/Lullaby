@@ -82,6 +82,7 @@ arg: layers? | list of table | Only for "flat": the layers from the bottom up, e
 arg: seed? | number · text | The seed; text works as in the create world screen. Default random.
 arg: structures? | boolean | Villages, trial chambers and so on. Default false for void and flat, true for the others.
 returns: world
+try: /lullaby run local w = create_world{ id = "try_flat", generator = "flat", biome = "cherry_grove" } teleport{ entity = me, location = location(w, vec3(0.5, -60, 0.5)) }
 note: The server stands still while the world is made: a void or flat world is quick, normal terrain takes longer. For arenas, build one map and copy it with copy_world{ }. A void world's spawn is 0, 64, 0 in the air. The world is not loaded again by itself after a restart: call load_world{ } when your script starts.
 example:
   local arena = create_world{ id = "arena", generator = "void", biome = "cherry_grove" }
@@ -110,6 +111,7 @@ syntax: load_world{ id = text | world } → world
 lead: Loads a world from its folder and gives it. A world that is loaded already is given as it is.
 arg: id | text · world | The world's name ("arena_7"); worlds( ) lists them.
 returns: world
+try: /lullaby run local w = load_world{ id = "try_flat" } teleport{ entity = me, location = location(w, vec3(0.5, -60, 0.5)) }
 note: The server stands still while the world loads (short for a finished map). Worlds made with another environment than the overworld's (a nether-like world from another plugin) load as overworld-like.
 expert: Thread | main thread, like every script
 expert: Cost | the server stands still while it loads: 0.05–0.5 s (guess, not measured)
@@ -137,6 +139,7 @@ arg: world | world · text | The world, or its name.
 arg: move_to? | location | Where its players go. Default: the main world's spawn.
 arg: save? | boolean | Default true. false throws away every change since the last save.
 returns: boolean
+try: /lullaby run print(unload_world{ world = "try_flat" })
 note: The main world can't be unloaded. A world_unload handler that cancels the event keeps the world loaded: then this is an error.
 expert: Thread | main thread, like every script
 expert: Cost | the server stands still while it saves: 0.05–1 s (guess, not measured)
@@ -169,6 +172,7 @@ lead: Copies a world into a new one and waits until the copy is done. Everything
 arg: from | text · world | The world to copy. It must be unloaded (a loaded world may be half saved).
 arg: to | text | The new world's name. It must not exist.
 returns: nothing
+try: /lullaby run copy_world{ from = "try_flat", to = "try_copy" } local w = load_world{ id = "try_copy" } teleport{ entity = me, location = location(w, vec3(0.5, -60, 0.5)) }
 note: Only inside a task (an event handler, a command function or run{ }), because it waits. The server doesn't stand still: another thread copies. Until it is done, both names can't be loaded, copied or deleted. If the server stops or crashes during a copy, the new world isn't there (no half copies).
 example:
   copy_world{ from = "map_castle", to = "arena_7" }
@@ -208,6 +212,7 @@ lead: Deletes a world: it is gone from the server at once, and its name is free 
 arg: id | text · world | The world, or its name.
 arg: move_to? | location | Where its players go. Default: the main world's spawn.
 returns: nothing
+try: /lullaby run delete_world{ id = "try_flat" } print(#worlds() .. " worlds left")
 note: Last chance: until the next server start, the world waits in plugins/lullaby/temp as "arena_7 (deleted 2026-11-22 21.30.05)". To get it back, move that folder into world/dimensions/minecraft, rename it to its old name and load_world{ } it. The next start deletes it for good. Works on every world except the main one, also the nether, the end and worlds made by hand or by other plugins.
 expert: Thread | main thread; temp is emptied at the next start on a worker thread ("Lullaby world files")
 expert: Cost | quick: the folder is only moved (guess 1–10 ms, not measured); its disk space is freed at the next start

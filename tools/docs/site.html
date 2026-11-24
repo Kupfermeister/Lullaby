@@ -308,6 +308,7 @@ function show(id) {
     ${e.madeBy ? `<section><h2>Made by</h2><div class="links"><div><ul>${linkList(e.madeBy.split(" "))}</ul></div></div></section>` : ""}
     ${e.returns ? `<section><h2>Returns</h2><div>${typed(e.returns)}</div></section>` : ""}
     ${e.example ? `<section><h2>Example</h2><div class="syntax mono" style="--c:var(--line)">${paint(e.example)}</div></section>` : ""}
+    ${e.try ? `<section><h2>Try it</h2><p class="c-dim">Type this in the game (as op): it runs on its own, with <span class="mono">me</span> as you. See ${link("lullaby_run", '<span class="mono">/lullaby run</span>')}.</p><div class="syntax mono" style="--c:var(--line)">${paint(e.try)}</div></section>` : ""}
     ${e.uses.length || e.usedBy.length ? `<section><h2>Connections</h2>
     <div class="links"><div><div class="c-dim"><span class="arrow">→</span>uses</div><ul>${linkList(e.uses)}</ul></div>
       <div><div class="c-dim"><span class="arrow">←</span>used by</div><ul>${linkList(e.usedBy)}</ul></div></div></section>` : ""}

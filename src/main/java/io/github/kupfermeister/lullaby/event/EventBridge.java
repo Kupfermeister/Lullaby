@@ -113,7 +113,7 @@ public final class EventBridge implements Listener {
         // FORMAT: an event Paper fires off the main thread
         if (listed != null && listed.async()) return name + " runs off the main thread (Paper fires it there), and "
                 + "scripts only run on the main thread: it can't be used yet";
-        if (listed != null || name.equals("reload")) return null;
+        if (listed != null || name.equals("load")) return null;
         List<String> close = Fields.closeNames(name, LISTED.keySet());
         // FORMAT: unknown event, with close names from the list
         return "unknown event \"" + name + "\"" + (close.isEmpty() ? " (the docs site lists every event)"

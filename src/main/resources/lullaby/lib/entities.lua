@@ -321,6 +321,7 @@ arg: xp? | number | Players only. XP points inside the current level, as /xp set
 arg: xp_level? | number | Players only. The XP level, as /xp set ... levels.
 arg: display_data? | table | Display entities only (text_display, item_display, block_display). What it shows, how big, turned, lit, animated: see display_data. Only the entries given change.
 returns: boolean (false if the entity is gone)
+try: /lullaby run modify_entity{ entity = me, velocity = vec3(0, 1.5, 0), glowing = true }
 example:
   -- throw entity up and towards player
   modify_entity{ entity = entity, velocity = (player.pos - entity.pos):normalize() * 0.5 + vec3(0, 0.5, 0) }
@@ -366,6 +367,7 @@ lead: Teleports an entity or an online player, as /tp does, also into another wo
 arg: entity | entity · player · client_entity | What to teleport.
 arg: location | location | Where to, with the direction it then looks (yaw, pitch).
 returns: boolean (false if the entity is gone or the teleport was refused, for example by another plugin)
+try: /lullaby run teleport{ entity = me, location = me.location:offset(vec3(0, 20, 0)) }
 example:
   teleport{ entity = player, location = location(world("overworld"), vec3(0.5, 70, 0.5)) }
 expert: Thread | main thread, like every script
@@ -397,6 +399,7 @@ syntax: remove_entity{ entity = entity | client_entity }
 lead: Removes an entity from the world, as if it had never been there: no death, no drops, no death event. A client_entity disappears from every viewer's screen. Players can't be removed.
 arg: entity | entity · client_entity | What to remove.
 returns: boolean (false if it was gone already)
+try: /lullaby run local pig = summon{ type = "pig", location = me.location:offset(vec3(2, 0, 0)) } wait("3s") remove_entity{ entity = pig }
 example:
   local zombie = summon{ type = "zombie", location = place }
   wait(100)
@@ -577,6 +580,7 @@ arg: blueprint / type | blueprint · text | Needed, one of the two: what to make
 arg: location | location | Where, and which way it looks.
 arg: (fields)? | any | Any field of blueprint{ } (modify_entity{ }'s fields except target). A field the type doesn't have is ignored.
 returns: entity · nil (nil if the spawn was refused: a plugin or event cancelled it, or the world is on peaceful and the mob is hostile)
+try: /lullaby run summon{ type = "iron_golem", location = me.location:offset(vec3(3, 0, 0)), custom_name = "Guard", custom_name_visible = true, glowing = true }
 example:
   local guard = summon{ type = "iron_golem", location = place, custom_name = "Guard", persistent = true }
   local popup = blueprint{ type = "text_display", display_data = { text = { text = "Hello" } } }
@@ -649,6 +653,7 @@ arg: persist? | boolean · table | Shows it again when a viewer's game forgot it
 arg: lifetime? | number | Ticks until Lullaby removes it by itself (20 ticks are a second). Default 12000 (10 minutes); -1: never (until remove_entity{ } or a reload).
 arg: (fields)? | any | Any field of blueprint{ }; it wins over the blueprint's. Fields only the server uses (ai, aware, persistent, can_pickup_items, ...) do nothing here.
 returns: client_entity
+try: /lullaby run clientside_summon{ type = "text_display", location = me.location:offset(vec3(0, 2.5, 0)), player = me, lifetime = 100, display_data = { billboard = "center", text = { text = { text = "Only you see this", color = "gold" } } } }
 note: /lullaby reload removes every client_entity from every screen. The config's clientside_entity_limit (default 1000000) is the most that may exist at once, for all scripts together; past it clientside_summon{ } is an error.
 example:
   local popup = clientside_summon{

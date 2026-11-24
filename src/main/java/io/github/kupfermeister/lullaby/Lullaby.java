@@ -64,7 +64,10 @@ public final class Lullaby extends JavaPlugin {
         } catch (IOException e) {
             getSLF4JLogger().error("Lullaby could not create its files in {}", getDataPath(), e); // FORMAT
         }
-        engine.load();
+        Engine.LoadResult started = engine.load();
+        // The load event at start: plugins turn on before the server is ready, so it waits for the first tick (the
+        // scheduler runs it then, as the console says "Done"; Paper drops it if the plugin stops before that tick).
+        getServer().getScheduler().runTask(this, () -> engine.afterLoad(started, "start", null));
 
         tickTarget = engine;
         blocksOn = true;

@@ -7,9 +7,10 @@
 -- event is over and changes only give a warning.
 -- Java (EventBridge.java) registers one Bukkit listener per event, kind and stage that scripts use, and calls
 -- I.dispatch, which runs the handlers here in order. Event fields are read and written through Java on each access.
--- "reload" is Lullaby's own event: it runs after a /lullaby reload has loaded every script (and refreshed every
--- online player's commands). Its e is read only: e.scripts (files loaded), e.errors, e.ms (how long it took),
--- e.cause ("command": /lullaby reload) and e.player (who reloaded; nil from the console).
+-- "load" is Lullaby's own event: it runs once the server has finished starting (its first tick, at "Done") and
+-- after every /lullaby reload (once every script loaded and every online player's commands were refreshed). Its e is
+-- read only: e.scripts (files loaded), e.errors, e.ms (how long loading took), e.cause ("start" or "reload") and
+-- e.player (who reloaded; nil at start and from the console).
 -- "input" is Lullaby's own too: one event per input packet a player's game sends (nms/Input.java owns the packets
 -- and their fields; see the input doc block at the end of this file).
 local J, lib, I = ...
@@ -26,7 +27,7 @@ local STAGES, STAGE_LIST = {}, {}
 for stage in gmatch(J.event_info(), "%S+") do STAGES[stage] = true; STAGE_LIST[#STAGE_LIST + 1] = stage end
 local EVENT_FIELDS = {} -- event name -> { field name -> field number }, filled per event on first use
 local EVENT_LISTS = {}  -- event name -> { field name -> true } for its list fields
-local OWN = { reload = true, input = true } -- Lullaby's own events (not Paper's: no fields from EventBridge)
+local OWN = { load = true, input = true } -- Lullaby's own events (not Paper's: no fields from EventBridge)
 
 -- '"a", "b" or "c"'
 local function quoted(list)
@@ -82,7 +83,7 @@ local function register(kind, a)
 		handlers[key] = list
 		if name == "input" then
 			J.input_listen(kind == "after")
-		elseif name ~= "reload" then
+		elseif name ~= "load" then
 			listeners[J.listen(name, kind, stage)] = { list = list, fields = EVENT_FIELDS[name],
 				lists = EVENT_LISTS[name], name = name,
 				kind = kind, origin = name .. " (" .. kind .. ")" }
@@ -103,7 +104,7 @@ group: Events
 words: listen hook before cancel
 syntax: on{ "EventName", function(event) ... end, order = number, stage = text }
 lead: Runs the function before the event happens; it may change event (event.cancelled = true, ...).
-arg: 1 | text | The event name, like "PlayerJoinEvent" (every Paper event: the Events list), or Lullaby's own "reload" or "input".
+arg: 1 | text | The event name, like "PlayerJoinEvent" (every Paper event: the Events list), or Lullaby's own "load" or "input".
 arg: 2 | function | Gets the event.
 arg: order? | number | Lower runs first; ties by load order. Default 0.
 arg: stage? | text | Place among other plugins: lowest, low, normal, high, highest. Default normal.
@@ -125,7 +126,7 @@ group: Events
 words: listen hook monitor
 syntax: after{ "EventName", function(event) ... end, order = number }
 lead: Runs the function once the event happened and was not cancelled; event is read only. Every Paper event: the Events list.
-arg: 1 | text | The event name, or "reload" or "input".
+arg: 1 | text | The event name, or "load" or "input".
 arg: 2 | function | Gets the event.
 arg: order? | number | Lower runs first; ties by load order. Default 0.
 returns: nothing
@@ -379,25 +380,25 @@ function I.dispatch(listener, slot)
 	end
 end
 
--- Called by Java after a /lullaby reload has loaded every script.
-function I.fire_reload(scripts, errors, ms, uuid)
-	local fields = { scripts = scripts, errors = errors, ms = ms, cause = "command",
+-- Called by Java once the server has finished starting and after every /lullaby reload. cause: "start" or "reload".
+function I.fire_load(scripts, errors, ms, cause, uuid)
+	local fields = { scripts = scripts, errors = errors, ms = ms, cause = cause,
 		player = uuid and I.player_by_uuid(uuid) or nil }
 	local e = setmetatable({}, {
 		__index = function(_, field)
 			local value = fields[field]
-			if value == nil and field ~= "player" then I.no_field("reload", field, "scripts, errors, ms, cause, player", 2) end
+			if value == nil and field ~= "player" then I.no_field("load", field, "scripts, errors, ms, cause, player", 2) end
 			return value
 		end,
-		__newindex = function(_, field) error("the reload event can't be changed (e." .. tostring(field) .. ")", 2) end,
-		__tostring = function() return "reload" end,
+		__newindex = function(_, field) error("the load event can't be changed (e." .. tostring(field) .. ")", 2) end,
+		__tostring = function() return "load" end,
 		__metatable = false,
 	})
 	I.kind_of[e] = "event"
 	for _, kind in ipairs({ "on", "after" }) do
-		local list = handlers["reload|" .. kind .. "|" .. (kind == "on" and "normal" or "monitor")]
+		local list = handlers["load|" .. kind .. "|" .. (kind == "on" and "normal" or "monitor")]
 		if list then
-			for i = 1, #list do I.start_task(list[i].fn, { n = 1, e }, "reload (" .. kind .. ")") end
+			for i = 1, #list do I.start_task(list[i].fn, { n = 1, e }, "load (" .. kind .. ")") end
 		end
 	end
 end
@@ -552,18 +553,22 @@ expert: Time limit | checked: it calls into the game, so a script over script_ti
 status: unconfirmed
 ]]
 --[[doc
-id: reload
-name: reload
+id: load
+name: load
 kind: event
 group: Events
-words: reload restart loaded scripts
-syntax: after{ "reload", function(event) ... end }
-lead: Lullaby's own event: runs after /lullaby reload has loaded every script. event is read only: event.scripts (files loaded), event.errors, event.ms (how long it took), event.cause ("command") and event.player (who reloaded; nil from the console).
+words: load reload start startup boot server started ready loaded scripts init setup
+syntax: after{ "load", function(event) ... end }
+lead: Lullaby's own event: runs once the server has finished starting (every world loaded, on the server's first tick, as the console says "Done") and again after every /lullaby reload. The place for setup that needs the running server: creating or loading worlds, spawning things. event is read only: event.cause ("start" or "reload"), event.scripts (files loaded), event.errors, event.ms (how long loading took) and event.player (who reloaded; nil at start and from the console).
+example:
+  after{ "load", function(event)
+    if event.cause == "start" then print("server is up, " .. event.scripts .. " scripts") end
+  end }
 expert: Thread | main thread, like every script
-expert: Cost | runs once per reload: as its handlers (guess, not measured)
-expert: Under the hood | Lullaby's own: fired after every script loaded and online players' commands were refreshed; event is a plain read-only table
+expert: Cost | runs once per start and per reload: as its handlers (guess, not measured)
+expert: Under the hood | Lullaby's own: at start the scripts load while Paper turns plugins on (before the server is ready), and the event waits for the server's first tick; at reload it fires after every script loaded and online players' commands were refreshed; event is a plain read-only table
 expert: Can fail | any write to event
-expert: Reload | it is the reload
+expert: Reload | it fires again after every reload, with cause "reload"
 expert: Time limit | each handler is its own task; checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]

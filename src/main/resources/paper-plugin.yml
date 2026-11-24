@@ -14,6 +14,9 @@ permissions:
   lullaby.data:
     description: Use /lullaby data (look at server.data, the scripts' saved data). Needs lullaby.command too.
     default: op
+  lullaby.run:
+    description: Use /lullaby run (run any Lua as yourself, wait included; every use is logged). Needs lullaby.command too.
+    default: op
   lullaby.lullablend:
     description: Use /lullablend and connect Blender (LullaBlend) for your own builds.
     default: op

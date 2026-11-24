@@ -52,6 +52,7 @@ lead: Sends a chat message. Plain text is literal, like /tellraw.
 arg: player | player | Who gets it.
 arg: text | text · component | The message.
 returns: boolean (false if the player is offline)
+try: /lullaby run message{ player = me, text = component({ text = "Hello from Lullaby!", color = "gold" }) }
 expert: Thread | main thread, like every script
 expert: Cost | text 3–15 µs, a component 10–60 µs (guess, not measured)
 expert: Under the hood | one Lua → Java call; packet System Chat (play, clientbound)
@@ -140,6 +141,7 @@ arg: override_limiter? | boolean | Shows it even if the player set particles to 
 arg: always_show? | boolean | Shows it from far away (vanilla's long distance). Default false.
 arg: randomization_type? | text | default, alternative, alternative_with_speed.
 returns: nothing
+try: /lullaby run particle{ player = me, particle = "heart", pos = me.pos + vec3(0, 2, 0), dist = vec3(1, 0.5, 1), count = 20 }
 note: Positions × count (count 0 counts as 1) over the config's particle_limit is refused with an error.
 expert: Thread | main thread, like every script
 expert: Cost | 5–50 µs per call plus 0.2–2 µs per position and player (guess, not measured)
@@ -183,6 +185,7 @@ arg: volume? | number | Default 1.
 arg: pitch? | number | Default 1.
 arg: seed? | number | Picks which file of the sound plays. Random by default, as in vanilla. For one exact file use sound_seed( ).
 returns: nothing
+try: /lullaby run sound{ player = me, sound = "entity.player.levelup", source = "master", entity = me }
 expert: Thread | main thread, like every script
 expert: Cost | 3–20 µs plus 0.5–2 µs per player (guess, not measured)
 expert: Under the hood | one Lua → Java call; packet Sound or Sound Entity (play, clientbound)
@@ -245,6 +248,7 @@ arg: player / players | player · list of player | Who.
 arg: sound? | text | Only this sound.
 arg: source? | text | Only this source.
 returns: nothing
+try: /lullaby run stop_sound{ player = me }
 expert: Thread | main thread, like every script
 expert: Cost | 3–15 µs plus 0.5–2 µs per player (guess, not measured)
 expert: Under the hood | one Lua → Java call; packet Stop Sound (play, clientbound)

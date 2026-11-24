@@ -211,6 +211,7 @@ arg: args? | table | A list: func gets args[1], args[2], ...; final gets the sam
 arg: final? | function | Runs when the task ends, also on stop, error, reload and server stop. Never waits.
 arg: id? | any | One running task per function and id. Same function means the same place in the code, so a function written inside a handler counts as one.
 returns: task · nil
+try: /lullaby run run{ function() for i = 1, 5 do sound{ player = me, sound = "block.note_block.bell", source = "master", entity = me, pitch = 0.5 + i * 0.25 } wait("10t") end end }
 note: A task (and every event handler) that runs longer than the config's script_time_limit (5 s) without waiting is stopped with an error at its next call into the game; its final still runs. A loop that never calls into the game (pure math) can't be stopped; after twice the limit the console names the event or task that is stuck. Keep long work in steps with wait( ).
 expert: Thread | main thread, like every script; a task is a coroutine, never a thread
 expert: Cost | 1–5 µs to start (coroutines are reused) (guess, not measured)
@@ -316,6 +317,7 @@ lead: Ends a task and runs its final. Returns false if the task had already ende
 arg: task | task | The task from run{ }.
 arg: force? | boolean | true skips final.
 returns: boolean
+try: /lullaby run local t = run{ function() while true do particle{ player = me, particle = "flame", pos = me.pos, count = 5 } wait("2t") end end } wait("3s") stop{ task = t }
 expert: Thread | main thread, like every script
 expert: Cost | 0.5–5 µs plus its final (guess, not measured)
 expert: Under the hood | plain Lua; a task stopping itself unwinds with an error pcall can't catch

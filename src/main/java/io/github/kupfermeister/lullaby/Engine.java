@@ -445,7 +445,7 @@ public final class Engine {
         }
     }
 
-    /** Loads (or reloads) every script; on a reload, the old state's tasks are stopped first. See {@link #afterReload}. */
+    /** Loads (or reloads) every script; on a reload, the old state's tasks are stopped first. See {@link #afterLoad}. */
     public LoadResult load() {
         long start = System.nanoTime();
         unload(true);
@@ -465,20 +465,21 @@ public final class Engine {
     }
 
     /**
-     * After /lullaby reload has sent its summary: every online player gets the new script commands (also when the
-     * load failed, so old commands vanish from their screens), then the reload event runs. {@code player}: who
-     * reloaded (null: the console).
+     * After a load is done: every online player gets the new script commands (also when the load failed, so old
+     * commands vanish from their screens), then the load event runs. Called by /lullaby reload after its summary
+     * ({@code cause} "reload", {@code player}: who reloaded, null: the console) and on the server's first tick after
+     * startup ({@code cause} "start", see Lullaby.onEnable).
      */
-    public void afterReload(LoadResult result, UUID player) {
+    public void afterLoad(LoadResult result, String cause, UUID player) {
         try {
             if (runtime == null) {
                 Nms.resendCommands();
                 return;
             }
             for (String uuid : Nms.onlinePlayers()) runtime.refreshCommands(uuid);
-            runtime.fireReload(result.scripts(), result.errors(), result.millis(), player);
+            runtime.fireLoad(result.scripts(), result.errors(), result.millis(), cause, player);
         } catch (RuntimeException e) {
-            internalError("finishing the reload", e);
+            internalError("finishing the load", e);
         }
     }
 
@@ -521,6 +522,19 @@ public final class Engine {
                         commands.resendAll();
                     }
                 }, plugin);
+    }
+
+    /**
+     * /lullaby run: one line of Lua with {@code me} (null: none); {@code sender}: the sending player, who gets "Done"
+     * (null: console or command block). {@code who}: the sender's name for the via line.
+     */
+    public void runRaw(String code, UUID me, UUID sender, boolean fromBlock, String who) {
+        if (runtime == null) return;
+        try {
+            runtime.runRaw(code, me, sender, fromBlock, who);
+        } catch (RuntimeException e) {
+            internalError("/lullaby run", e);
+        }
     }
 
     /** A script command was typed (Brigadier calls this on the main thread). */

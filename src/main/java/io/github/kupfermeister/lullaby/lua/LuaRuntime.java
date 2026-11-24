@@ -257,16 +257,17 @@ public final class LuaRuntime {
         call("tick", "the waiting tasks (a tick)");
     }
 
-    /** The reload event; {@code player} is who reloaded (null: the console). */
-    public void fireReload(int scripts, int errors, long millis, UUID player) {
+    /** The load event; {@code cause} "start" or "reload", {@code player} is who reloaded (null: start or console). */
+    public void fireLoad(int scripts, int errors, long millis, String cause, UUID player) {
         int top = lua.getTop();
         try {
-            pushInternal("fire_reload");
+            pushInternal("fire_load");
             lua.push(scripts);
             lua.push(errors);
             lua.push(millis);
+            lua.push(cause);
             pushUuid(player);
-            enterLua("the reload event", 4, 0);
+            enterLua("the load event", 5, 0);
         } finally {
             lua.setTop(top);
         }
@@ -279,6 +280,22 @@ public final class LuaRuntime {
             pushInternal("refresh_player");
             lua.push(uuid);
             enterLua("working out a player's commands", 1, 0);
+        } finally {
+            lua.setTop(top);
+        }
+    }
+
+    /** /lullaby run: the code, me and the sending player (null: none), whether a command block sent it, the name. */
+    public void runRaw(String code, UUID me, UUID sender, boolean fromBlock, String who) {
+        int top = lua.getTop();
+        try {
+            pushInternal("raw_run");
+            LuaText.push(lua, code);
+            pushUuid(me);
+            pushUuid(sender);
+            lua.push(fromBlock);
+            LuaText.push(lua, who);
+            enterLua("/lullaby run", 5, 0);
         } finally {
             lua.setTop(top);
         }

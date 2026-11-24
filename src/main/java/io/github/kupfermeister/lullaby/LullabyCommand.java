@@ -21,10 +21,11 @@ import org.bukkit.entity.Player;
 
 /**
  * The built-in commands (Kupfermeister: everything necessary inside, nothing else built in): {@code /lullaby} with
- * {@code reload}, {@code version} and {@code data server|world <world>|chunk [path]} (chunk: the one you stand in),
- * and {@code /lul}, which does exactly what
+ * {@code reload}, {@code version}, {@code data server|world <world>|chunk [path]} (chunk: the one you stand in) and
+ * {@code run <code>}, and {@code /lul}, which does exactly what
  * {@code /lullaby reload} does. Registered as a Brigadier command like LightForce. It needs the permission
- * {@code lullaby.command}, which ops have by default (paper-plugin.yml); {@code data} also needs {@code lullaby.data}.
+ * {@code lullaby.command}, which ops have by default (paper-plugin.yml); {@code data} also needs {@code lullaby.data},
+ * {@code run} also needs {@code lullaby.run}.
  * Reload is in Java so it works even when every script is broken.
  *
  * <p>Tab completion of {@code data} paths can be asked for off the main thread; the keys live in Lua, so the
@@ -73,7 +74,32 @@ final class LullabyCommand {
                                         })
                                         .executes(context -> showChunk(plugin, context.getSource(),
                                                 StringArgumentType.getString(context, "path"))))))
+                .then(Commands.literal("run")
+                        .requires(source -> source.getSender().hasPermission("lullaby.run"))
+                        .then(Commands.argument("code", StringArgumentType.greedyString())
+                                .executes(context -> run(plugin, context.getSource(),
+                                        StringArgumentType.getString(context, "code")))))
                 .build();
+    }
+
+    /**
+     * {@code /lullaby run <code>}: one line of Lua, started at once as a task with {@code me} as the player who typed
+     * it (or the one {@code /execute as} names; nil from the console); the sender gets "Done" when it ends without an
+     * error. Every use is written to the console. A command block (or any sender that is neither a player nor the
+     * console) is refused unless the config's unlock.command_blocks is true; Lua checks that (raw_run in loader.lua)
+     * so the refusal is a normal error.
+     */
+    private static int run(Lullaby plugin, CommandSourceStack source, String code) {
+        Player sender = source.getSender() instanceof Player p ? p : null;
+        Player me = source.getExecutor() instanceof Player p ? p : sender;
+        boolean fromBlock = sender == null
+                && !(source.getSender() instanceof org.bukkit.command.ConsoleCommandSender);
+        String who = source.getSender().getName();
+        // FORMAT: console line for every /lullaby run
+        plugin.getSLF4JLogger().info("{} used /lullaby run: {}", who, code);
+        plugin.engine().runRaw(code, me == null ? null : me.getUniqueId(),
+                sender == null ? null : sender.getUniqueId(), fromBlock, who);
+        return Command.SINGLE_SUCCESS;
     }
 
     /** "world minecraft:arena_7" for Engine.viewData. */
@@ -117,8 +143,8 @@ final class LullabyCommand {
         }
         source.getSender().sendMessage(Component.text(text,
                 result.errors() > 0 ? NamedTextColor.RED : NamedTextColor.GREEN));
-        // summary first, then every player's new commands, then scripts' reload handlers
-        plugin.engine().afterReload(result, source.getExecutor() instanceof Player player ? player.getUniqueId() : null);
+        // summary first, then every player's new commands, then scripts' load handlers
+        plugin.engine().afterLoad(result, "reload", source.getExecutor() instanceof Player player ? player.getUniqueId() : null);
         return Command.SINGLE_SUCCESS;
     }
 

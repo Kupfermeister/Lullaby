@@ -53,6 +53,15 @@ final class JavaFunctions {
             engine.errors().setWindowSeconds(L.toNumber(1));
             return 0;
         });
+        // config block_write_ms, block_show_sections, lullablend_port (0: off), lullablend_bind; once per load.
+        // Gives back nil, or a warning text when LullaBlend's port can't be opened.
+        addFree(lua, "blocks_config", L -> {
+            io.github.kupfermeister.lullaby.nms.BlockEngine.configure((int) L.toInteger(1), (int) L.toInteger(2));
+            String problem = io.github.kupfermeister.lullaby.lullablend.LullaBlend.configure((int) L.toInteger(3), string(L, 4));
+            if (problem == null) return 0;
+            push(L, problem);
+            return 1;
+        });
         addFree(lua, "read_config", L -> {
             String config = engine.readConfig();
             if (config == null) return 0;

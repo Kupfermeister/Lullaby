@@ -46,6 +46,9 @@ Java, under `src/main/java/io/github/kupfermeister/lullaby/`:
 | [lua/ToLua.java](src/main/java/io/github/kupfermeister/lullaby/lua/ToLua.java) | The one place that turns a Java value (player, entity, world, block, chunk, location, vector, box, block data, damage source, item stack, text, plain values) into a Lullaby value for Lua; event fields, entity fields and `java.wrap( )` use it. Its Lua half is `I.from_java` in entities.lua. |
 | [error/ErrorReporter.java](src/main/java/io/github/kupfermeister/lullaby/error/ErrorReporter.java) | Error and warning format, repeat collapsing, console and ops. |
 | [nms/](src/main/java/io/github/kupfermeister/lullaby/nms/package-info.java) | Everything that touches Minecraft's own code, see below. |
+| [lullablend/LullaBlend.java](src/main/java/io/github/kupfermeister/lullaby/lullablend/LullaBlend.java) | LullaBlend, the server side of the Blender add-on (its own repository, Kupfermeister/LullaBlend): one session per player (token, origin, mode, viewers, last scene). A scene from Blender is built into a block edit on the block worker and shown as fake blocks; `place` writes it and keeps an undo file in `plugins/lullaby/lullablend/undo`. Tokens are saved only as SHA-256 in `plugins/lullaby/lullablend/tokens.txt`. Lives as long as the plugin. |
+| [lullablend/LinkServer.java](src/main/java/io/github/kupfermeister/lullaby/lullablend/LinkServer.java) | The port Blender connects to (config `lullablend_port`, off by default) and the protocol, written out in its Javadoc (the add-on's link.py follows it). |
+| [lullablend/LullaBlendCommand.java](src/main/java/io/github/kupfermeister/lullaby/lullablend/LullaBlendCommand.java) | `/lullablend token, origin, mode, show, hide, viewers, place, undo, status`, and `as <player> ...` for the console and admins (permission `lullaby.lullablend`). |
 
 The `nms` package ("net.minecraft server", Minecraft's own code) is the **only** package that may use
 `net.minecraft.*`, CraftBukkit or Paper internals (`io.papermc.paper.adventure`). So a Minecraft update only needs
@@ -68,6 +71,8 @@ never goes through it, so this rule stays true for Lullaby itself. Names are Moj
 | [ChunkData.java](src/main/java/io/github/kupfermeister/lullaby/nms/ChunkData.java) | `c.data` inside each chunk (one entry in the chunk's plugin data, saved by the server with the chunk): read when a script first touches it, written when the chunk unloads and when its world saves, only when changed. Remembers what it wrote for the tables of unloaded chunks, which Lua keeps until the next reload ("keep alive") and loads the chunk to write a later change. |
 | [EntityData.java](src/main/java/io/github/kupfermeister/lullaby/nms/EntityData.java) | `entity.data` and `player.data` (the same field) inside each entity (one entry in its plugin data, saved by the server with the entity): a player's in the player file, also read and written there while the player is offline. Written when the entity's chunk unloads (then Lua locks the table) and at world saves; a player's right before Paper saves the player (its own timer, checked at the tick's start), at quit, reload and stop. An entity that dies takes its data with it. |
 | [Worlds.java](src/main/java/io/github/kupfermeister/lullaby/nms/Worlds.java) | Worlds as folders: `worlds()`, `create_world{}`, `load_world{}`, `unload_world{}`, `copy_world{}`, `delete_world{}`. Creating and loading go through Paper's WorldCreator on purpose (Paper rewrites world loading, so vanilla's own classes would break with every update); vanilla's dimension folders, registries and seed rule. Copies are built in `plugins/lullaby/temp` and moved into place, so a crash never leaves half a world; a deleted world is moved there whole and kept as a last chance until the next start, which empties temp. Lives as long as the plugin, so a copy outlasts a reload. |
+| [BlockEdit.java](src/main/java/io/github/kupfermeister/lullaby/nms/BlockEdit.java) | The block engine's unit of work: blocks of one world packed per chunk section (palette of vanilla state numbers, 4096 indices, 0 = untouched), built by a `Builder` on any one thread, unchangeable once built; also the undo file format. |
+| [BlockEngine.java](src/main/java/io/github/kupfermeister/lullaby/nms/BlockEngine.java) | The block engine, for every big block job (LullaBlend now, a `fill{}` action later): **show** an edit as fake blocks to chosen players (a hook in their pipeline puts the fake blocks back into every chunk and block update the server sends), and **write** an edit straight into the chunk sections like FAWE (no block updates or physics; at most `block_write_ms` per tick; then Paper's light engine lights the chunks again and they are resent; gives back the old blocks as an undo edit). The block worker thread runs build jobs (`work`). Lives as long as the plugin. |
 | [Nms.java](src/main/java/io/github/kupfermeister/lullaby/nms/Nms.java) | Small vanilla reads and actions without a bigger class yet. |
 
 The library, in `src/main/resources/lullaby/lib/` (loaded in this order; each file starts with a comment saying
@@ -114,10 +119,10 @@ Other files:
    thread-safe; calling into Lua from any other thread is a bug.
 2. Bukkit and Minecraft world objects are touched only on the main thread.
 3. Worker threads only work on copies they own and hand results back to the main thread through a queue. They never
-   call Lua or touch live world objects. *(Planned user: big block edits on copies of chunk sections.)*
+   call Lua or touch live world objects. (The block worker builds block edits from plain data; see below.)
 4. Every class that runs work off the main thread says so in its Javadoc.
 
-Today five places meet other threads:
+Today seven places meet other threads:
 
 - [Watchdog.java](src/main/java/io/github/kupfermeister/lullaby/lua/Watchdog.java) runs one thread that only compares
   two numbers and raises a flag; the main thread checks that flag at every library call into Java.
@@ -139,6 +144,16 @@ Today five places meet other threads:
   doesn't exist yet). While a job runs, its world names are refused by every other world function; the finished job
   comes back through a queue that the main thread reads each tick, and a waiting `copy_world{}` asks for it once per
   tick.
+
+- [BlockEngine.java](src/main/java/io/github/kupfermeister/lullaby/nms/BlockEngine.java): the one block worker thread
+  runs build jobs that only read plain data and vanilla's unchangeable registries and block states (state text to
+  state number, turning states); the result comes back through a queue the main thread reads each tick. The light
+  engine's callback after a write hands its chunk to that queue too. A viewer's pipeline hook (Netty's threads) reads
+  only that viewer's current fake blocks, an unchangeable snapshot the main thread swaps in whole.
+- [LinkServer.java](src/main/java/io/github/kupfermeister/lullaby/lullablend/LinkServer.java): one thread accepts
+  Blender's connections, each has a reader and a writer thread. They turn bytes into plain data and hand it to the
+  main thread ([LullaBlend.java](src/main/java/io/github/kupfermeister/lullaby/lullablend/LullaBlend.java) `post`);
+  they never touch the game, sessions or Lua.
 
 The raw Java door ([JavaDoor.java](src/main/java/io/github/kupfermeister/lullaby/lua/JavaDoor.java)) takes no Lua
 functions, so Java can never call a script back and Lullaby never hands a raw object to another thread. A script can
@@ -346,5 +361,5 @@ Marked so nobody mistakes them for features: event fields Lullaby can't read yet
 those, merchant offers, ...; `?` kinds in events.txt), new block snapshots in a changed list (only existing ones can be
 kept, removed or given another state), and events Paper fires off the main thread (chat, pre-login); saved data on
 items (`server.data`, `w.data`, `c.data` and `entity.data` exist so far); a generated packet system (`on_packet`, `send_packet`) on the same send core;
-inventories; more entity fields and actions (equipment, effects, full NBT in blueprints); changing a client_entity's viewers; a separate particle engine on clientside entities (batching, short moves); worker threads for big block
-edits; mixins as an optional add-on.
+inventories; more entity fields and actions (equipment, effects, full NBT in blueprints); changing a client_entity's viewers; a separate particle engine on clientside entities (batching, short moves);
+script actions on the block engine (`fill{}`, pasting schematics); mixins as an optional add-on.

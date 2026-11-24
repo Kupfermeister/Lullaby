@@ -286,6 +286,10 @@ local DEFAULTS = {
 	clientside_entity_limit = 1000000,
 	script_time_limit = 5,
 	data_max_size = 16,
+	block_write_ms = 10,
+	block_show_sections = 128,
+	lullablend_port = false,
+	lullablend_bind = "0.0.0.0",
 }
 
 -- Reads config.lua (a Lua file that returns a table) with nothing in reach, fills in defaults for missing keys.
@@ -470,6 +474,33 @@ status: unconfirmed
 	end
 end
 
+-- The block engine's limits and LullaBlend's link (BlockEngine.java, LullaBlend.java). Wrong values warn and use the
+-- default; a port that can't be opened warns too.
+function I.blocks_setup(config)
+	local function whole(key, low, high)
+		local v = config[key]
+		if type(v) ~= "number" or v ~= math.floor(v) or v < low or v > high then
+			-- FORMAT: bad block_write_ms, block_show_sections or lullablend_port in the config
+			J.report("warning", "plugins/lullaby/config.lua", -1, "loading the config",
+				key .. " must be a whole number from " .. low .. " to " .. high .. " (using " .. tostring(DEFAULTS[key]) .. ")")
+			v = DEFAULTS[key]
+		end
+		return v
+	end
+	local port = config.lullablend_port
+	if port ~= false then port = whole("lullablend_port", 1, 65535) end
+	if port == false then port = 0 end
+	local bind = config.lullablend_bind
+	if type(bind) ~= "string" then
+		-- FORMAT: bad lullablend_bind in the config
+		J.report("warning", "plugins/lullaby/config.lua", -1, "loading the config",
+			"lullablend_bind must be an address text like \"0.0.0.0\" (using \"0.0.0.0\")")
+		bind = "0.0.0.0"
+	end
+	local problem = J.blocks_config(whole("block_write_ms", 1, 1000), whole("block_show_sections", 1, 100000), port, bind)
+	if problem then J.report("warning", "plugins/lullaby/config.lua", -1, "loading the config", problem) end
+end
+
 -- Called by Java once all library files have run, before the scripts load.
 function I.setup()
 	I.check_kinds()
@@ -478,5 +509,6 @@ function I.setup()
 	I.TIME_UP = J.set_time_limit(I.config.script_time_limit or 0)
 	J.set_error_window(tonumber(I.config.error_repeat_seconds) or 10)
 	I.data_setup(I.config) -- data.lua
+	I.blocks_setup(I.config)
 	build_sandbox(I.config.unlock)
 end

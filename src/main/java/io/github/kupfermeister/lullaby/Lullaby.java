@@ -1,5 +1,8 @@
 package io.github.kupfermeister.lullaby;
 
+import io.github.kupfermeister.lullaby.lullablend.LullaBlend;
+import io.github.kupfermeister.lullaby.lullablend.LullaBlendCommand;
+import io.github.kupfermeister.lullaby.nms.BlockEngine;
 import io.github.kupfermeister.lullaby.nms.Nms;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import java.io.IOException;
@@ -17,6 +20,7 @@ public final class Lullaby extends JavaPlugin {
     // The per-tick job is added to vanilla's list once per server run and can't be removed, so it reads this field.
     private static volatile Engine tickTarget;
     private static boolean tickRegistered;
+    private static volatile boolean blocksOn; // the block engine and LullaBlend run (false after the plugin stops)
 
     private Engine engine;
 
@@ -43,6 +47,17 @@ public final class Lullaby extends JavaPlugin {
             return;
         }
 
+        // The block engine and LullaBlend live as long as the plugin (a reload doesn't touch them); started before the
+        // scripts load, because the config (read by the library) sets their limits and LullaBlend's port.
+        BlockEngine.start(this);
+        LullaBlend.start(this);
+        getServer().getPluginManager().registerEvents(new org.bukkit.event.Listener() {
+            @org.bukkit.event.EventHandler
+            public void join(org.bukkit.event.player.PlayerJoinEvent e) {
+                BlockEngine.joined(e.getPlayer().getUniqueId());
+            }
+        }, this);
+
         engine = new Engine(this);
         try {
             engine.createDefaults();
@@ -52,9 +67,14 @@ public final class Lullaby extends JavaPlugin {
         engine.load();
 
         tickTarget = engine;
+        blocksOn = true;
         if (!tickRegistered) {
             tickRegistered = true;
             Nms.addTickable(() -> {
+                if (blocksOn) {
+                    LullaBlend.tick();
+                    BlockEngine.tick();
+                }
                 Engine target = tickTarget;
                 if (target != null) target.tick();
             });
@@ -63,12 +83,16 @@ public final class Lullaby extends JavaPlugin {
         getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event -> {
             event.registrar().register(LullabyCommand.build(this), "Lullaby: reload the scripts, show the version or the saved data", List.of());
             event.registrar().register(LullabyCommand.buildShort(this), "Lullaby: reload the scripts", List.of());
+            event.registrar().register(LullaBlendCommand.build(), "LullaBlend: build from Blender (token, origin, mode, place, undo)", List.of());
         });
     }
 
     @Override
     public void onDisable() {
         tickTarget = null;
+        blocksOn = false;
+        LullaBlend.stop();
+        BlockEngine.stop();
         if (engine != null) {
             engine.unload(false); // finals of running tasks run here, then server.data, w.data and c.data are saved
             engine.closeData();

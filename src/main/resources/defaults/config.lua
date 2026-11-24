@@ -36,4 +36,17 @@ return {
   -- (the last saved file stays) and a red error says so, so a script stuck adding keys can't fill the disk.
   -- false: no limit.
   data_max_size = 16,
+
+  -- The block engine (big block jobs such as LullaBlend's place): most milliseconds of writing blocks per tick (a tick
+  -- has 50; more is faster but lags), and most changed sections (16x16x16 blocks) of fake blocks sent to one player
+  -- per tick (more shows big previews faster but can stutter that player's game).
+  block_write_ms = 10,
+  block_show_sections = 128,
+
+  -- LullaBlend: the port the Blender add-on connects to. false: off (no port is opened). Each player makes their own
+  -- password for Blender in the game with /lullablend token (needs the permission lullaby.lullablend, ops have it).
+  -- lullablend_bind: "0.0.0.0" takes connections from anywhere (open the port on your host for other computers),
+  -- "127.0.0.1" only from this computer.
+  lullablend_port = false,
+  lullablend_bind = "0.0.0.0",
 }

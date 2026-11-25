@@ -185,7 +185,7 @@ arg: volume? | number | Default 1.
 arg: pitch? | number | Default 1.
 arg: seed? | number | Picks which file of the sound plays. Random by default, as in vanilla. For one exact file use sound_seed( ).
 returns: nothing
-try: /lullaby run sound{ player = me, sound = "music.creative", source = "music", entity = me, seed = sound_seed("music.creative", "music/game/creative/aria_math") }
+try: /lullaby run sound{ player = me, sound = "music.creative", source = "master", entity = me, seed = sound_seed("music.creative", "music/game/creative/aria_math") }
 expert: Thread | main thread, like every script
 expert: Cost | 3–20 µs plus 0.5–2 µs per player (guess, not measured)
 expert: Under the hood | one Lua → Java call; packet Sound or Sound Entity (play, clientbound)
@@ -220,7 +220,7 @@ arg: file | text | One of its files, as in vanilla's sounds.json, like "ambient/
 returns: number
 note: The player's game picks the file from its own sounds.json. A resource pack that changes the sound's file list can make the player hear another file; the server can't see that. Lullaby reads Minecraft's own sounds.json for the version it is built for and works the seed out the way the game does, so a Minecraft update can't make a seed silently wrong. The seed is found once per sound and then kept.
 example:
-  sound{ player = player, sound = "music.creative", source = "music", entity = player,
+  sound{ player = player, sound = "music.creative", source = "master", entity = player,
     seed = sound_seed("music.creative", "music/game/creative/aria_math") }
 expert: Thread | main thread, like every script
 expert: Cost | first time per sound 10–500 µs (it searches the seed), then 1–5 µs (guess, not measured)

@@ -367,9 +367,9 @@ lead: Teleports an entity or an online player, as /tp does, also into another wo
 arg: entity | entity · player · client_entity | What to teleport.
 arg: location | location | Where to, with the direction it then looks (yaw, pitch).
 returns: boolean (false if the entity is gone or the teleport was refused, for example by another plugin)
-try: /lullaby run teleport{ entity = me, location = me.location:offset(vec3(0, 20, 0)) }
+try: /lullaby run teleport{ entity = me, location = location(world("overworld"), vec3(0.5, 64, 0.5), yaw_pitch(90, 0)) }
 example:
-  teleport{ entity = player, location = location(world("overworld"), vec3(0.5, 70, 0.5)) }
+  teleport{ entity = player, location = location(world("overworld"), vec3(0.5, 64, 0.5), yaw_pitch(90, 0)) }
 expert: Thread | main thread, like every script
 expert: Cost | 5–30 µs, into another world more (guess, not measured)
 expert: Under the hood | one Lua → Java call; vanilla teleportTo, the same steps as /tp
@@ -399,10 +399,7 @@ syntax: remove_entity{ entity = entity | client_entity }
 lead: Removes an entity from the world, as if it had never been there: no death, no drops, no death event. A client_entity disappears from every viewer's screen. Players can't be removed.
 arg: entity | entity · client_entity | What to remove.
 returns: boolean (false if it was gone already)
-try: /lullaby run local pig = summon{ type = "pig", location = me.location:offset(vec3(2, 0, 0)) } wait("3s") remove_entity{ entity = pig }
 example:
-  local zombie = summon{ type = "zombie", location = place }
-  wait(100)
   remove_entity{ entity = zombie }
 expert: Thread | main thread, like every script
 expert: Cost | 2–20 µs (guess, not measured)
@@ -580,11 +577,9 @@ arg: blueprint / type | blueprint · text | Needed, one of the two: what to make
 arg: location | location | Where, and which way it looks.
 arg: (fields)? | any | Any field of blueprint{ } (modify_entity{ }'s fields except target). A field the type doesn't have is ignored.
 returns: entity · nil (nil if the spawn was refused: a plugin or event cancelled it, or the world is on peaceful and the mob is hostile)
-try: /lullaby run summon{ type = "iron_golem", location = me.location:offset(vec3(3, 0, 0)), custom_name = "Guard", custom_name_visible = true, glowing = true }
+try: /lullaby run summon{ type = "iron_golem", location = location(world("overworld"), vec3(0.5, 64, 0.5), yaw_pitch(90, 0)), custom_name = "Guard", custom_name_visible = true }
 example:
-  local guard = summon{ type = "iron_golem", location = place, custom_name = "Guard", persistent = true }
-  local popup = blueprint{ type = "text_display", display_data = { text = { text = "Hello" } } }
-  summon{ blueprint = popup, location = place }
+  summon{ type = "iron_golem", location = location(world("overworld"), vec3(0.5, 64, 0.5), yaw_pitch(90, 0)), custom_name = "Guard", persistent = true }
 expert: Thread | main thread, like every script
 expert: Cost | 30–300 µs, more for mobs with much setup (guess, not measured)
 expert: Under the hood | one Lua → Java call; vanilla EntityType.create, Mob.finalizeSpawn (as /summon), the changes of modify_entity{ }, ServerLevel.tryAddFreshEntityWithPassengers with spawn reason CUSTOM
@@ -653,15 +648,13 @@ arg: persist? | boolean · table | Shows it again when a viewer's game forgot it
 arg: lifetime? | number | Ticks until Lullaby removes it by itself (20 ticks are a second). Default 12000 (10 minutes); -1: never (until remove_entity{ } or a reload).
 arg: (fields)? | any | Any field of blueprint{ }; it wins over the blueprint's. Fields only the server uses (ai, aware, persistent, can_pickup_items, ...) do nothing here.
 returns: client_entity
-try: /lullaby run clientside_summon{ type = "text_display", location = me.location:offset(vec3(0, 2.5, 0)), player = me, lifetime = 100, display_data = { billboard = "center", text = { text = { text = "Only you see this", color = "gold" } } } }
+try: /lullaby run clientside_summon{ type = "text_display", location = location(world("overworld"), vec3(0.5, 64, 0.5), yaw_pitch(90, 0)), player = me, lifetime = 100, display_data = { billboard = "center", text = { text = { text = "Only you see this", color = "gold" } } } }
 note: /lullaby reload removes every client_entity from every screen. The config's clientside_entity_limit (default 1000000) is the most that may exist at once, for all scripts together; past it clientside_summon{ } is an error.
 example:
-  local popup = clientside_summon{
-    type = "text_display", location = player.location:offset(vec3(0, 2.5, 0)), player = player, lifetime = 40,
-    display_data = { billboard = "center", teleport_duration = 20, text = { text = { text = "+10 coins", color = "gold" } } },
+  clientside_summon{
+    type = "text_display", location = location(world("overworld"), vec3(0.5, 64, 0.5), yaw_pitch(90, 0)), player = player, lifetime = 40,
+    display_data = { billboard = "center", text = { text = { text = "+10 coins", color = "gold" } } },
   }
-  teleport{ entity = popup, location = player.location:offset(vec3(0, 3.5, 0)) } -- floats up for a second
-  sound{ player = player, sound = "entity.experience_orb.pickup", source = "master", entity = popup }
 expert: Thread | main thread, like every script
 expert: Cost | 20–200 µs to make (guess, not measured); per tick nothing; the server keeps one vanilla entity per client_entity in memory (about 1–3 KB, guess)
 expert: Under the hood | nms/ClientEntities.java: a vanilla entity made with EntityType.create and never added to a world; vanilla's own spawn packets (ServerEntity.sendPairingData: Spawn Entity, Set Entity Metadata, ...), later only the changed metadata (SynchedEntityData.packDirty), Teleport Entity, Remove Entities (play, clientbound); persist listens to PlayerChunkLoadEvent, PlayerPostRespawnEvent, PlayerChangedWorldEvent and PlayerJoinEvent, only while a client_entity persists

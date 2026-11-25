@@ -236,7 +236,7 @@ method: :vec3() | vec3 | The same numbers as decimals: the block's lowest corner
 method: :chunk_pos() | chunk_pos | The chunk column it is in.
 method: :section_pos() | section_pos | The 16×16×16 section it is in.
 example:
-  local spot = player.location.pos:block_pos():random_offset(8, 0, 8)
+  local spawn_block = block_pos(0, 64, 0)
 expert: Thread | main thread, like every script
 expert: Cost | 0.1–1 µs to make one from numbers, 1–5 µs from command text (guess, not measured); the math on it is plain Lua
 expert: Under the hood | a plain Lua table with a hidden shared metatable; no Java
@@ -935,8 +935,7 @@ method: :offset(vec3) | location | Moved by a vec3; world and direction stay.
 method: :random_offset(vec3) | location | Moved by a random decimal from −x to x, −y to y and −z to z of the vec3 (0 keeps that axis); world and direction stay. l:random_offset(vec3(3, 0, 3)) is a random spot up to 3 blocks away on the ground plane.
 method: :chunk() | chunk | The chunk it is in (loaded or not).
 example:
-  local l = player.location
-  teleport{ entity = player, location = l:random_offset(vec3(10, 0, 10)) }
+  local spawn = location(world("overworld"), vec3(0.5, 64, 0.5), yaw_pitch(90, 0))
 expert: Thread | main thread, like every script
 expert: Cost | 0.1–1 µs to make one from numbers, 1–5 µs from command text (guess, not measured); the math on it is plain Lua
 expert: Under the hood | a plain Lua table with a hidden shared metatable; no Java, except l.block (one call: is the chunk loaded)

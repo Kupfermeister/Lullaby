@@ -92,6 +92,9 @@ return {
     hold_seconds = 0.3,
     -- the melody only uses sounds at least this tonal. 0 to 1 (1: one clear held tone)
     melody_tonality = 0.6,
+    -- slices: how much of the input the melody gets first. 0 to 0.95 (0: only the clearly tonal part; higher: the
+    -- melody takes nearly everything, noise keeps only what is sharp and clearly noisy, plus what melody can't play)
+    melody_priority = 0.75,
     -- the bass is everything below this many Hz
     bass_below_hz = 250,
     -- bass sounds need at least this share of their energy below bass_below_hz. 0 to 1

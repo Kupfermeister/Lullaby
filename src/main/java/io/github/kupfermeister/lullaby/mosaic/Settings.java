@@ -20,7 +20,7 @@ final class Settings {
     boolean slices, subtick, music;
     int sliceMs, maxPerTick, maxVoices, maxStreams, rateCount, rateTicks, precision;
     double volMelody, volBass, volNoise, volDetail, loudness, strictness, similarity, saturation, pitchStep,
-            maxPlaySeconds, holdSeconds, melodyTonality, bassBelowHz, bassPurity;
+            maxPlaySeconds, holdSeconds, melodyTonality, melodyPriority, bassBelowHz, bassPurity;
     String weighting = "speech";
     double[][] customWeighting;
     final Map<String, List<String>> filters = new LinkedHashMap<>();
@@ -92,6 +92,7 @@ final class Settings {
         s.maxPlaySeconds = number(a, "max_play_seconds", 2, 0.05, 120);
         s.holdSeconds = number(a, "hold_seconds", 0.3, 0, 100);
         s.melodyTonality = number(a, "melody_tonality", 0.6, 0, 1);
+        s.melodyPriority = number(a, "melody_priority", 0.75, 0, 0.95);
         s.bassBelowHz = number(a, "bass_below_hz", 250, 60, 2000);
         s.bassPurity = number(a, "bass_purity", 0.8, 0, 1);
         s.music = a.bool("music", true);

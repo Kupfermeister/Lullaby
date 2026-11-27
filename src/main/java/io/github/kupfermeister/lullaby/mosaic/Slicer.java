@@ -15,7 +15,7 @@ import java.util.stream.IntStream;
  * with its own volume ({@code volume = { melody, bass, noise }}; 0 turns one off):
  * <ul>
  *   <li>melody: the tonal part (harmonic/percussive split: what holds still over time against what holds still over
- *       the frequencies) above bass_below_hz. Only clean sounds (at least melody_tonality tonal, Features) whose
+ *       the frequencies) above bass_below_hz, widened by melody_priority (noise keeps only what is clearly noisy). Only clean sounds (at least melody_tonality tonal, Features) whose
  *       first note is in key right now: the input's melody part holds that note (its harmonics) at least half as
  *       strongly as its strongest note. A melody sound goes on as long as its note stays in key in the next slice,
  *       then it is stopped: fluid, not cut by every small mismatch;
@@ -223,6 +223,10 @@ final class Slicer {
         float[] all = input.clone();
         Shared.scale(all, frames, sounds, w, s.loudness);
         float[] harmonic = harmonicShare(all);
+        // melody_priority: noise keeps only the clearly noisy share, (1 - harmonic) ^ (1 / (1 - melody_priority)),
+        // the melody gets the rest (0: the plain split; 0.75: noise keeps a bin only when it is far more noise than tone)
+        double power = 1 / (1 - s.melodyPriority);
+        for (int i = 0; i < harmonic.length; i++) harmonic[i] = (float) (1 - Math.pow(1 - harmonic[i], power));
         float[] mel = new float[all.length];
         float[] bass = new float[all.length];
         float[] noise = new float[all.length];

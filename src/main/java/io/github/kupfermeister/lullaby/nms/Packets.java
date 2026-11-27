@@ -137,19 +137,40 @@ public final class Packets {
     public static void sound(Object wire, IntFunction<Object> slots) {
         Fields a = new Fields("sound{}", wire);
         Holder<SoundEvent> sound = soundEvent(a);
+        play(a, sound, a.has("seed"), a.long64("seed", 0), 1, slots);
+    }
+
+    /**
+     * precise_sound{}: sound{} with {@code file} (one exact .ogg as in sounds.json) instead of sound and seed.
+     * SoundSeeds.precise picks the sound whose list has the file and the seed; pitch is the file's real pitch (the
+     * list line's own pitch is divided out, so pitch = 1 plays the file as it is).
+     */
+    public static void preciseSound(Object wire, IntFunction<Object> slots) {
+        Fields a = new Fields("precise_sound{}", wire);
+        Object file = a.required("file", "a sound file like \"mob/skeleton/hurt1\"");
+        if (!(file instanceof String f)) throw a.wrong("file", "a sound file like \"mob/skeleton/hurt1\"", file);
+        SoundSeeds.Use use = SoundSeeds.precise(f);
+        Identifier id = Identifier.withDefaultNamespace(use.sound());
+        Holder<SoundEvent> sound = BuiltInRegistries.SOUND_EVENT.get(id)
+                .<Holder<SoundEvent>>map(h -> h).orElseGet(() -> Holder.direct(SoundEvent.createVariableRangeEvent(id)));
+        play(a, sound, true, use.seed(), use.pitch(), slots);
+    }
+
+    /** The shared rest of sound{} and precise_sound{}: source, volume, pitch (divided by pitchOfLine), where, who. */
+    private static void play(Fields a, Holder<SoundEvent> sound, boolean hasSeed, long seed, float pitchOfLine,
+                             IntFunction<Object> slots) {
         SoundSource source = a.choice("source", SOURCES, null);
         float volume = (float) a.number("volume", 1);
-        float pitch = (float) a.number("pitch", 1);
+        float pitch = (float) a.number("pitch", 1) / pitchOfLine;
         // FORMAT: pos and entity both or neither
         if (a.has("pos") == a.has("entity")) {
-            throw new IllegalArgumentException("sound{}: give pos (a vec3) or entity (an entity), not both or neither");
+            throw new IllegalArgumentException(a.what() + ": give pos (a vec3) or entity (an entity), not both or neither");
         }
         double[] p = a.has("pos") ? a.vec3("pos") : null;
-        long seed = a.long64("seed", 0);
         List<ServerPlayer> to = receivers(a, slots);
         a.done();
         if (to.isEmpty()) return;
-        if (!a.has("seed")) seed = to.getFirst().level().getRandom().nextLong(); // vanilla: level.getRandom().nextLong()
+        if (!hasSeed) seed = to.getFirst().level().getRandom().nextLong(); // vanilla: level.getRandom().nextLong()
         Packet<? super ClientGamePacketListener> packet;
         if (p != null) {
             packet = new ClientboundSoundPacket(sound, source, p[0], p[1], p[2], volume, pitch, seed);

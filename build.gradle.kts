@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "io.github.kupfermeister"
-version = "0.1.0-SNAPSHOT"
+version = "0.1.1-SNAPSHOT"
 
 val minecraftVersion = providers.gradleProperty("minecraftVersion").get()
 val paperBuild = providers.gradleProperty("paperBuild").get()
@@ -29,6 +29,10 @@ dependencies {
     implementation("party.iroiro.luajava:luajava:4.1.0")
     implementation("party.iroiro.luajava:luajit:4.1.0")
     runtimeOnly("party.iroiro.luajava:luajit-platform:4.1.0:natives-desktop")
+
+    // Sound mosaicing (mosaic/) only: decoding .ogg (vanilla's sounds and inputs) and .mp3 inputs. Pure Java, LGPL.
+    implementation("org.jcraft:jorbis:0.0.17")
+    implementation("javazoom:jlayer:1.0.1")
 }
 
 tasks.withType<JavaCompile>().configureEach {
@@ -37,10 +41,13 @@ tasks.withType<JavaCompile>().configureEach {
 }
 
 // Downloads vanilla's sounds.json for minecraftVersion from Mojang (each step's SHA-1 checked). The server jar doesn't
-// have it (only the game does); SoundSeeds.java reads it for sound_seed(). Downloaded again only on a version change.
+// have it (only the game does); SoundSeeds.java reads it for sound_seed(). Also writes sound_assets.txt (every vanilla .ogg
+// with hash and size) for sound mosaicing. Downloaded again only on a version change.
 abstract class DownloadSounds : DefaultTask() {
     @get:Input abstract val minecraftVersion: Property<String>
     @get:OutputFile abstract val target: RegularFileProperty
+    // sound mosaicing (mosaic/): every .ogg of vanilla with its hash and size, so the plugin can download them itself
+    @get:OutputFile abstract val assets: RegularFileProperty
 
     private fun fetch(url: String, sha1: String?): ByteArray {
         val bytes = URI(url).toURL().openStream().use { it.readBytes() }
@@ -66,6 +73,13 @@ abstract class DownloadSounds : DefaultTask() {
         val hash = (objects["minecraft/sounds.json"] as Map<String, Any?>)["hash"] as String
         val bytes = fetch("https://resources.download.minecraft.net/${hash.substring(0, 2)}/$hash", hash)
         target.get().asFile.apply { parentFile.mkdirs() }.writeBytes(bytes)
+        // "path hash size" per line, path as in sounds.json ("mob/skeleton/hurt1"); read by mosaic/SoundAssets.java
+        val lines = objects.entries.filter { it.key.startsWith("minecraft/sounds/") && it.key.endsWith(".ogg") }.sortedBy { it.key }
+            .joinToString("\n") { (key, value) ->
+                val v = value as Map<String, Any?>
+                key.removePrefix("minecraft/sounds/").removeSuffix(".ogg") + " " + v["hash"] + " " + (v["size"] as Number).toLong()
+            }
+        assets.get().asFile.apply { parentFile.mkdirs() }.writeText(lines + "\n")
     }
 }
 
@@ -73,6 +87,7 @@ val soundsVersion = minecraftVersion // the task's own property has the same nam
 val downloadSounds = tasks.register<DownloadSounds>("downloadSounds") {
     minecraftVersion = soundsVersion
     target = layout.buildDirectory.file("generated/sounds/lullaby/sounds.json")
+    assets = layout.buildDirectory.file("generated/sounds/lullaby/sound_assets.txt")
 }
 
 // `gradlew events`: writes src/main/resources/lullaby/events.txt, every Paper event and its fields, from Paper's API

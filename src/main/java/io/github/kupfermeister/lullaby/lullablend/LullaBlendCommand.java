@@ -4,7 +4,7 @@ import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.ArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
-import com.mojang.brigadier.tree.LiteralCommandNode;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.command.brigadier.Commands;
 import io.papermc.paper.command.brigadier.argument.ArgumentTypes;
@@ -26,7 +26,8 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
 /**
- * {@code /lullablend}: the game side of LullaBlend (permission {@code lullaby.lullablend}, ops by default).
+ * {@code /lullaby blenderbridge}: the game side of LullaBlend (permissions {@code lullaby.command} and
+ * {@code lullaby.blenderbridge}, ops by default).
  * <pre>
  *   token                      a new token for Blender (click to copy); the old one stops working
  *   origin                     Blender's origin = the block you stand in, Blender's north = the way you look
@@ -47,22 +48,23 @@ public final class LullaBlendCommand {
 
     private static final String[] FACINGS = {"north", "east", "south", "west"};
 
-    public static LiteralCommandNode<CommandSourceStack> build() {
-        var root = Commands.literal("lullablend")
-                .requires(source -> source.getSender().hasPermission("lullaby.lullablend"));
+    /** The {@code blenderbridge} branch; LullabyCommand hangs it under {@code /lullaby} (which needs lullaby.command). */
+    public static LiteralArgumentBuilder<CommandSourceStack> build() {
+        var root = Commands.literal("blenderbridge")
+                .requires(source -> source.getSender().hasPermission("lullaby.blenderbridge"));
         subcommands(root, ctx -> self(ctx.getSource().getSender()));
         root.then(Commands.literal("as").then(subcommands(Commands.argument("player", StringArgumentType.word())
                 .suggests((ctx, b) -> {
                     for (Player p : Bukkit.getOnlinePlayers()) b.suggest(p.getName());
                     return b.buildFuture();
                 }), ctx -> other(StringArgumentType.getString(ctx, "player")))));
-        return root.build();
+        return root;
     }
 
     private static UUID self(CommandSender sender) {
         if (sender instanceof Player p) return p.getUniqueId();
         // FORMAT: console without "as"
-        sender.sendMessage(Component.text("From the console, use /lullablend as <player> ...", NamedTextColor.RED));
+        sender.sendMessage(Component.text("From the console, use /lullaby blenderbridge as <player> ...", NamedTextColor.RED));
         return null;
     }
 
@@ -110,7 +112,7 @@ public final class LullaBlendCommand {
         node.then(Commands.literal("place").executes(ctx -> run(ctx, who, (s, l, sender) -> l.place(s, text -> say(sender, text)))));
         node.then(Commands.literal("undo").executes(ctx -> run(ctx, who, (s, l, sender) -> l.undo(s, text -> say(sender, text)))));
         node.then(Commands.literal("status").executes(ctx -> run(ctx, who, (s, l, sender) -> {
-            // FORMAT: /lullablend status
+            // FORMAT: /lullaby blenderbridge status
             say(sender, (s.link != null ? "Blender connected" : "Blender not connected")
                     + "; " + (s.hasOrigin ? "origin " + LullaBlend.originText(s) : "no origin yet")
                     + "; mode " + s.mode.name().toLowerCase(Locale.ROOT)

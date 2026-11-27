@@ -45,7 +45,7 @@ return {
   block_show_sections = 128,
 
   -- LullaBlend: the port the Blender add-on connects to. false: off (no port is opened). Each player makes their own
-  -- password for Blender in the game with /lullablend token (needs the permission lullaby.lullablend, ops have it).
+  -- password for Blender in the game with /lullaby blenderbridge token (needs the permissions lullaby.command and lullaby.blenderbridge, ops have them).
   -- lullablend_bind: "0.0.0.0" takes connections from anywhere (open the port on your host for other computers),
   -- "127.0.0.1" only from this computer.
   lullablend_port = false,

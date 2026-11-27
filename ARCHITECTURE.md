@@ -48,7 +48,8 @@ Java, under `src/main/java/io/github/kupfermeister/lullaby/`:
 | [nms/](src/main/java/io/github/kupfermeister/lullaby/nms/package-info.java) | Everything that touches Minecraft's own code, see below. |
 | [lullablend/LullaBlend.java](src/main/java/io/github/kupfermeister/lullaby/lullablend/LullaBlend.java) | LullaBlend, the server side of the Blender add-on (its own repository, Kupfermeister/LullaBlend): one session per player (token, origin, mode, viewers, last scene). A scene from Blender is built into a block edit on the block worker and shown as fake blocks; `place` writes it and keeps an undo file in `plugins/lullaby/lullablend/undo`. Tokens are saved only as SHA-256 in `plugins/lullaby/lullablend/tokens.txt`. Lives as long as the plugin. |
 | [lullablend/LinkServer.java](src/main/java/io/github/kupfermeister/lullaby/lullablend/LinkServer.java) | The port Blender connects to (config `lullablend_port`, off by default) and the protocol, written out in its Javadoc (the add-on's link.py follows it). |
-| [lullablend/LullaBlendCommand.java](src/main/java/io/github/kupfermeister/lullaby/lullablend/LullaBlendCommand.java) | `/lullablend token, origin, mode, show, hide, viewers, place, undo, status`, and `as <player> ...` for the console and admins (permission `lullaby.lullablend`). |
+| [lullablend/LullaBlendCommand.java](src/main/java/io/github/kupfermeister/lullaby/lullablend/LullaBlendCommand.java) | `/lullaby blenderbridge token, origin, mode, show, hide, viewers, place, undo, status`, and `as <player> ...` for the console and admins (permission `lullaby.blenderbridge`). |
+| [mosaic/](src/main/java/io/github/kupfermeister/lullaby/mosaic/package-info.java) | Sound mosaicing, `/lullaby mosaic play <file> [filters]` and `stop` (permission `lullaby.mosaic`): rebuilds an audio file from `plugins/lullaby/sound_mosaicing_sources` out of vanilla sound files (downloaded from Mojang by hash, analysed once), placed by a greedy solver long to short, and plays it. Settings, tonality list, results and preview .wav files in `plugins/lullaby/sound_mosaicing`. Removable: package-info.java lists every line to delete. |
 
 The `nms` package ("net.minecraft server", Minecraft's own code) is the **only** package that may use
 `net.minecraft.*`, CraftBukkit or Paper internals (`io.papermc.paper.adventure`). So a Minecraft update only needs
@@ -62,7 +63,7 @@ never goes through it, so this rule stays true for Lullaby itself. Names are Moj
 | [Codecs.java](src/main/java/io/github/kupfermeister/lullaby/nms/Codecs.java) | Item stacks, component patches and text through vanilla's codecs; owns the wire's kind list. |
 | [LuaOps.java](src/main/java/io/github/kupfermeister/lullaby/nms/LuaOps.java) | Vanilla's `DynamicOps` over Lua data, so every vanilla codec reads Lua tables; refuses 2.5 where a whole number is needed. |
 | [ScriptCommands.java](src/main/java/io/github/kupfermeister/lullaby/nms/ScriptCommands.java) | Script commands on vanilla's Brigadier dispatcher, with per-player snapshots (see Threads). |
-| [SoundSeeds.java](src/main/java/io/github/kupfermeister/lullaby/nms/SoundSeeds.java) | `sound_seed()`: runs the game's own file pick over vanilla's `sounds.json` (downloaded at build) to find the seed for one exact file. |
+| [SoundSeeds.java](src/main/java/io/github/kupfermeister/lullaby/nms/SoundSeeds.java) | `sound_seed()` and `precise_sound{}`: runs the game's own file pick over vanilla's `sounds.json` (downloaded at build) to find the seed for one exact file. |
 | [Entities.java](src/main/java/io/github/kupfermeister/lullaby/nms/Entities.java) | Entities: what an entity object's slot holds (its UUID and the vanilla entity last seen, found again by UUID after an unload or a world change), the entity field list and what `modify_entity{}` changes (their owner; also what a blueprint holds), `teleport{}`, `remove_entity{}`, `summon{}`, the check of `blueprint{}`, and the entities of a chunk. |
 | [ClientEntities.java](src/main/java/io/github/kupfermeister/lullaby/nms/ClientEntities.java) | `clientside_summon{}`: entities only their viewers' games know. Each keeps a vanilla entity that is never put into a world (so the same code changes and reads it as a real one) and sends its viewers vanilla's spawn packets, then only what changed; lifetime, `persist` (sent again after a viewer's game forgot it: chunk, world, rejoin; its listeners exist only while one persists), removal at reload. |
 | [DisplayData.java](src/main/java/io/github/kupfermeister/lullaby/nms/DisplayData.java) | `display_data`: the settings of text, item and block displays as one table, written (modify_entity, blueprints, summons) and read back in the same shape (owner of that shape). |
@@ -73,6 +74,7 @@ never goes through it, so this rule stays true for Lullaby itself. Names are Moj
 | [Worlds.java](src/main/java/io/github/kupfermeister/lullaby/nms/Worlds.java) | Worlds as folders: `worlds()`, `create_world{}`, `load_world{}`, `unload_world{}`, `copy_world{}`, `delete_world{}`. Creating and loading go through Paper's WorldCreator on purpose (Paper rewrites world loading, so vanilla's own classes would break with every update); vanilla's dimension folders, registries and seed rule. Copies are built in `plugins/lullaby/temp` and moved into place, so a crash never leaves half a world; a deleted world is moved there whole and kept as a last chance until the next start, which empties temp. Lives as long as the plugin, so a copy outlasts a reload. |
 | [BlockEdit.java](src/main/java/io/github/kupfermeister/lullaby/nms/BlockEdit.java) | The block engine's unit of work: blocks of one world packed per chunk section (palette of vanilla state numbers, 4096 indices, 0 = untouched), built by a `Builder` on any one thread, unchangeable once built; also the undo file format. |
 | [BlockEngine.java](src/main/java/io/github/kupfermeister/lullaby/nms/BlockEngine.java) | The block engine, for every big block job (LullaBlend now, a `fill{}` action later): **show** an edit as fake blocks to chosen players (a hook in their pipeline puts the fake blocks back into every chunk and block update the server sends), and **write** an edit straight into the chunk sections like FAWE (no block updates or physics; at most `block_write_ms` per tick; then Paper's light engine lights the chunks again and they are resent; gives back the old blocks as an undo edit). The block worker thread runs build jobs (`work`). Lives as long as the plugin. |
+| [MosaicSender.java](src/main/java/io/github/kupfermeister/lullaby/nms/MosaicSender.java) | Sound mosaicing's packets: built on the main thread, sent by the playback thread. |
 | [Nms.java](src/main/java/io/github/kupfermeister/lullaby/nms/Nms.java) | Small vanilla reads and actions without a bigger class yet. |
 
 The library, in `src/main/resources/lullaby/lib/` (loaded in this order; each file starts with a comment saying
@@ -86,7 +88,7 @@ what it holds and gets three tables: `J` Java functions, `lib` what scripts see 
 | [events.lua](src/main/resources/lullaby/lib/events.lua) | `on`, `after`, event objects. |
 | [entities.lua](src/main/resources/lullaby/lib/entities.lua) | Player, entity, client_entity, damage, profile, effect, blueprint; `modify_entity{}`, `teleport{}`, `remove_entity{}`, `blueprint{}`, `summon{}`, `clientside_summon{}`. Also what every object kind shares (`I.object_meta`, `I.object_kind`) and `I.from_java` (with its "tree": a table of values from Java, e.g. `display_data`). |
 | [blocks.lua](src/main/resources/lullaby/lib/blocks.lua) | World objects (`world()`), block, block state, block snapshot, chunk. |
-| [effects.lua](src/main/resources/lullaby/lib/effects.lua) | `message{}`, `particle{}`, `sound{}`, `stop_sound{}`, `sound_seed()`, the played sound value. |
+| [effects.lua](src/main/resources/lullaby/lib/effects.lua) | `message{}`, `particle{}`, `sound{}`, `precise_sound{}`, `stop_sound{}`, `sound_seed()`, the played sound value. |
 | [lazy.lua](src/main/resources/lullaby/lib/lazy.lua) | The wire, item stacks, components, `from_json`, Lullaby's own `pairs`/`next` (LuaJIT ignores `__pairs`). |
 | [commands.lua](src/main/resources/lullaby/lib/commands.lua) | `command{}`, `refresh_commands{}`, `online_players()`. |
 | [data.lua](src/main/resources/lullaby/lib/data.lua) | `server.data`, `w.data`, `c.data` and `entity.data` (`player.data` is the same field): plain Lua tables while running, turned into save trees for SavedData.java, ChunkData.java and EntityData.java and back; the kept tables of unloaded chunks; locked tables. |
@@ -122,7 +124,7 @@ Other files:
    call Lua or touch live world objects. (The block worker builds block edits from plain data; see below.)
 4. Every class that runs work off the main thread says so in its Javadoc.
 
-Today seven places meet other threads:
+Today eight places meet other threads:
 
 - [Watchdog.java](src/main/java/io/github/kupfermeister/lullaby/lua/Watchdog.java) runs one thread that only compares
   two numbers and raises a flag; the main thread checks that flag at every library call into Java.
@@ -150,6 +152,10 @@ Today seven places meet other threads:
   state number, turning states); the result comes back through a queue the main thread reads each tick. The light
   engine's callback after a write hands its chunk to that queue too. A viewer's pipeline hook (Netty's threads) reads
   only that viewer's current fake blocks, an unchangeable snapshot the main thread swaps in whole.
+- [mosaic/](src/main/java/io/github/kupfermeister/lullaby/mosaic/package-info.java): one job thread (with a download pool and a
+  work pool) reads files and works on plain arrays only; its chat lines go through Bukkit's scheduler; the packets are
+  built on the main thread ([MosaicSender.java](src/main/java/io/github/kupfermeister/lullaby/nms/MosaicSender.java)) and a
+  playback thread only hands them to `connection.send` at their time.
 - [LinkServer.java](src/main/java/io/github/kupfermeister/lullaby/lullablend/LinkServer.java): one thread accepts
   Blender's connections, each has a reader and a writer thread. They turn bytes into plain data and hand it to the
   main thread ([LullaBlend.java](src/main/java/io/github/kupfermeister/lullaby/lullablend/LullaBlend.java) `post`);

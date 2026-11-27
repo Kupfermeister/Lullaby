@@ -37,6 +37,10 @@ final class EffectFunctions {
             Packets.sound(Wire.read(L.toBuffer(1)), slotLookup);
             return 0;
         });
+        add(lua, "precise_sound", L -> {
+            Packets.preciseSound(Wire.read(L.toBuffer(1)), slotLookup);
+            return 0;
+        });
         add(lua, "sound_seed", L -> {
             L.push((double) SoundSeeds.seed(string(L, 1), string(L, 2))); // below 2^48: exact as a Lua number
             return 1;

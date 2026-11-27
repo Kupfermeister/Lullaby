@@ -17,6 +17,9 @@ permissions:
   lullaby.run:
     description: Use /lullaby run (run any Lua as yourself, wait included; every use is logged). Needs lullaby.command too.
     default: op
-  lullaby.lullablend:
-    description: Use /lullablend and connect Blender (LullaBlend) for your own builds.
+  lullaby.blenderbridge:
+    description: Use /lullaby blenderbridge and connect Blender (LullaBlend) for your own builds. Needs lullaby.command too.
+    default: op
+  lullaby.mosaic:
+    description: Use /lullaby mosaic (sound mosaicing; working a file out takes much CPU for a while). Needs lullaby.command too.
     default: op

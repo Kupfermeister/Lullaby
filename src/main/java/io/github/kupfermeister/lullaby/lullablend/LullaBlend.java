@@ -229,11 +229,11 @@ public final class LullaBlend {
             return;
         }
         if (player == null) {
-            link.sendError("unknown token: make one in the game with /lullablend token"); // FORMAT
+            link.sendError("unknown token: make one in the game with /lullaby blenderbridge token"); // FORMAT
             return;
         }
         if (!allowed(player)) {
-            link.sendError("this player may not use LullaBlend (permission lullaby.lullablend)"); // FORMAT
+            link.sendError("this player may not use LullaBlend (permission lullaby.blenderbridge)"); // FORMAT
             return;
         }
         Session s = session(player);
@@ -247,7 +247,7 @@ public final class LullaBlend {
             link.sendStatus("warning: Blender's block pack is for " + pack + ", the server runs " + version
                     + "; blocks that don't exist here are skipped");
         }
-        status(s, s.hasOrigin ? "connected; origin " + originText(s) : "connected; set the origin in the game with /lullablend origin"); // FORMAT
+        status(s, s.hasOrigin ? "connected; origin " + originText(s) : "connected; set the origin in the game with /lullaby blenderbridge origin"); // FORMAT
         log("LullaBlend: " + name(player) + " connected from " + link.address()); // FORMAT
     }
 
@@ -281,7 +281,7 @@ public final class LullaBlend {
 
     private static boolean allowed(UUID player) {
         Player p = Bukkit.getPlayer(player);
-        if (p != null) return p.hasPermission("lullaby.lullablend");
+        if (p != null) return p.hasPermission("lullaby.blenderbridge");
         OfflinePlayer o = Bukkit.getOfflinePlayer(player);
         return o.isOp();
     }
@@ -302,7 +302,7 @@ public final class LullaBlend {
         // FORMAT: LullaBlend message in chat
         Component line = Component.text("LullaBlend: ", NamedTextColor.LIGHT_PURPLE).append(Component.text(text, NamedTextColor.GRAY));
         if (p != null) p.sendMessage(line);
-        // the console or an admin (/lullablend as ...) who typed the command hears it too
+        // the console or an admin (/lullaby blenderbridge as ...) who typed the command hears it too
         if (echo != null && echo != p) echo.sendMessage(line);
     }
 
@@ -464,7 +464,7 @@ public final class LullaBlend {
             return;
         }
         if (s.edit == null || s.edit.blocks() == 0) {
-            say.accept("nothing to place: no preview yet (connect Blender and set /lullablend origin)"); // FORMAT
+            say.accept("nothing to place: no preview yet (connect Blender and set /lullaby blenderbridge origin)"); // FORMAT
             return;
         }
         BlockEdit edit = s.edit;
@@ -475,7 +475,7 @@ public final class LullaBlend {
             Path file = saveUndo(s.player, undo);
             // FORMAT: place finished
             say.accept("placed " + edit.blocks() + " blocks in " + (System.currentTimeMillis() - start) / 1000.0
-                    + " s (" + undo.blocks() + " changed)" + (file == null ? ", but the undo file couldn't be saved" : "; /lullablend undo takes it back"));
+                    + " s (" + undo.blocks() + " changed)" + (file == null ? ", but the undo file couldn't be saved" : "; /lullaby blenderbridge undo takes it back"));
             // the preview now matches the world: drop it, the next scene shows only what differs again
             if (s.layer != null) {
                 BlockEngine.hide(s.layer);

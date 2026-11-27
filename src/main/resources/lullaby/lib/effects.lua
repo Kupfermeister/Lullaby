@@ -1,4 +1,4 @@
--- Lullaby library: what players see and hear: message{ }, particle{ }, sound{ }, stop_sound{ }, sound_seed( ), and
+-- Lullaby library: what players see and hear: message{ }, particle{ }, sound{ }, precise_sound{ }, stop_sound{ }, sound_seed( ), and
 -- the played_sound value.
 --   message{ player = p, text = "Hi" | component{ text = "Hi", color = "red" } | { text = "Hi", color = "red" } }   chat message (a string
 --       is literal text, as /tellraw "Hi"; a table is a component) -> true, false if p is offline
@@ -206,6 +206,44 @@ function lib.sound(a)
 		t.entity = slot_of[entity]
 	end
 	J.sound(I.wire(t))
+end
+
+--[[doc
+name: precise_sound{ }
+kind: doing
+group: Effects
+words: exact file ogg variant play audio
+syntax: precise_sound{ player = player | players = { player, ... }, file = text, source = text, pos = vec3, entity = entity | player | client_entity, volume = number, pitch = number }
+lead: Plays one exact sound file, named by its path as in vanilla's sounds.json, instead of a sound id and a seed.
+arg: player / players | player · list of player | Who hears it. Exactly one of the two.
+arg: file | text | A file like "mob/skeleton/hurt1". A wrong name gets an error with close names.
+arg: source | text | Needed. Which volume slider plays it, as in sound{ }.
+arg: pos / entity | vec3 · entity · player · client_entity | Needed, one of the two, as in sound{ }.
+arg: volume? | number | Default 1. Multiplied by the file's own volume from sounds.json, as the game does.
+arg: pitch? | number | Default 1: the file plays at its real pitch. The game plays 0.5 to 2.
+returns: nothing
+note: Many files belong to several sounds. Lullaby picks one by a fixed rule: a sounds.json line with volume 1 and pitch 1 first, then the loudest, then the sound with the fewest files, then by name. That line's own pitch is divided out, so pitch means the file's real pitch. Under the hood it is sound{ } with that sound and the seed from sound_seed( ).
+try: /lullaby run precise_sound{ player = me, file = "mob/skeleton/hurt1", source = "master", entity = me }
+expert: Thread | main thread, like every script
+expert: Cost | the first call works out every seed of every sound once (well under a second, guess), then like sound{ }
+expert: Under the hood | one Lua → Java call; SoundSeeds.java picks sound and seed; packet Sound or Sound Entity (play, clientbound)
+expert: Can fail | an unknown file (the error names close ones), and everything sound{ } can fail on
+expert: Reload | sounds already playing keep playing
+expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
+status: unconfirmed
+]]
+function lib.precise_sound(a)
+	local t = action_table(a, "precise_sound")
+	local entity = a.entity
+	if entity ~= nil then
+		-- FORMAT: precise_sound entity is not an entity
+		local kind = kind_of[entity]
+		if kind ~= "player" and kind ~= "entity" and kind ~= "client_entity" then
+			error("precise_sound{}: entity must be an entity, a player or a client_entity, got " .. I.type_name(entity), 2)
+		end
+		t.entity = slot_of[entity]
+	end
+	J.precise_sound(I.wire(t))
 end
 
 --[[doc

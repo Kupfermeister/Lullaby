@@ -30,14 +30,24 @@ import net.minecraft.util.RandomSource;
  * share took 0.4 s to find. Seeds stay below 2^48 (all the game's random uses), so a Lua number holds them exactly.
  *
  * <p>sounds.json is Mojang's, downloaded at build (build.gradle.kts, downloadSounds); the server jar has none.
- * Read on the first call, then kept, as are the seeds. Main thread only (called from Lua).
+ * Read on the first call, then kept, as are the seeds. Called from Lua on the main thread and from the sound
+ * mosaic worker (mosaic/), so the public methods are synchronized.
  */
 public final class SoundSeeds {
 
     private SoundSeeds() {
     }
 
-    private record Entry(String name, int weight, boolean event) {
+    /** One line of a sound's list in sounds.json; volume, pitch and stream are the file line's own (an "event" line has none). */
+    private record Entry(String name, int weight, boolean event, float volume, float pitch, boolean stream) {
+    }
+
+    /**
+     * One way to play one exact file: the sound (event) whose list has it, the seed that picks it, and that list line's
+     * volume and pitch, which the game multiplies into the packet's (and clamps the pitch to 0.5 .. 2 after). stream:
+     * the game streams it from disk (music, records; few can play at once).
+     */
+    public record Use(String sound, String file, float volume, float pitch, boolean stream, long seed) {
     }
 
     private static final long M = 0x5DEECE66DL; // the game's (and java.util.Random's) multiplier
@@ -47,7 +57,7 @@ public final class SoundSeeds {
     private static Map<String, List<Entry>> pools; // sound name without "minecraft:" → its list
     private static final Map<String, Map<String, Long>> seeds = new HashMap<>(); // sound → file → seed
 
-    public static long seed(String sound, String file) {
+    public static synchronized long seed(String sound, String file) {
         String name = vanilla(sound, "sound");
         String wanted = vanilla(file, "file");
         Map<String, List<Entry>> all = pools();
@@ -60,6 +70,83 @@ public final class SoundSeeds {
         if (seed == null) throw new IllegalArgumentException("sound_seed: file must be one of the files of " + name
                 + " (" + String.join(", ", files(name)) + "), got \"" + file + "\"");
         return seed;
+    }
+
+    /**
+     * precise_sound{}: the one way to play this file, picked by a fixed rule (not by hand): a list line with volume
+     * 1 and pitch 1 first, then the loudest line, then the sound whose list is shortest, then the sound's name A-Z.
+     */
+    public static synchronized Use precise(String file) {
+        String wanted = vanilla(file, "file");
+        List<Use> all = allUses().get(wanted);
+        // FORMAT: precise_sound file unknown
+        if (all == null) throw new IllegalArgumentException("precise_sound{}: file must be a vanilla sound file as in "
+                + "sounds.json, like \"mob/skeleton/hurt1\", got \"" + file + "\""
+                + closeFiles(wanted));
+        return all.getFirst();
+    }
+
+    private static String closeFiles(String wrong) {
+        List<String> close = Fields.closeNames(wrong, allUses().keySet());
+        return close.isEmpty() ? "" : " (close: " + String.join(", ", close) + ")";
+    }
+
+    private static Map<String, List<Use>> uses;
+
+    /**
+     * Every file the game can play → every sound that can play it with its seed, best first (the rule of
+     * {@link #precise}). Built once (all seeds of all sounds, well under a second), then kept; the lists are
+     * unchangeable, so other threads (sound mosaicing) may read them. Synchronized because the mosaic worker may ask
+     * at the same time as a script.
+     */
+    public static synchronized Map<String, List<Use>> allUses() {
+        if (uses != null) return uses;
+        Map<String, List<Use>> out = new HashMap<>();
+        Map<String, Integer> listSize = new HashMap<>();
+        for (String name : pools().keySet()) {
+            Map<String, Long> found = seeds.computeIfAbsent(name, SoundSeeds::search);
+            listSize.put(name, found.size());
+            for (var f : found.entrySet()) {
+                Entry line = line(name, f.getKey(), 0);
+                if (line == null) continue;
+                out.computeIfAbsent(f.getKey(), k -> new ArrayList<>()).add(new Use(name, f.getKey(), line.volume,
+                        line.pitch, line.stream, f.getValue()));
+            }
+        }
+        java.util.Comparator<Use> best = java.util.Comparator
+                .comparing((Use u) -> !(u.volume == 1 && u.pitch == 1))
+                .thenComparing(u -> -u.volume)
+                .thenComparing(u -> listSize.get(u.sound))
+                .thenComparing(Use::sound);
+        Map<String, List<Use>> done = new HashMap<>();
+        for (var e : out.entrySet()) {
+            e.getValue().sort(best);
+            done.put(e.getKey(), List.copyOf(e.getValue()));
+        }
+        uses = java.util.Collections.unmodifiableMap(done);
+        return uses;
+    }
+
+    /** The file's own line in the sound's list (following "event" lines), for its volume, pitch and stream. */
+    private static Entry line(String name, String file, int depth) {
+        List<Entry> list = pools().get(name);
+        if (list == null || depth > 16) return null;
+        for (Entry e : list) {
+            if (e.event) {
+                Entry inner = line(e.name, file, depth + 1);
+                if (inner != null) return inner;
+            } else if (e.name.equals(file) && e.weight > 0) {
+                return e;
+            }
+        }
+        return null;
+    }
+
+    /** The game's sound sources (volume sliders) by name, from vanilla's enum, for the mosaic's stop keys. */
+    public static List<String> sources() {
+        List<String> out = new ArrayList<>();
+        for (net.minecraft.sounds.SoundSource s : net.minecraft.sounds.SoundSource.values()) out.add(s.getName());
+        return out;
     }
 
     /** Works out a seed for every file the sound can play. */
@@ -169,12 +256,15 @@ public final class SoundSeeds {
                 if (sounds != null) {
                     for (JsonElement s : sounds.getAsJsonArray()) {
                         if (s.isJsonPrimitive()) {
-                            list.add(new Entry(strip(s.getAsString()), 1, false));
+                            list.add(new Entry(strip(s.getAsString()), 1, false, 1, 1, false));
                         } else {
                             JsonObject o = s.getAsJsonObject();
                             boolean event = o.has("type") && o.get("type").getAsString().equals("event");
                             int weight = o.has("weight") ? o.get("weight").getAsInt() : 1;
-                            list.add(new Entry(strip(o.get("name").getAsString()), weight, event));
+                            float volume = o.has("volume") ? o.get("volume").getAsFloat() : 1;
+                            float pitch = o.has("pitch") ? o.get("pitch").getAsFloat() : 1;
+                            boolean streamed = o.has("stream") && o.get("stream").getAsBoolean();
+                            list.add(new Entry(strip(o.get("name").getAsString()), weight, event, volume, pitch, streamed));
                         }
                     }
                 }

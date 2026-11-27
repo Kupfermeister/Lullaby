@@ -1,7 +1,6 @@
 package io.github.kupfermeister.lullaby;
 
 import io.github.kupfermeister.lullaby.lullablend.LullaBlend;
-import io.github.kupfermeister.lullaby.lullablend.LullaBlendCommand;
 import io.github.kupfermeister.lullaby.nms.BlockEngine;
 import io.github.kupfermeister.lullaby.nms.Nms;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
@@ -86,7 +85,6 @@ public final class Lullaby extends JavaPlugin {
         getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event -> {
             event.registrar().register(LullabyCommand.build(this), "Lullaby: reload the scripts, show the version or the saved data", List.of());
             event.registrar().register(LullabyCommand.buildShort(this), "Lullaby: reload the scripts", List.of());
-            event.registrar().register(LullaBlendCommand.build(), "LullaBlend: build from Blender (token, origin, mode, place, undo)", List.of());
         });
     }
 

@@ -22,10 +22,10 @@ import org.bukkit.entity.Player;
 /**
  * The built-in commands (Kupfermeister: everything necessary inside, nothing else built in): {@code /lullaby} with
  * {@code reload}, {@code version}, {@code data server|world <world>|chunk [path]} (chunk: the one you stand in) and
- * {@code run <code>}, and {@code /lul}, which does exactly what
+ * {@code run <code>}, {@code blenderbridge ...} (LullaBlendCommand), {@code mosaic ...} (mosaic/Mosaic.java), and {@code /lul}, which does exactly what
  * {@code /lullaby reload} does. Registered as a Brigadier command like LightForce. It needs the permission
  * {@code lullaby.command}, which ops have by default (paper-plugin.yml); {@code data} also needs {@code lullaby.data},
- * {@code run} also needs {@code lullaby.run}.
+ * {@code run} also needs {@code lullaby.run}, {@code blenderbridge} also needs {@code lullaby.blenderbridge}.
  * Reload is in Java so it works even when every script is broken.
  *
  * <p>Tab completion of {@code data} paths can be asked for off the main thread; the keys live in Lua, so the
@@ -74,6 +74,8 @@ final class LullabyCommand {
                                         })
                                         .executes(context -> showChunk(plugin, context.getSource(),
                                                 StringArgumentType.getString(context, "path"))))))
+                .then(io.github.kupfermeister.lullaby.lullablend.LullaBlendCommand.build())
+                .then(io.github.kupfermeister.lullaby.mosaic.Mosaic.command(plugin)) // sound mosaicing: remove this line to remove it
                 .then(Commands.literal("run")
                         .requires(source -> source.getSender().hasPermission("lullaby.run"))
                         .then(Commands.argument("code", StringArgumentType.greedyString())

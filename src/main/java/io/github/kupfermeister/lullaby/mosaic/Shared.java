@@ -56,6 +56,63 @@ final class Shared {
         return scale;
     }
 
+    /**
+     * Fewer cuts ({@code cut_threshold}): a cut-off play of a sound that ends by itself plays out instead when the
+     * loudest moment of what is left is below cut_threshold times the sound's loudest moment (a hit's quiet tail),
+     * as long as max_voices and max_streams still allow it. Returns the plays (changed ones replaced).
+     */
+    static List<Solver.Play> letRing(List<Solver.Play> plays, List<Solver.Sound> sounds, Settings s, int frames) {
+        if (s.cutThreshold <= 0) return plays;
+        int size = frames + 1;
+        for (Solver.Play p : plays) size = Math.max(size, p.start() + p.length() + 1);
+        for (Solver.Sound snd : sounds) size = Math.max(size, frames + 2 * snd.entry().frames() + 2);
+        int[] voices = new int[size];
+        int[] streams = new int[size];
+        for (Solver.Play p : plays) {
+            for (int t = p.start(); t < p.start() + p.length(); t++) {
+                voices[t]++;
+                if (sounds.get(p.sound()).stream()) streams[t]++;
+            }
+        }
+        List<Solver.Play> out = new ArrayList<>(plays.size());
+        for (Solver.Play p : plays) {
+            Dictionary.Entry e = sounds.get(p.sound()).entry();
+            int real = e.realFrames();
+            if (!p.stopped() || real < 0) {
+                out.add(p);
+                continue;
+            }
+            int whole = (int) Math.floor((real - 1) / p.pitch()) + 1; // frames at this pitch
+            int from = (int) Math.ceil(p.length() * p.pitch()); // stored frame where it would be cut
+            double peak = 0;
+            double rest = 0;
+            for (int t = 0; t < Math.min(real, e.frames()); t++) {
+                double sum = 0;
+                for (int b = 0; b < B; b++) {
+                    double v = e.at(t, b);
+                    sum += v * v;
+                }
+                peak = Math.max(peak, sum);
+                if (t >= from) rest = Math.max(rest, sum);
+            }
+            boolean stream = sounds.get(p.sound()).stream();
+            boolean free = whole > p.length() && Math.sqrt(rest) < s.cutThreshold * Math.sqrt(peak);
+            for (int t = p.start() + p.length(); free && t < p.start() + whole; t++) {
+                if (voices[t] >= s.maxVoices || stream && streams[t] >= s.maxStreams) free = false;
+            }
+            if (!free) {
+                out.add(p);
+                continue;
+            }
+            for (int t = p.start() + p.length(); t < p.start() + whole; t++) {
+                voices[t]++;
+                if (stream) streams[t]++;
+            }
+            out.add(new Solver.Play(p.sound(), p.pitch(), p.start(), whole, false, p.gain()));
+        }
+        return out;
+    }
+
     record Keys(List<Solver.Play> plays, List<SoundSeeds.Use> use, List<String> source, int dropped) {
     }
 

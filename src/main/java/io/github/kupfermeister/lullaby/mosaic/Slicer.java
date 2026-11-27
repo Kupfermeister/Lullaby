@@ -481,7 +481,7 @@ final class Slicer {
             for (Active a : l.active) plays.add(new Solver.Play(a.sound, rateOf[a.pitch], a.start, a.length, true, a.gain));
         }
 
-        Shared.Keys keys = Shared.keys(plays, sounds);
+        Shared.Keys keys = Shared.keys(Shared.letRing(plays, sounds, s, frames), sounds);
         StringBuilder report = new StringBuilder();
         double total = inputTotal;
         double left = 0;

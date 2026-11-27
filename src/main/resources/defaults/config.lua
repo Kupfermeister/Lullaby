@@ -90,6 +90,9 @@ return {
     max_play_seconds = 2,
     -- only a sound that hits again or stays loud this long may be stopped early; single hits (a step) play whole
     hold_seconds = 0.3,
+    -- a sound is only cut off while what is left of it is at least this loud (share of its loudest moment); a
+    -- quieter rest (a hit's tail) plays out. 0 to 1 (0: cut wherever needed; 1: almost never cut)
+    cut_threshold = 0.3,
     -- the melody only uses sounds at least this tonal. 0 to 1 (1: one clear held tone)
     melody_tonality = 0.6,
     -- slices: how much of the input the melody gets first. 0 to 0.95 (0: only the clearly tonal part; higher: the

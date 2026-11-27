@@ -251,7 +251,7 @@ final class Solver {
             report.append(line).append('\n');
         }
 
-        Shared.Keys keys = Shared.keys(plays, sounds);
+        Shared.Keys keys = Shared.keys(Shared.letRing(plays, sounds, s, frames), sounds);
         int maxVoices = 0;
         for (int v : voices) maxVoices = Math.max(maxVoices, v);
         long cut = keys.plays().stream().filter(Play::stopped).count();

@@ -232,8 +232,8 @@ public final class Mosaic {
                 d.load();
                 dictionary = d;
             }
-            dictionary.ensure(wanted, assets, settings.maxSoundSeconds, pool, say);
-            dictionary.writeTonality(home.resolve("tonality.txt"), settings.tonality);
+            // stored: twice the longest play, because at pitch 2 a sound runs through its file twice as fast
+            dictionary.ensure(wanted, assets, Math.max(2, settings.maxPlaySeconds * 2), pool, say);
 
             List<Solver.Sound> sounds = new ArrayList<>();
             for (String f : files) {
@@ -241,7 +241,7 @@ public final class Mosaic {
                 if (e == null || e.frames() == 0) continue;
                 List<SoundSeeds.Use> uses = usable.get(f);
                 boolean stream = uses.stream().anyMatch(SoundSeeds.Use::stream);
-                sounds.add(new Solver.Sound(e, Dictionary.tonality(e, settings.tonality), uses, stream));
+                sounds.add(new Solver.Sound(e, settings.tonality.get(f), uses, stream));
             }
 
             say.accept("reading " + input.getFileName()); // FORMAT: mosaic progress
@@ -250,7 +250,9 @@ public final class Mosaic {
             int[] frames = new int[1];
             float[] spec = Spectra.spectrogram(at24, frames);
 
-            Solver.Result r = new Solver(settings, sounds, pool, say).solve(spec, frames[0]);
+            Solver solver = new Solver(settings, sounds, pool, say);
+            solver.writeSoundList(home.resolve("tonality.txt"));
+            Solver.Result r = solver.solve(spec, frames[0]);
 
             writeResult(result, r, sounds, settings, input);
             Path preview = home.resolve("previews").resolve(base + "-" + key + ".wav");

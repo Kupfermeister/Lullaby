@@ -19,8 +19,8 @@ import java.util.function.Consumer;
 /**
  * The analysed sound files: per file its spectrogram (Spectra, one byte per value), how many frames it really has,
  * and its tonality. Built once per file and kept in {@code plugins/lullaby/sound_mosaicing/cache/dictionary.bin};
- * a file whose hash changed (a Minecraft update) or that was cut shorter than {@code max_sound_seconds} now asks is
- * built again. {@code tonality.txt} next to settings.txt lists every analysed file by tonality, for review.
+ * a file whose hash changed (a Minecraft update) or that was stored shorter than a job now needs is
+ * built again. The tonality list (tonality.txt) is made by Solver from these spectrograms.
  * Runs on the mosaic job thread and its pool.
  */
 final class Dictionary {
@@ -132,25 +132,4 @@ final class Dictionary {
         save();
     }
 
-    /** tonality.txt: every analysed file, most tonal first, with the value the solver uses (overrides applied). */
-    void writeTonality(Path out, Map<String, Double> overrides) throws IOException {
-        List<Entry> all = new ArrayList<>(entries.values());
-        all.sort((a, b) -> Float.compare(tonality(b, overrides), tonality(a, overrides)));
-        StringBuilder s = new StringBuilder();
-        // FORMAT: tonality.txt header
-        s.append("# Tonality of every analysed sound file (0 noise .. 1 pure tone), worked out from its spectrum:\n")
-                .append("# the share of its energy in peaks (tones and their harmonics). Most tonal first.\n")
-                .append("# Change one in settings.txt: tonality.<file> = <value>  (marked * here when changed)\n");
-        for (Entry e : all) {
-            float t = tonality(e, overrides);
-            s.append(String.format(java.util.Locale.ROOT, "%.3f", t)).append(overrides.containsKey(e.file) ? "* " : "  ")
-                    .append(e.file).append('\n');
-        }
-        Files.writeString(out, s.toString());
-    }
-
-    static float tonality(Entry e, Map<String, Double> overrides) {
-        Double o = overrides.get(e.file);
-        return o != null ? o.floatValue() : e.tonality;
-    }
 }

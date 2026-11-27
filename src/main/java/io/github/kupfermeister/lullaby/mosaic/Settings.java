@@ -37,21 +37,55 @@ final class Settings {
             # the tick (works best on the same computer or LAN; over the internet network jitter blurs it).
             subtick = false
 
-            # The shortest a sound may play before it is cut off (seconds). Any sound can be cut off (stopsound) the moment
-            # it stops fitting; a cut-off sound frees its channel at once, so more sounds can play.
+            # Cutting off (stopsound): only sounds longer than cut_only_longer_than seconds may be cut off, then at the
+            # moment they stop fitting, but not before min_length. Shorter sounds always play whole. A cut-off sound frees
+            # its channel at once, so more sounds can play.
+            cut_only_longer_than = 0.5
             min_length = 0.05
-            # Most seconds of a sound file that are looked at. Longer files (music, long ambience) can only start at
-            # their beginning and are always cut off by then, so matching them is cheap but rare.
-            max_sound_seconds = 10
+            # No sound plays longer than this many seconds. long_sounds: cut (longer sounds are cut off by then) or skip
+            # (longer sounds are never used).
+            max_play_seconds = 1
+            long_sounds = cut
             # false: never use streamed sounds (music, discs); also skips downloading them (about 290 MB).
             music = true
 
-            # Melody first: a sound's tonality (0 noise .. 1 pure tone, worked out per file and listed in tonality.txt)
-            # is matched with how tonal the input is at that moment. melody_weight: bonus for tonal sounds on tonal
-            # parts, noise_weight: bonus for noisy sounds on noisy parts (consonants, drums). Both can play at once.
+            # Tonality (0 noise .. 1 one clear tone): how much of a sound, up to the length it plays, is one held tone,
+            # the tone of its first note. A melody or a slide counts only while its first note lasts, so a cut-off first
+            # note can be very tonal. Listed per file with its note (C4, ...) in tonality.txt.
+            # melody_weight: bonus for tonal sounds on tonal parts of the input, noise_weight: bonus for noisy sounds on
+            # noisy parts (consonants, drums). Both can play at once.
             melody_weight = 2
             noise_weight = 0.5
             # Override a file's tonality: tonality.mob/cow/say1 = 0.9
+
+            # Layers, worked out in this order; each layer has its own rounds.
+            # 1. melody: where the input holds a clear tone, tonal sounds whose note is that tone (to half a semitone)
+            #    are placed first, so the melody stays clear (other sounds then fill around it). Sounds must be at least
+            #    melody_tonality tonal for the length they play.
+            melody_layer = true
+            melody_tonality = 0.6
+            melody_rounds = 2
+            # 2. bass: what is missing below bass_below_hz, filled only with clean bass sounds: at least bass_purity of
+            #    their energy below bass_below_hz (worked out per file, in tonality.txt).
+            bass_layer = true
+            bass_below_hz = 250
+            bass_purity = 0.8
+            bass_rounds = 2
+            # 3. main: everything, with the strictness below (rounds, min_similarity, overshoot_penalty).
+            # 4. detail: what is still missing above detail_from_hz (consonants, s, t, k), less strict but quieter: at
+            #    most detail_volume, with its own similarity and overshoot.
+            detail_layer = true
+            detail_from_hz = 1000
+            detail_volume = 0.5
+            detail_similarity = 0.2
+            detail_overshoot = 1.5
+            detail_rounds = 2
+
+            # precision: 1 normal; 2, 3 or 4 look harder (more candidates, longer screening, more rounds; about that many
+            # times slower). saturation: 1 normal; above 1 fills more densely (lower thresholds, more sounds), below 1
+            # sparser.
+            precision = 1
+            saturation = 1
 
             # Which frequencies count most: speech (300-3400 Hz double, up to 8 kHz 1.5x), music (all the same) or
             # custom (custom_weighting: Hz:weight points, straight lines between them on a log scale).
@@ -87,7 +121,11 @@ final class Settings {
 
     int maxPerTick, maxVoices, maxStreams, rateCount, rateTicks;
     boolean subtick, music;
-    double minLength, overshoot, pitchStep, maxSoundSeconds, melodyWeight, noiseWeight, loudness, minSimilarity, minGain;
+    double minLength, cutOnlyLonger, maxPlaySeconds, melodyTonality, bassBelowHz, bassPurity, detailFromHz, detailVolume,
+            detailSimilarity, detailOvershoot, saturation;
+    boolean skipLong, melodyLayer, bassLayer, detailLayer;
+    int melodyRounds, bassRounds, detailRounds, precision;
+    double overshoot, pitchStep, melodyWeight, noiseWeight, loudness, minSimilarity, minGain;
     String weighting;
     double[][] customWeighting;
     int pitchRange, candidates, threads, rounds;
@@ -127,7 +165,27 @@ final class Settings {
         s.pitchStep = r.number("pitch_step", 0.5, 1);
         // FORMAT: settings.txt pitch_step not 0.5 or 1
         if (s.pitchStep != 0.5 && s.pitchStep != 1) throw r.bad("pitch_step", "0.5 or 1");
-        s.maxSoundSeconds = r.number("max_sound_seconds", 0.5, 120);
+        s.cutOnlyLonger = r.number("cut_only_longer_than", 0, 100);
+        s.maxPlaySeconds = r.number("max_play_seconds", 0.05, 120);
+        String longSounds = r.text("long_sounds");
+        // FORMAT: settings.txt long_sounds unknown
+        if (!longSounds.equals("cut") && !longSounds.equals("skip")) throw r.bad("long_sounds", "cut or skip");
+        s.skipLong = longSounds.equals("skip");
+        s.melodyLayer = r.bool("melody_layer");
+        s.melodyTonality = r.number("melody_tonality", 0, 1);
+        s.melodyRounds = r.whole("melody_rounds", 1, 50);
+        s.bassLayer = r.bool("bass_layer");
+        s.bassBelowHz = r.number("bass_below_hz", 60, 2000);
+        s.bassPurity = r.number("bass_purity", 0, 1);
+        s.bassRounds = r.whole("bass_rounds", 1, 50);
+        s.detailLayer = r.bool("detail_layer");
+        s.detailFromHz = r.number("detail_from_hz", 100, 10000);
+        s.detailVolume = r.number("detail_volume", 0.01, 1);
+        s.detailSimilarity = r.number("detail_similarity", 0, 1);
+        s.detailOvershoot = r.number("detail_overshoot", 1, 100);
+        s.detailRounds = r.whole("detail_rounds", 1, 50);
+        s.precision = r.whole("precision", 1, 4);
+        s.saturation = r.number("saturation", 0.1, 10);
         s.melodyWeight = r.number("melody_weight", 0, 100);
         s.noiseWeight = r.number("noise_weight", 0, 100);
         s.weighting = r.text("weighting").toLowerCase(Locale.ROOT);
@@ -257,9 +315,9 @@ final class Settings {
                 if (read.contains(key) || key.startsWith("filter.") || key.startsWith("tonality.")) continue;
                 Integer line = lineOf.get(key);
                 // FORMAT: settings.txt key removed in 0.1.2
-                if (List.of("lengths", "cut_penalty", "length_bonus").contains(key)) {
+                if (List.of("lengths", "cut_penalty", "length_bonus", "max_sound_seconds").contains(key)) {
                     throw new IllegalArgumentException("settings.txt" + (line == null ? "" : " line " + line) + ": " + key
-                            + " is gone since Lullaby 0.1.2 (sounds are now cut off freely, see min_length): delete the line");
+                            + " is gone (0.1.2: sounds are cut off freely, see min_length; 0.1.3: max_sound_seconds became max_play_seconds): delete the line");
                 }
                 // FORMAT: settings.txt unknown key
                 throw new IllegalArgumentException("settings.txt" + (line == null ? "" : " line " + line)

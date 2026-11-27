@@ -23,7 +23,7 @@ final class Settings {
             # A changed setting makes the next play work the file out again (results are kept per settings).
 
             # Most sounds started in one tick (50 ms).
-            max_per_tick = 12
+            max_per_tick = 40
             # Most sounds playing at the same time. The game has about 247 sound channels; past that it drops sounds.
             max_voices = 230
             # Most streamed sounds (music, music discs) at the same time. The game has only a few stream channels.
@@ -37,13 +37,9 @@ final class Settings {
             # the tick (works best on the same computer or LAN; over the internet network jitter blurs it).
             subtick = false
 
-            # Passes from long to short, in seconds: the first pass places only sounds at least 4 s long, the next 2 s,
-            # ... The last number is the shortest a sound (or a cut-off sound) may be.
-            lengths = 4, 2, 1, 0.5, 0.25, 0.1
-            # A sound cut off early (stopsound) counts this much less (0 = no penalty, 1 = never cut).
-            cut_penalty = 0.25
-            # Extra score for longer sounds: 0.1 = 10% more per doubling of the length.
-            length_bonus = 0.1
+            # The shortest a sound may play before it is cut off (seconds). Any sound can be cut off (stopsound) the moment
+            # it stops fitting; a cut-off sound frees its channel at once, so more sounds can play.
+            min_length = 0.05
             # Most seconds of a sound file that are looked at. Longer files (music, long ambience) can only start at
             # their beginning and are always cut off by then, so matching them is cheap but rare.
             max_sound_seconds = 10
@@ -64,14 +60,22 @@ final class Settings {
 
             # How loud the input is rebuilt: its loud parts equal about this many sounds at full volume.
             loudness = 3
-            # How well a sound must fit what is still missing to be placed (0..1, similarity of the spectra).
-            min_similarity = 0.25
+            # How well a sound must fit what is still missing to be placed (0..1, similarity of the spectra). Higher: stricter.
+            min_similarity = 0.4
+            # Strictness: sound a placed sound adds where the input has none counts this many times worse than sound it
+            # leaves out (1 = the same). Keeps sounds from covering the input with noise.
+            overshoot_penalty = 3
             # A sound must explain at least this share of an average frame's energy to be placed.
-            min_gain = 0.05
-            # Pitches tried: this many semitones down and up (the game plays 0.5x to 2x, 12 semitones each way).
+            min_gain = 0.01
+            # Rounds: after each round the best candidates are searched again on what is still missing, so later rounds
+            # fill the gaps with more sounds. Stops early when a round places almost nothing.
+            rounds = 4
+            # Pitches tried: this many semitones down and up (the game plays 0.5x to 2x, 12 semitones each way), in steps
+            # of pitch_step semitones (0.5 or 1; 0.5 is finer and about twice as slow).
             pitch_range = 12
-            # Candidates kept per start time and length group (more: better fits found, slower).
-            candidates = 12
+            pitch_step = 0.5
+            # Candidates kept per start time (more: better fits found, slower).
+            candidates = 32
             # Worker threads for working out (0: all cores but one).
             threads = 0
 
@@ -83,11 +87,10 @@ final class Settings {
 
     int maxPerTick, maxVoices, maxStreams, rateCount, rateTicks;
     boolean subtick, music;
-    double[] lengths;
-    double cutPenalty, lengthBonus, maxSoundSeconds, melodyWeight, noiseWeight, loudness, minSimilarity, minGain;
+    double minLength, overshoot, pitchStep, maxSoundSeconds, melodyWeight, noiseWeight, loudness, minSimilarity, minGain;
     String weighting;
     double[][] customWeighting;
-    int pitchRange, candidates, threads;
+    int pitchRange, candidates, threads, rounds;
     final Map<String, List<String>> filters = new LinkedHashMap<>();
     final Map<String, Double> tonality = new LinkedHashMap<>();
     /** The settings as read (comments and spaces dropped), for the result cache's key. */
@@ -118,13 +121,12 @@ final class Settings {
         s.rateTicks = r.whole("rate_limit_ticks", 1, 100000);
         s.subtick = r.bool("subtick");
         s.music = r.bool("music");
-        s.lengths = r.numbers("lengths");
-        for (int i = 1; i < s.lengths.length; i++) {
-            // FORMAT: settings.txt lengths not falling
-            if (s.lengths[i] >= s.lengths[i - 1]) throw r.bad("lengths", "numbers from long to short");
-        }
-        s.cutPenalty = r.number("cut_penalty", 0, 1);
-        s.lengthBonus = r.number("length_bonus", 0, 10);
+        s.minLength = r.number("min_length", 0.01, 10);
+        s.overshoot = r.number("overshoot_penalty", 1, 100);
+        s.rounds = r.whole("rounds", 1, 50);
+        s.pitchStep = r.number("pitch_step", 0.5, 1);
+        // FORMAT: settings.txt pitch_step not 0.5 or 1
+        if (s.pitchStep != 0.5 && s.pitchStep != 1) throw r.bad("pitch_step", "0.5 or 1");
         s.maxSoundSeconds = r.number("max_sound_seconds", 0.5, 120);
         s.melodyWeight = r.number("melody_weight", 0, 100);
         s.noiseWeight = r.number("noise_weight", 0, 100);
@@ -254,6 +256,11 @@ final class Settings {
             for (String key : values.keySet()) {
                 if (read.contains(key) || key.startsWith("filter.") || key.startsWith("tonality.")) continue;
                 Integer line = lineOf.get(key);
+                // FORMAT: settings.txt key removed in 0.1.2
+                if (List.of("lengths", "cut_penalty", "length_bonus").contains(key)) {
+                    throw new IllegalArgumentException("settings.txt" + (line == null ? "" : " line " + line) + ": " + key
+                            + " is gone since Lullaby 0.1.2 (sounds are now cut off freely, see min_length): delete the line");
+                }
                 // FORMAT: settings.txt unknown key
                 throw new IllegalArgumentException("settings.txt" + (line == null ? "" : " line " + line)
                         + ": unknown setting " + key);

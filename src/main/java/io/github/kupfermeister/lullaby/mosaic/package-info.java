@@ -10,9 +10,10 @@
  *   <li>Dictionary: every file is decoded (AudioFiles) and turned into a spectrogram (Spectra): 10 ms frames, one bin
  *       per semitone, so a pitch change is just a shift by whole bins. Kept in {@code cache/dictionary.bin}.
  *   <li>Solver: the input gets the same spectrogram; then sounds are placed one by one where they explain most of
- *       what is still missing (greedy matching pursuit), longest sounds first, then shorter and shorter. Limits:
+ *       what is still missing (greedy matching pursuit, strict: added sound the input doesn't have counts extra),
+ *       each cut off (stopsound) the moment it stops fitting, in rounds that search again on what is left. Limits:
  *       sounds per tick, voices at once, the rate limit per file, melody before noise (tonality, written to
- *       {@code tonality.txt} for review), cut-off sounds through stopsound with free stop keys.
+ *       {@code tonality.txt} for review), stop keys that hit no other sound.
  *   <li>Preview writes the result as a .wav, Mosaic plays it (nms/MosaicSender builds the packets on the main thread,
  *       a playback thread only sends them at the right time).
  * </ol>

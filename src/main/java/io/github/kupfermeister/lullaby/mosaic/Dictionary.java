@@ -25,7 +25,7 @@ import java.util.function.Consumer;
  */
 final class Dictionary {
 
-    private static final int FORMAT = 1;
+    private static final int FORMAT = 2; // 2: two bins per semitone
 
     /** One analysed file. frames: stored frames; realFrames: its whole length in frames, -1 if longer than stored. */
     record Entry(String file, String hash, double seconds, int frames, int realFrames, float tonality, byte[] spec) {

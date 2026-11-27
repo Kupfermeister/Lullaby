@@ -2,8 +2,8 @@ package io.github.kupfermeister.lullaby.mosaic;
 
 /**
  * The spectrogram everything is compared in: audio at 24000 Hz, a 2048-sample Hann window every 240 samples
- * (10 ms, so a tick is 5 frames), magnitudes gathered into one bin per semitone from 55 Hz (A1) up to about
- * 10.5 kHz. One bin per semitone makes a pitch change a shift by whole bins, and resampling (what the game's pitch
+ * (10 ms, so a tick is 5 frames), magnitudes gathered into two bins per semitone from 55 Hz (A1) up to about
+ * 10.5 kHz. Two bins per semitone make a pitch change of half a semitone a shift by one whole bin, and resampling (what the game's pitch
  * does) also makes the sound shorter or longer, which the solver does on the frames. Magnitudes of sounds playing
  * together are treated as adding up (the usual assumption of this kind of matching). Any thread (plain data only).
  */
@@ -16,11 +16,12 @@ final class Spectra {
     static final int HOP = 240;
     static final int FRAMES_PER_TICK = 5;
     static final int N = 2048;
-    static final int BINS = 92;
+    static final int BINS_PER_SEMITONE = 2;
+    static final int BINS = 92 * BINS_PER_SEMITONE;
     static final double LOWEST = 55.0;
 
     private static final float[] WINDOW = new float[N];
-    /** For each semitone bin: the FFT bins that feed it and their weights (a triangle one semitone wide each side). */
+    /** For each bin: the FFT bins that feed it and their weights (a triangle one bin, half a semitone, wide each side). */
     private static final int[][] FEED = new int[BINS][];
     private static final float[][] WEIGHT = new float[BINS][];
 
@@ -32,15 +33,15 @@ final class Spectra {
             java.util.List<Integer> feed = new java.util.ArrayList<>();
             java.util.List<Float> weight = new java.util.ArrayList<>();
             for (int j = 1; j < N / 2; j++) {
-                double semis = 12 * Math.log(j * binHz / center) / Math.log(2);
-                double w = 1 - Math.abs(semis);
+                double bins = 12 * BINS_PER_SEMITONE * Math.log(j * binHz / center) / Math.log(2);
+                double w = 1 - Math.abs(bins);
                 if (w > 0) {
                     feed.add(j);
                     weight.add((float) w);
                 }
             }
             if (feed.isEmpty()) {
-                // below about 200 Hz a semitone is narrower than one FFT bin: take the nearest bin
+                // below about 400 Hz half a semitone is narrower than one FFT bin: take the nearest bin
                 feed.add((int) Math.max(1, Math.round(center / binHz)));
                 weight.add(1f);
             }
@@ -51,7 +52,7 @@ final class Spectra {
     }
 
     static double frequency(int bin) {
-        return LOWEST * Math.pow(2, bin / 12.0);
+        return LOWEST * Math.pow(2, bin / (12.0 * BINS_PER_SEMITONE));
     }
 
     /** Frames x BINS magnitudes (row-major) of 24 kHz samples; frame t is centered on sample t*HOP. */
@@ -120,19 +121,19 @@ final class Spectra {
 
     /**
      * How tonal each frame is (0 noise .. 1 pure tone): the share of the frame's energy in bins that stand out at
-     * least twice above the median of the 9 bins around them (peaks: a tone or its harmonics). Noise has a smooth
+     * least twice above the median of the 17 bins (8.5 semitones) around them (peaks: a tone or its harmonics). Noise has a smooth
      * spectrum, so few bins stand out. The same measure is used for sound files and for the input, so they match.
      */
     static float[] tonalityPerFrame(float[] spec, int frames) {
         float[] out = new float[frames];
-        float[] around = new float[9];
+        float[] around = new float[17];
         for (int t = 0; t < frames; t++) {
             double peak = 0;
             double all = 0;
             int row = t * BINS;
             for (int b = 0; b < BINS; b++) {
                 int n = 0;
-                for (int d = -4; d <= 4; d++) {
+                for (int d = -8; d <= 8; d++) {
                     int k = b + d;
                     if (k >= 0 && k < BINS) around[n++] = spec[row + k];
                 }

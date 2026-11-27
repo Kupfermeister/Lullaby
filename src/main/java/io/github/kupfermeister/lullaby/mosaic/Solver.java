@@ -35,8 +35,8 @@ import java.util.stream.IntStream;
  *   <li>detail: only what is missing above detail_from_hz counts, less strict, at most detail_volume.
  * </ol>
  * Screening: for every start time and every sound at every pitch, how well its first 40 ms (more with precision)
- * fit; the best candidates per start time are kept. Each candidate's length: a sound longer than
- * cut_only_longer_than plays as long as it keeps lowering the cost and is then cut off (stopsound), shorter sounds
+ * fit; the best candidates per start time are kept. Each candidate's length: a sound at least
+ * cut_only_longer_than long plays as long as it keeps lowering the cost and is then cut off (stopsound), shorter sounds
  * play whole; nothing plays longer than max_play_seconds. Limits before each placement: max_per_tick, max_voices,
  * max_streams, the rate limit per file. Stop keys at the end: every play gets a sound id and source (volume slider)
  * such that no stop hits another play. Runs on the mosaic job thread and its pool; plain data only.
@@ -299,10 +299,10 @@ final class Solver {
         return tooLong(sound, pitch) ? Math.min(stored, maxPlay) : Math.min(stored, realFrames(sound, pitch));
     }
 
-    /** Only sounds longer than cut_only_longer_than may be cut off. */
+    /** Only sounds at least cut_only_longer_than long (at this pitch) may be cut off. */
     private boolean mayCut(int sound, int pitch) {
         int real = realFrames(sound, pitch);
-        return real < 0 || real > cutOnlyLonger;
+        return real < 0 || real >= cutOnlyLonger;
     }
 
     private boolean usable(int sound, int pitch) {

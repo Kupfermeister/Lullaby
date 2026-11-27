@@ -37,10 +37,11 @@ final class Settings {
             # the tick (works best on the same computer or LAN; over the internet network jitter blurs it).
             subtick = false
 
-            # Cutting off (stopsound): only sounds longer than cut_only_longer_than seconds may be cut off, then at the
-            # moment they stop fitting, but not before min_length. Shorter sounds always play whole. A cut-off sound frees
-            # its channel at once, so more sounds can play.
-            cut_only_longer_than = 0.5
+            # Cutting off (stopsound): only sounds at least cut_only_longer_than seconds long may be cut off, then at the
+            # moment they stop fitting, but not before min_length. Shorter sounds always play whole. A sound shorter than
+            # this but longer than max_play_seconds can neither play whole nor be cut, so it is not used. A cut-off sound
+            # frees its channel at once, so more sounds can play.
+            cut_only_longer_than = 2
             min_length = 0.05
             # No sound plays longer than this many seconds. long_sounds: cut (longer sounds are cut off by then) or skip
             # (longer sounds are never used).

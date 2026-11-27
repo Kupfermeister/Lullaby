@@ -34,7 +34,7 @@ final class Slicer {
     private static final int B = Spectra.BINS;
     private static final double KEY = 0.5; // in key: at least half as strong as the strongest note right now
 
-    private enum Kind { MELODY, BASS, NOISE }
+    private enum Kind { MELODY, BASS, NOISE, DETAIL }
 
     /** One layer: its own target (what is still missing of its part), weights, candidates and playing sounds. */
     private final class Layer {
@@ -42,6 +42,12 @@ final class Slicer {
         final String name;
         final float[] r;
         final float[] wMiss;
+        float[] overW = over; // added sound, weighted per bin (strictness)
+        float gainCap = 1;
+        double similarity = minSimilarity;
+        float[] screenOn; // what screening compares with (null: r); the parts this layer may be handed later
+        Layer handTo; // what this layer can't explain in a slice is handed on to that layer...
+        boolean[] handBins; // ...in these bins
         double total;
         double threshold;
         int[] candAtom;
@@ -57,7 +63,7 @@ final class Slicer {
         }
 
         float cost(float v, int b) {
-            return v > 0 ? wMiss[b] * v * v : over[b] * v * v;
+            return v > 0 ? wMiss[b] * v * v : overW[b] * v * v;
         }
 
         /** May this sound start in this layer at all (before any scoring)? */
@@ -67,7 +73,7 @@ final class Slicer {
                         && tonality(sound, pitch, Slicer.this.slice) >= s.melodyTonality
                         && inKey(features[sound].note + shiftOf[pitch], slice);
                 case BASS -> features[sound].purity >= s.bassPurity;
-                case NOISE -> true;
+                case NOISE, DETAIL -> true;
             };
         }
     }
@@ -245,16 +251,58 @@ final class Slicer {
         }
         List<Layer> layers = new ArrayList<>();
         // FORMAT: mosaic slice layer names
-        if (s.volMelody > 0) layers.add(new Layer(Kind.MELODY, "melody", mel, w));
-        if (s.volBass > 0) layers.add(new Layer(Kind.BASS, "bass", bass, wBass));
-        if (s.volNoise > 0) layers.add(new Layer(Kind.NOISE, "noise", noise, w));
+        Layer melody = s.volMelody > 0 ? new Layer(Kind.MELODY, "melody", mel, w) : null;
+        Layer bassLayer = s.volBass > 0 ? new Layer(Kind.BASS, "bass", bass, wBass) : null;
+        Layer noiseLayer = s.volNoise > 0 ? new Layer(Kind.NOISE, "noise", noise, w) : null;
+        // detail: what noise leaves above detail_from_hz (consonants), less strict, at most volume.detail loud
+        float[] wHigh = new float[B];
+        float[] overDetail = new float[B];
+        boolean[] high = new boolean[B];
+        boolean[] aboveBass = new boolean[B];
+        for (int b = 0; b < B; b++) {
+            high[b] = Spectra.frequency(b) >= s.detailFromHz;
+            aboveBass[b] = Spectra.frequency(b) >= s.bassBelowHz;
+            wHigh[b] = high[b] ? w[b] : 0;
+            overDetail[b] = (float) (w[b] * (1 + (s.detailOvershoot - 1) / Math.sqrt(s.saturation)));
+        }
+        Layer detail = null;
+        if (s.volDetail > 0) {
+            detail = new Layer(Kind.DETAIL, "detail", new float[all.length], wHigh);
+            detail.overW = overDetail;
+            detail.gainCap = (float) s.volDetail;
+            detail.similarity = Math.min(1, s.detailSimilarity / Math.sqrt(s.saturation));
+            detail.screenOn = new float[all.length];
+            for (int i = 0; i < all.length; i++) detail.screenOn[i] = high[i % B] ? all[i] : 0;
+        }
+        // what the melody can't play (a voice is rarely one clean tone) goes on to the noise layer, slice by slice;
+        // what noise leaves in the highs goes on to detail
+        if (melody != null) {
+            melody.handTo = noiseLayer != null ? noiseLayer : detail;
+            melody.handBins = aboveBass;
+        }
+        if (noiseLayer != null) {
+            noiseLayer.handTo = detail;
+            noiseLayer.handBins = high;
+            if (melody != null) {
+                noiseLayer.screenOn = new float[all.length];
+                for (int i = 0; i < all.length; i++) noiseLayer.screenOn[i] = noise[i] + mel[i];
+            }
+        }
+        for (Layer l : new Layer[] {melody, bassLayer, noiseLayer, detail}) if (l != null) layers.add(l);
         int slices = (frames + slice - 1) / slice;
+        double inputTotal = 0; // the cost of the whole input, before anything plays
         for (Layer l : layers) {
             int loud = 0;
+            float[] target = l.screenOn != null ? l.screenOn : l.r;
             for (int t = 0; t < frames; t++) {
                 double e = 0;
-                for (int b = 0; b < B; b++) e += l.cost(l.r[t * B + b], b);
+                double own = 0;
+                for (int b = 0; b < B; b++) {
+                    e += l.cost(target[t * B + b], b);
+                    own += l.cost(l.r[t * B + b], b);
+                }
                 l.total += e;
+                if (l.kind != Kind.DETAIL) inputTotal += own;
                 if (e > 1e-12) loud++;
             }
             l.threshold = Math.max(1e-12, minGain * (loud > 0 ? l.total / loud : 0) * slice);
@@ -287,19 +335,24 @@ final class Slicer {
                     int n = horizon(a.sound, a.pitch);
                     int until = Math.min(n, a.length + (to - from));
                     Dictionary.Entry e = sounds.get(a.sound).entry();
+                    double drop = 0;
+                    double adds = 0;
+                    for (int t = a.length; t < until && a.start + t < frames; t++) {
+                        row(e, a.pitch, t, tmp);
+                        int at = (a.start + t) * B;
+                        for (int b = 0; b < B; b++) {
+                            float v = layer.r[at + b];
+                            float g = a.gain * tmp[b];
+                            drop += layer.cost(v, b) - layer.cost(v - g, b);
+                            adds += layer.overW[b] * g * g;
+                        }
+                    }
                     boolean goOn;
                     if (layer.kind == Kind.MELODY) {
-                        goOn = until > a.length && inKey(features[a.sound].note + shiftOf[a.pitch], sl);
+                        // in key, and not drowning the rest: it may cost at most a quarter of what it adds
+                        goOn = until > a.length && inKey(features[a.sound].note + shiftOf[a.pitch], sl)
+                                && drop > -0.25 * adds;
                     } else {
-                        double drop = 0;
-                        for (int t = a.length; t < until && a.start + t < frames; t++) {
-                            row(e, a.pitch, t, tmp);
-                            int at = (a.start + t) * B;
-                            for (int b = 0; b < B; b++) {
-                                float v = layer.r[at + b];
-                                drop += layer.cost(v, b) - layer.cost(v - a.gain * tmp[b], b);
-                            }
-                        }
                         goOn = until > a.length && drop > 0;
                     }
                     if (goOn) {
@@ -348,13 +401,13 @@ final class Slicer {
                                 if (v > 0) rr += layer.wMiss[b] * v * v;
                             }
                         }
-                        if (cc <= 0 || aa <= 0 || rr <= 0 || cc / Math.sqrt(aa * rr) < minSimilarity) continue;
-                        float g = (float) Math.min(1, cc / aa);
+                        if (cc <= 0 || aa <= 0 || rr <= 0 || cc / Math.sqrt(aa * rr) < layer.similarity) continue;
+                        float g = (float) Math.min(layer.gainCap, cc / aa);
                         double drop = 0;
                         for (int t = 0; t < len; t++) {
                             row(e, pitch, t, tmp);
                             if (from + t >= frames) {
-                                for (int b = 0; b < B; b++) drop -= over[b] * g * g * tmp[b] * tmp[b];
+                                for (int b = 0; b < B; b++) drop -= layer.overW[b] * g * g * tmp[b] * tmp[b];
                                 continue;
                             }
                             int at = (from + t) * B;
@@ -404,6 +457,18 @@ final class Slicer {
                         layer.active.add(new Active(sound, pitch, from, bestG, bestLen));
                     }
                 }
+                // 3. what this layer couldn't explain in this slice goes on to the next layer
+                if (layer.handTo != null) {
+                    for (int t = from; t < to; t++) {
+                        for (int b = 0; b < B; b++) {
+                            int i = t * B + b;
+                            if (layer.handBins[b] && layer.r[i] > 0) {
+                                layer.handTo.r[i] += layer.r[i];
+                                layer.r[i] = 0;
+                            }
+                        }
+                    }
+                }
             }
             // FORMAT: mosaic progress (slices)
             if (slices >= 10 && (sl + 1) % (slices / 10) == 0) say.accept("placing: " + (sl + 1) * 100 / slices + "%");
@@ -414,16 +479,12 @@ final class Slicer {
 
         Shared.Keys keys = Shared.keys(plays, sounds);
         StringBuilder report = new StringBuilder();
-        double total = 0;
+        double total = inputTotal;
         double left = 0;
         for (Layer l : layers) {
-            double rest = 0;
-            for (int t = 0; t < frames; t++) for (int b = 0; b < B; b++) rest += l.cost(l.r[t * B + b], b);
-            total += l.total;
-            left += rest;
+            for (int t = 0; t < frames; t++) for (int b = 0; b < B; b++) left += l.cost(l.r[t * B + b], b);
             // FORMAT: mosaic slice layer report
-            report.append(l.name).append(": ").append(l.placed).append(" placed, explains ")
-                    .append(Math.round(Math.max(0, 100 * (1 - rest / Math.max(1e-12, l.total))))).append("%\n");
+            report.append(l.name).append(": ").append(l.placed).append(" placed\n");
         }
         int most = 0;
         for (int v : voices) most = Math.max(most, v);
@@ -474,12 +535,12 @@ final class Slicer {
 
     /** The best few sound starts per slice for one layer, by how well their first slice fits its part (all cores). */
     private void screen(Layer layer, int slices) throws Exception {
-        float[] r = layer.r;
+        float[] r = layer.screenOn != null ? layer.screenOn : layer.r;
         float[] rw = new float[r.length];
         for (int t = 0; t < frames; t++) {
             for (int b = 0; b < B; b++) {
                 float v = r[t * B + b];
-                rw[t * B + b] = v * (v > 0 ? layer.wMiss[b] : over[b]);
+                rw[t * B + b] = v * (v > 0 ? layer.wMiss[b] : layer.overW[b]);
             }
         }
         int k = candidates;
@@ -522,7 +583,7 @@ final class Slicer {
                         }
                         double c = (double) c0 + c1 + c2 + c3;
                         if (c <= 0) continue;
-                        double g = Math.min(1, c / aw);
+                        double g = Math.min(layer.gainCap, c / aw);
                         double score = 2 * g * c - g * g * aw;
                         int base = sl * k;
                         int weakest = base;

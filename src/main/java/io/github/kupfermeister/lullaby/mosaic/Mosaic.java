@@ -36,6 +36,7 @@ import org.bukkit.plugin.Plugin;
  *   play &lt;file&gt; [filters...] [-overwrite]   plays the kept mosaic of a file in plugins/lullaby/mosaic; works it
  *                                            out first if there is none yet, or again with -overwrite. From the
  *                                            console it only works it out (result and preview .wav)
+ *   test subtick                             note block hats, ever closer, to hear whether sub-tick timing works
  *   stop                                     stops your mosaic
  * </pre>
  * Permissions {@code lullaby.command} and {@code lullaby.mosaic} (ops). Working out runs on one job thread (one job at
@@ -93,7 +94,7 @@ public final class Mosaic {
                 .then(Commands.literal("play")
                         .then(Commands.argument("file", StringArgumentType.string())
                                 .suggests((ctx, b) -> {
-                                    for (String f : inputFiles()) b.suggest(quoted(f));
+                                    for (String f : inputFiles()) b.suggest(quoted(f), hint(fileHint(f)));
                                     return b.buildFuture();
                                 })
                                 .executes(ctx -> play(ctx, ""))
@@ -101,11 +102,17 @@ public final class Mosaic {
                                         .suggests((ctx, b) -> {
                                             String typed = b.getRemaining();
                                             String before = typed.substring(0, typed.lastIndexOf(' ') + 1);
-                                            for (String f : settings.filters.keySet()) b.suggest(before + f);
-                                            b.suggest(before + "-overwrite");
+                                            for (var f : settings.filters.entrySet()) {
+                                                // FORMAT: hint of a filter in tab completion
+                                                b.suggest(before + f.getKey(), hint("only these sounds: " + String.join(", ", f.getValue())));
+                                            }
+                                            // FORMAT: hint of -overwrite in tab completion
+                                            b.suggest(before + "-overwrite", hint("work it out again (after changing the config)"));
                                             return b.buildFuture();
                                         })
                                         .executes(ctx -> play(ctx, StringArgumentType.getString(ctx, "filters"))))))
+                .then(Commands.literal("test").then(Commands.literal("subtick")
+                        .executes(ctx -> subtickTest(ctx.getSource().getSender()))))
                 .then(Commands.literal("stop").executes(ctx -> {
                     CommandSender sender = ctx.getSource().getSender();
                     Playback p = sender instanceof Player pl ? playing.get(pl.getUniqueId()) : null;
@@ -118,6 +125,17 @@ public final class Mosaic {
                     }
                     return Command.SINGLE_SUCCESS;
                 }));
+    }
+
+    private static com.mojang.brigadier.Message hint(String text) {
+        return new com.mojang.brigadier.LiteralMessage(text);
+    }
+
+    /** The tooltip of an input file: kept mosaics play at once, others are worked out first. */
+    private static String fileHint(String file) {
+        String base = file.replaceAll("\\.[^.]*$", "");
+        // FORMAT: hint of an input file in tab completion
+        return Files.exists(made.resolve(base + ".txt")) ? "worked out: plays at once" : "not worked out yet: takes a while first";
     }
 
     private static String quoted(String f) {
@@ -374,6 +392,37 @@ public final class Mosaic {
             say.accept("can't read " + result.getFileName() + ": " + e.getMessage()); // FORMAT: mosaic result unreadable
             return;
         }
+        play(listener, steps, say);
+    }
+
+    /**
+     * {@code /lullaby mosaic test subtick}: no audio file and no mosaic, only note block hats sent straight through the
+     * playback thread, so what is heard is the timing alone. The gap between hats shrinks evenly (on a log scale) from
+     * 500 ms (10 ticks) to 5 ms (a tenth of a tick) over 20 s, then stays at 5 ms for 2 s. Without sub-tick timing the
+     * hats would bunch up into 50 ms steps once the gap is below a tick.
+     */
+    private static int subtickTest(CommandSender sender) {
+        if (!(sender instanceof Player p)) {
+            tell(sender, "the test plays to you: use it in the game"); // FORMAT: mosaic test from the console
+            return 0;
+        }
+        List<MosaicSender.Step> steps = new ArrayList<>();
+        double t = 0;
+        while (t < 22) {
+            steps.add(new MosaicSender.Step((int) Math.round(t * 1000), false, "block.note_block.hat", "master", 1, 1, 0));
+            double gap = t < 20 ? 0.5 * Math.pow(0.005 / 0.5, t / 20) : 0.005;
+            t += gap;
+        }
+        UUID listener = p.getUniqueId();
+        play(listener, steps, text -> Bukkit.getScheduler().runTask(plugin, () -> {
+            Player to = Bukkit.getPlayer(listener);
+            if (to != null) tell(to, text);
+        }));
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /** Main thread: builds the packets, then a playback thread sends each at its time. */
+    private static void play(UUID listener, List<MosaicSender.Step> steps, Consumer<String> say) {
         MosaicSender.Prepared prepared = MosaicSender.prepare(listener, steps);
         if (prepared == null) return;
         Playback old = playing.get(listener);

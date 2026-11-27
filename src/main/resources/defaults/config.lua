@@ -60,7 +60,8 @@ return {
     subtick = false,       -- true: sounds start and stop between ticks (sent by a timing thread), on 10 ms steps
     slice_ms = 10,         -- slices with subtick: how long one slice is (10 to 50 ms); without subtick a slice is one tick
     volume = { melody = 1, bass = 1, noise = 1, detail = 0.5 }, -- each layer's loudness; 0 turns it off
-                           -- (noise is the main layer of "layers"; detail is only used by "layers")
+                           -- (detail: what is still missing above 1 kHz, the consonants, quieter; noise is the main
+                           -- layer of "layers")
     loudness = 3,          -- the input's loud parts equal about this many sounds at full volume
     weighting = "speech",  -- which pitches count most: "speech", "music", or { [100] = 0.5, [300] = 2, ... } (Hz = weight)
     strictness = 2,        -- how much worse sound that isn't in the input counts than sound that is missing

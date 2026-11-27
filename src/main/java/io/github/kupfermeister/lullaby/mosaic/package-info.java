@@ -14,6 +14,8 @@
  *       each cut off (stopsound) the moment it stops fitting, in rounds that search again on what is left. Limits:
  *       sounds per tick, voices at once, the rate limit per file, melody before noise (tonality, written to
  *       {@code tonality.txt} for review), stop keys that hit no other sound.
+ *   <li>Or Slicer ({@code method = slices}), the simple method: time in slices of slice_ms, each solved on its own;
+ *       a sound goes on into the next slice only while it still fits. Both share Shared (input loudness, stop keys).
  *   <li>Preview writes the result as a .wav, Mosaic plays it (nms/MosaicSender builds the packets on the main thread,
  *       a playback thread only sends them at the right time).
  * </ol>

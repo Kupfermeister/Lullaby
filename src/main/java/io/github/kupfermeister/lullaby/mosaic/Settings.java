@@ -22,6 +22,16 @@ final class Settings {
             # Sound mosaicing settings (/lullaby mosaic play <file> [filters]). Read at every command, no reload needed.
             # A changed setting makes the next play work the file out again (results are kept per settings).
 
+            # Method: layers (melody, bass, main and detail layers; sounds play as long as they fit, see below) or slices
+            # (the simple one: time is cut into slices of slice_ms, each solved on its own from start to end; a sound goes
+            # on into the next slice only while it still fits, else it is stopped then; precise to the slice, with
+            # subtick = true down to 10 ms). Shared by both: the limits, subtick, max_play_seconds, long_sounds, music,
+            # weighting, loudness, min_similarity, overshoot_penalty, min_gain, pitch_range, pitch_step, precision,
+            # saturation, threads, filters. slice_candidates: sound starts kept per slice (more: better fits, slower).
+            method = layers
+            slice_ms = 50
+            slice_candidates = 64
+
             # Most sounds started in one tick (50 ms).
             max_per_tick = 40
             # Most sounds playing at the same time. The game has about 247 sound channels; past that it drops sounds.
@@ -125,7 +135,8 @@ final class Settings {
     double minLength, cutOnlyLonger, maxPlaySeconds, melodyTonality, bassBelowHz, bassPurity, detailFromHz, detailVolume,
             detailSimilarity, detailOvershoot, saturation;
     boolean skipLong, melodyLayer, bassLayer, detailLayer;
-    int melodyRounds, bassRounds, detailRounds, precision;
+    int melodyRounds, bassRounds, detailRounds, precision, sliceMs, sliceCandidates;
+    boolean slices;
     double overshoot, pitchStep, melodyWeight, noiseWeight, loudness, minSimilarity, minGain;
     String weighting;
     double[][] customWeighting;
@@ -153,6 +164,12 @@ final class Settings {
         for (var e : values.entrySet()) print.append(e.getKey()).append('=').append(e.getValue()).append('\n');
         s.fingerprint = print.toString();
         Reader r = new Reader(values, lineOf);
+        String method = r.text("method");
+        // FORMAT: settings.txt method unknown
+        if (!method.equals("layers") && !method.equals("slices")) throw r.bad("method", "layers or slices");
+        s.slices = method.equals("slices");
+        s.sliceMs = r.whole("slice_ms", 10, 2000);
+        s.sliceCandidates = r.whole("slice_candidates", 1, 10000);
         s.maxPerTick = r.whole("max_per_tick", 1, 1000);
         s.maxVoices = r.whole("max_voices", 1, 247);
         s.maxStreams = r.whole("max_streams", 0, 8);

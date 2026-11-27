@@ -387,16 +387,16 @@ final class Solver {
             report.append(line).append('\n');
         }
 
-        Keys keys = keys(plays);
+        Shared.Keys keys = Shared.keys(plays, sounds);
         int maxVoices = 0;
         for (int v : voices) maxVoices = Math.max(maxVoices, v);
-        long cut = keys.plays.stream().filter(Play::stopped).count();
+        long cut = keys.plays().stream().filter(Play::stopped).count();
         // FORMAT: mosaic result summary
-        String summary = keys.plays.size() + " sounds (" + cut + " cut off), at most " + maxVoices
+        String summary = keys.plays().size() + " sounds (" + cut + " cut off), at most " + maxVoices
                 + " at once, explains " + explained(total) + "% of the input"
-                + (keys.dropped > 0 ? "; " + keys.dropped + " cut-off sounds left out (no free stop key)" : "");
+                + (keys.dropped() > 0 ? "; " + keys.dropped() + " cut-off sounds left out (no free stop key)" : "");
         report.append(summary).append('\n');
-        return new Result(keys.plays, keys.use, keys.source, report.toString());
+        return new Result(keys.plays(), keys.use(), keys.source(), report.toString());
     }
 
     private void run(Layer layer) throws Exception {
@@ -504,41 +504,12 @@ final class Solver {
     /** Scales the input to the sounds' loudness; its tonality and pitch per frame. Returns its weighted energy. */
     private double prepare(float[] input) {
         r = input.clone();
-        double[] peaks = new double[sounds.size()];
-        for (int i = 0; i < sounds.size(); i++) {
-            Dictionary.Entry e = sounds.get(i).entry;
-            double best = 0;
-            for (int t = 0; t < e.frames(); t++) {
-                double sum = 0;
-                for (int b = 0; b < B; b++) {
-                    double v = e.at(t, b);
-                    sum += w[b] * v * v;
-                }
-                best = Math.max(best, sum);
-            }
-            peaks[i] = Math.sqrt(best);
-        }
-        Arrays.sort(peaks);
-        double reference = peaks.length == 0 ? 1 : peaks[peaks.length / 2];
-        double[] norms = new double[frames];
-        for (int t = 0; t < frames; t++) {
-            double sum = 0;
-            for (int b = 0; b < B; b++) {
-                double v = r[t * B + b];
-                sum += w[b] * v * v;
-            }
-            norms[t] = Math.sqrt(sum);
-        }
-        double[] sorted = norms.clone();
-        Arrays.sort(sorted);
-        double p95 = sorted.length == 0 ? 0 : sorted[(int) (sorted.length * 0.95)];
-        double scale = p95 > 0 ? s.loudness * reference / p95 : 1;
-        for (int i = 0; i < r.length; i++) r[i] *= (float) scale;
+        Shared.scale(r, frames, sounds, w, s.loudness);
         double[] energy = new double[frames];
         double total = 0;
         double loudest = 0;
         for (int t = 0; t < frames; t++) {
-            energy[t] = norms[t] * norms[t] * scale * scale;
+            for (int b = 0; b < B; b++) energy[t] += w[b] * (double) r[t * B + b] * r[t * B + b];
             total += energy[t];
             double plain = 0;
             for (int b = 0; b < B; b++) plain += (double) r[t * B + b] * r[t * B + b];
@@ -801,54 +772,4 @@ final class Solver {
         return true;
     }
 
-    private record Keys(List<Play> plays, List<SoundSeeds.Use> use, List<String> source, int dropped) {
-    }
-
-    /** A sound id and a source per play, so no stop hits another play. */
-    private Keys keys(List<Play> plays) {
-        List<String> sources = new ArrayList<>(SoundSeeds.sources());
-        sources.remove("master");
-        sources.addFirst("master");
-        List<Play> sorted = new ArrayList<>(plays);
-        sorted.sort((a, b) -> Integer.compare(a.start, b.start));
-        Map<String, List<Play>> onKey = new HashMap<>();
-        List<Play> out = new ArrayList<>();
-        List<SoundSeeds.Use> use = new ArrayList<>();
-        List<String> source = new ArrayList<>();
-        int dropped = 0;
-        for (Play p : sorted) {
-            boolean found = false;
-            search:
-            for (SoundSeeds.Use u : sounds.get(p.sound).uses) {
-                for (String src : sources) {
-                    String key = u.sound() + "|" + src;
-                    List<Play> others = onKey.computeIfAbsent(key, x -> new ArrayList<>());
-                    boolean clash = false;
-                    for (int i = others.size() - 1; i >= 0; i--) {
-                        Play o = others.get(i);
-                        if (clashes(p, o) || clashes(o, p)) {
-                            clash = true;
-                            break;
-                        }
-                    }
-                    if (clash) continue;
-                    others.add(p);
-                    out.add(p);
-                    use.add(u);
-                    source.add(src);
-                    found = true;
-                    break search;
-                }
-            }
-            if (!found) dropped++;
-        }
-        return new Keys(out, use, source, dropped);
-    }
-
-    /** Does a's stop hit b while b plays? Stops are sent before starts of the same moment; 2 frames of slack. */
-    private static boolean clashes(Play a, Play b) {
-        if (!a.stopped || a == b) return false;
-        int stop = a.start + a.length;
-        return b.start < stop && stop < b.start + b.length + 2;
-    }
 }

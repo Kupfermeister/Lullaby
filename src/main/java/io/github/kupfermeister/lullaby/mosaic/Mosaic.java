@@ -250,9 +250,14 @@ public final class Mosaic {
             int[] frames = new int[1];
             float[] spec = Spectra.spectrogram(at24, frames);
 
-            Solver solver = new Solver(settings, sounds, pool, say);
-            solver.writeSoundList(home.resolve("tonality.txt"));
-            Solver.Result r = solver.solve(spec, frames[0]);
+            Solver.Result r;
+            if (settings.slices) {
+                r = new Slicer(settings, sounds, pool, say).solve(spec, frames[0]);
+            } else {
+                Solver solver = new Solver(settings, sounds, pool, say);
+                solver.writeSoundList(home.resolve("tonality.txt"));
+                r = solver.solve(spec, frames[0]);
+            }
 
             writeResult(result, r, sounds, settings, input);
             Path preview = home.resolve("previews").resolve(base + "-" + key + ".wav");

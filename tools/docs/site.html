@@ -351,7 +351,7 @@ function score(e, q) {
 // things, then looking things up, the Java door (experts) last. This list owns the order; a group not named here
 // (a new one) goes at the end, in the order its pages are read, so it can't go missing.
 const GROUP_ORDER = ["Guide", "Events", "Commands", "Tasks", "Players", "Entities", "Blocks", "Worlds", "Items",
-  "Text", "Effects", "Values", "Objects", "Scripts", "Config", "Java door"];
+  "Text", "Effects", "Values", "Objects", "Scripts", "Java door"];
 const groupRank = g => { const i = GROUP_ORDER.indexOf(g); return i < 0 ? GROUP_ORDER.length : i; };
 function nav() {
   const q = document.getElementById("q").value.trim().toLowerCase();

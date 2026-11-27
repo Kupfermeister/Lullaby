@@ -890,8 +890,7 @@ public final class Docs {
             if (e.f().containsKey("is")) b.append(" : ").append(e.f().get("is"));
             b.append('\n');
             for (String[] fl : e.fields()) {
-                // "<property>": a stand-in for many names, not a Lua name; "name?": an optional field (the config's)
-                if (!fl[0].matches("\\w+\\??")) continue;
+                if (!fl[0].matches("\\w+")) continue; // "<property>": a stand-in for many names, not a Lua name
                 b.append("---@field ").append(fl[0]).append(' ').append(luaType(fl[1]));
                 if (fl.length > 2 && !fl[2].isEmpty()) b.append(' ').append(fl[2]);
                 b.append('\n');

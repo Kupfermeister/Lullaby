@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "io.github.kupfermeister"
-version = "0.1.8-SNAPSHOT"
+version = "0.1.9-SNAPSHOT"
 
 val minecraftVersion = providers.gradleProperty("minecraftVersion").get()
 val paperBuild = providers.gradleProperty("paperBuild").get()

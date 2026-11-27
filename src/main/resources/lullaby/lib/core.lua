@@ -510,5 +510,10 @@ function I.setup()
 	J.set_error_window(tonumber(I.config.error_repeat_seconds) or 10)
 	I.data_setup(I.config) -- data.lua
 	I.blocks_setup(I.config)
+	-- Sound mosaicing (mosaic/Mosaic.java): Java checks the whole section. Remove these lines to remove the feature.
+	local mosaic = I.config.sound_mosaicing
+	local problem = J.mosaic_config(I.wire(type(mosaic) == "table" and mosaic or {}))
+	-- FORMAT: bad sound_mosaicing in the config
+	if problem then J.report("warning", "plugins/lullaby/config.lua", -1, "loading the config", problem) end
 	build_sandbox(I.config.unlock)
 end

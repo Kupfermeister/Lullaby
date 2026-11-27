@@ -10,28 +10,71 @@ import java.util.function.Consumer;
 import java.util.stream.IntStream;
 
 /**
- * The second mosaic method ({@code method = slices}), the simple one: time is cut into slices of
- * {@code slice_ms} (one tick, or down to 10 ms with subtick), and each slice is solved on its own, from start to end:
- * <ol>
- *   <li>Every sound that is still playing from the slice before may go on for this slice, at the volume it started
- *       with, only if that lowers the cost here (else it is stopped at the slice's start). A sound that ends inside
- *       the slice by itself just ends.
- *   <li>Then new sounds start: the one whose first slice_ms (at its pitch) lowers the cost of this slice the most,
- *       again and again, while it fits ({@code min_similarity}, {@code min_gain}, the limits).
- * </ol>
- * The cost is the same strict one as the layers method: missing sound once, added sound overshoot_penalty times,
- * weighted per frequency. A sound only ever starts at its beginning, so the candidates for a slice are worked out
- * once, before (screening: every sound at every pitch against the input, the best {@code slice_candidates} per
- * slice kept, more with precision); the greedy choice inside a slice is then exact. No tonality, layers or cut rules
- * here (cut_only_longer_than does not apply: any sound can be stopped at a slice's end); max_play_seconds does.
- * Runs on the mosaic job thread and its pool; plain data only.
+ * The second mosaic method ({@code method = "slices"}): time is cut into slices of {@code slice_ms} (one tick, or
+ * down to 10 ms with subtick), solved one after the other. The input is split into three parts, each its own layer
+ * with its own volume ({@code volume = { melody, bass, noise }}; 0 turns one off):
+ * <ul>
+ *   <li>melody: the tonal part (harmonic/percussive split: what holds still over time against what holds still over
+ *       the frequencies) above bass_below_hz. Only clean sounds (at least melody_tonality tonal, Features) whose
+ *       first note is in key right now: the input's melody part holds that note (its harmonics) at least half as
+ *       strongly as its strongest note. A melody sound goes on as long as its note stays in key in the next slice,
+ *       then it is stopped: fluid, not cut by every small mismatch;
+ *   <li>bass: everything below bass_below_hz, only clean bass sounds (bass_purity); like melody but without the key:
+ *       a bass sound goes on while it still lowers the cost;
+ *   <li>noise: the rest above bass_below_hz, all sounds; a sound goes on while it still lowers the cost.
+ * </ul>
+ * In every layer, new sounds start where they lower the cost the most (strict: added sound counts strictness times),
+ * best first, while they fit; candidates per slice come from screening (every sound at every pitch, best
+ * slice_candidates kept). A sound that may not be stopped (a single hit, Features) plays whole once started. Limits
+ * (voices, per tick, streams, rate limit) are shared by all layers, melody first. Runs on the mosaic job thread and
+ * its pool; plain data only.
  */
 final class Slicer {
 
     private static final int B = Spectra.BINS;
+    private static final double KEY = 0.5; // in key: at least half as strong as the strongest note right now
+
+    private enum Kind { MELODY, BASS, NOISE }
+
+    /** One layer: its own target (what is still missing of its part), weights, candidates and playing sounds. */
+    private final class Layer {
+        final Kind kind;
+        final String name;
+        final float[] r;
+        final float[] wMiss;
+        double total;
+        double threshold;
+        int[] candAtom;
+        float[] candScore;
+        final List<Active> active = new ArrayList<>();
+        int placed;
+
+        Layer(Kind kind, String name, float[] r, float[] wMiss) {
+            this.kind = kind;
+            this.name = name;
+            this.r = r;
+            this.wMiss = wMiss;
+        }
+
+        float cost(float v, int b) {
+            return v > 0 ? wMiss[b] * v * v : over[b] * v * v;
+        }
+
+        /** May this sound start in this layer at all (before any scoring)? */
+        boolean takes(int sound, int pitch, int slice) {
+            return switch (kind) {
+                case MELODY -> features[sound].note != Features.NONE
+                        && tonality(sound, pitch, Slicer.this.slice) >= s.melodyTonality
+                        && inKey(features[sound].note + shiftOf[pitch], slice);
+                case BASS -> features[sound].purity >= s.bassPurity;
+                case NOISE -> true;
+            };
+        }
+    }
 
     private final Settings s;
     private final List<Solver.Sound> sounds;
+    private final Features[] features;
     private final float[] w;
     private final float[] over;
     private final ForkJoinPool pool;
@@ -45,12 +88,14 @@ final class Slicer {
     private final double minSimilarity;
     private final double minGain;
 
-    private float[] r;
     private int frames;
+    private float[] keyStrength; // per frame and bin: how strongly the melody part holds that note
+    private float[] keyMax; // per frame: the strongest note
 
-    Slicer(Settings s, List<Solver.Sound> sounds, ForkJoinPool pool, Consumer<String> say) {
+    Slicer(Settings s, List<Solver.Sound> sounds, Features[] features, ForkJoinPool pool, Consumer<String> say) {
         this.s = s;
         this.sounds = sounds;
+        this.features = features;
         this.w = Spectra.weights(s);
         this.pool = pool;
         this.say = say;
@@ -63,9 +108,8 @@ final class Slicer {
             rateOf[i] = Math.pow(2, semis / 12);
             shiftOf[i] = (int) Math.round(semis * Spectra.BINS_PER_SEMITONE);
         }
-        int f = Math.max(1, (int) Math.round(s.sliceMs / 10.0));
-        if (!s.subtick) f = Math.max(Spectra.FRAMES_PER_TICK, f / Spectra.FRAMES_PER_TICK * Spectra.FRAMES_PER_TICK);
-        this.slice = f;
+        // subtick: slices of slice_ms (10 ms steps); else every slice is one tick
+        this.slice = s.subtick ? Math.max(1, (int) Math.round(s.sliceMs / 10.0)) : Spectra.FRAMES_PER_TICK;
         this.maxPlay = Math.max(slice, (int) Math.round(s.maxPlaySeconds * 100));
         this.candidates = s.sliceCandidates * s.precision;
         this.minSimilarity = Math.min(1, s.minSimilarity / Math.sqrt(s.saturation));
@@ -75,22 +119,42 @@ final class Slicer {
         this.minGain = s.minGain / s.saturation;
     }
 
+    // ---- a sound at a pitch ----
+
     private int framesAt(int stored, int pitch) {
         return (int) Math.floor((stored - 1) / rateOf[pitch]) + 1;
     }
 
-    /** Frames the sound can play at this pitch: its whole length, at most max_play_seconds and what is stored. */
-    private int horizon(int sound, int pitch) {
-        Dictionary.Entry e = sounds.get(sound).entry();
-        int stored = framesAt(e.frames(), pitch);
-        int real = e.realFrames() < 0 ? Integer.MAX_VALUE : framesAt(e.realFrames(), pitch);
-        return Math.min(Math.min(stored, real), maxPlay);
+    private int realFrames(int sound, int pitch) {
+        int real = sounds.get(sound).entry().realFrames();
+        return real < 0 ? -1 : framesAt(real, pitch);
     }
 
-    /** Ends by itself within its horizon (not longer than what is stored and max_play_seconds)? */
+    /** May be stopped (Features); else it plays whole once started. */
+    private boolean stoppable(int sound) {
+        return features[sound].stoppable;
+    }
+
+    /** Frames it can play: a single hit whole, a stoppable sound at most max_play_seconds. */
+    private int horizon(int sound, int pitch) {
+        int stored = framesAt(sounds.get(sound).entry().frames(), pitch);
+        int real = realFrames(sound, pitch);
+        if (!stoppable(sound)) return real < 0 ? stored : Math.min(stored, real);
+        return Math.min(real < 0 ? stored : Math.min(stored, real), maxPlay);
+    }
+
+    /** Ends by itself within its horizon (else it must be stopped there)? */
     private boolean endsByItself(int sound, int pitch) {
-        Dictionary.Entry e = sounds.get(sound).entry();
-        return e.realFrames() >= 0 && framesAt(e.realFrames(), pitch) <= maxPlay;
+        int real = realFrames(sound, pitch);
+        return real >= 0 && real <= horizon(sound, pitch);
+    }
+
+    private boolean usable(int sound, int pitch) {
+        return stoppable(sound) || realFrames(sound, pitch) >= 0;
+    }
+
+    private float tonality(int sound, int pitch, int length) {
+        return features[sound].tonality((int) Math.ceil(length * rateOf[pitch]), sounds.get(sound).override());
     }
 
     private void row(Dictionary.Entry e, int pitch, int t, float[] out) {
@@ -118,15 +182,24 @@ final class Slicer {
         }
     }
 
-    private float cost(float v, int b) {
-        return v > 0 ? w[b] * v * v : over[b] * v * v;
+    /** Is the note (bin) in key for most frames of this slice? */
+    private boolean inKey(int note, int slice) {
+        if (note < 0 || note >= B) return false;
+        int from = slice * this.slice;
+        int to = Math.min(frames, from + this.slice);
+        int yes = 0;
+        for (int t = from; t < to; t++) {
+            float max = keyMax[t];
+            if (max > 1e-9f && keyStrength[t * B + note] >= KEY * max) yes++;
+        }
+        return to > from && yes * 2 > to - from;
     }
 
     /** A sound playing, started in an earlier slice. */
     private static final class Active {
         final int sound, pitch, start;
         final float gain;
-        int length; // frames played so far
+        int length;
 
         Active(int sound, int pitch, int start, float gain, int length) {
             this.sound = sound;
@@ -137,166 +210,259 @@ final class Slicer {
         }
     }
 
+    // ---- solving ----
+
     Solver.Result solve(float[] input, int inputFrames) throws Exception {
         frames = inputFrames;
-        r = input.clone();
-        Shared.scale(r, frames, sounds, w, s.loudness);
-        double total = 0;
-        int loud = 0;
+        float[] all = input.clone();
+        Shared.scale(all, frames, sounds, w, s.loudness);
+        float[] harmonic = harmonicShare(all);
+        float[] mel = new float[all.length];
+        float[] bass = new float[all.length];
+        float[] noise = new float[all.length];
+        float[] wBass = new float[B];
+        for (int b = 0; b < B; b++) wBass[b] = Spectra.frequency(b) < s.bassBelowHz ? Math.max(1, w[b]) : w[b];
         for (int t = 0; t < frames; t++) {
-            double e = 0;
-            for (int b = 0; b < B; b++) e += w[b] * (double) r[t * B + b] * r[t * B + b];
-            total += e;
-            if (e > 1e-12) loud++;
+            for (int b = 0; b < B; b++) {
+                int i = t * B + b;
+                if (Spectra.frequency(b) < s.bassBelowHz) {
+                    bass[i] = (float) (all[i] * s.volBass);
+                } else {
+                    mel[i] = (float) (all[i] * harmonic[i] * s.volMelody);
+                    noise[i] = (float) (all[i] * (1 - harmonic[i]) * s.volNoise);
+                }
+            }
         }
-        double threshold = Math.max(1e-12, minGain * (loud > 0 ? total / loud : 0) * slice);
+        // the key: how strongly the melody part holds each note
+        keyStrength = new float[all.length];
+        keyMax = new float[frames];
+        for (int t = 0; t < frames; t++) {
+            for (int b = 0; b < B; b++) {
+                float v = (float) Features.salience(mel, t * B, b);
+                keyStrength[t * B + b] = v;
+                keyMax[t] = Math.max(keyMax[t], v);
+            }
+        }
+        List<Layer> layers = new ArrayList<>();
+        // FORMAT: mosaic slice layer names
+        if (s.volMelody > 0) layers.add(new Layer(Kind.MELODY, "melody", mel, w));
+        if (s.volBass > 0) layers.add(new Layer(Kind.BASS, "bass", bass, wBass));
+        if (s.volNoise > 0) layers.add(new Layer(Kind.NOISE, "noise", noise, w));
         int slices = (frames + slice - 1) / slice;
-        int k = candidates;
-        int[] candAtom = new int[slices * k];
-        float[] candScore = new float[slices * k];
-        Arrays.fill(candAtom, -1);
-        // FORMAT: mosaic progress (slices)
-        say.accept("slices: comparing " + sounds.size() + " sounds x " + pitches + " pitches at " + slices + " slices of "
-                + slice * 10 + " ms");
-        screen(slices, k, candAtom, candScore);
-        say.accept("slices: placing"); // FORMAT: mosaic progress (slices)
+        for (Layer l : layers) {
+            int loud = 0;
+            for (int t = 0; t < frames; t++) {
+                double e = 0;
+                for (int b = 0; b < B; b++) e += l.cost(l.r[t * B + b], b);
+                l.total += e;
+                if (e > 1e-12) loud++;
+            }
+            l.threshold = Math.max(1e-12, minGain * (loud > 0 ? l.total / loud : 0) * slice);
+            l.candAtom = new int[slices * candidates];
+            l.candScore = new float[slices * candidates];
+            Arrays.fill(l.candAtom, -1);
+            // FORMAT: mosaic progress (slices)
+            say.accept(l.name + ": comparing " + sounds.size() + " sounds x " + pitches + " pitches at " + slices
+                    + " slices of " + slice * 10 + " ms");
+            screen(l, slices);
+        }
+        say.accept("placing"); // FORMAT: mosaic progress (slices)
 
-        List<Solver.Play> plays = new ArrayList<>();
-        List<Active> active = new ArrayList<>();
-        Map<Integer, List<Integer>> startsOf = new HashMap<>();
-        float[] tmp = new float[B];
-        int streams = 0;
+        int margin = 0;
+        for (Solver.Sound snd : sounds) margin = Math.max(margin, framesAt(snd.entry().frames(), 0) + 2);
+        int[] voices = new int[frames + margin + 1];
+        int[] streams = new int[frames + margin + 1];
         int[] startsPerTick = new int[frames / Spectra.FRAMES_PER_TICK + 2];
+        Map<Integer, List<Integer>> startsOf = new HashMap<>();
+        List<Solver.Play> plays = new ArrayList<>();
+        float[] tmp = new float[B];
         for (int sl = 0; sl < slices; sl++) {
             if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
             int from = sl * slice;
             int to = Math.min(frames, from + slice);
-            // 1. sounds from before: go on for this slice only if that helps
-            for (int i = active.size() - 1; i >= 0; i--) {
-                Active a = active.get(i);
-                int n = horizon(a.sound, a.pitch);
-                int until = Math.min(n, a.length + (to - from));
-                boolean ending = until == n && endsByItself(a.sound, a.pitch);
-                double drop = 0;
-                Dictionary.Entry e = sounds.get(a.sound).entry();
-                for (int t = a.length; t < until; t++) {
-                    row(e, a.pitch, t, tmp);
-                    int at = (a.start + t) * B;
-                    if (a.start + t >= frames) break;
-                    for (int b = 0; b < B; b++) {
-                        float v = r[at + b];
-                        drop += cost(v, b) - cost(v - a.gain * tmp[b], b);
+            for (Layer layer : layers) {
+                // 1. sounds from before: go on for this slice (melody: while in key; else while it helps)
+                for (int i = layer.active.size() - 1; i >= 0; i--) {
+                    Active a = layer.active.get(i);
+                    int n = horizon(a.sound, a.pitch);
+                    int until = Math.min(n, a.length + (to - from));
+                    Dictionary.Entry e = sounds.get(a.sound).entry();
+                    boolean goOn;
+                    if (layer.kind == Kind.MELODY) {
+                        goOn = until > a.length && inKey(features[a.sound].note + shiftOf[a.pitch], sl);
+                    } else {
+                        double drop = 0;
+                        for (int t = a.length; t < until && a.start + t < frames; t++) {
+                            row(e, a.pitch, t, tmp);
+                            int at = (a.start + t) * B;
+                            for (int b = 0; b < B; b++) {
+                                float v = layer.r[at + b];
+                                drop += layer.cost(v, b) - layer.cost(v - a.gain * tmp[b], b);
+                            }
+                        }
+                        goOn = until > a.length && drop > 0;
+                    }
+                    if (goOn) {
+                        for (int t = a.length; t < until && a.start + t < frames; t++) {
+                            row(e, a.pitch, t, tmp);
+                            int at = (a.start + t) * B;
+                            for (int b = 0; b < B; b++) layer.r[at + b] -= a.gain * tmp[b];
+                        }
+                        for (int t = a.start + a.length; t < a.start + until; t++) {
+                            voices[t]++;
+                            if (sounds.get(a.sound).stream()) streams[t]++;
+                        }
+                        a.length = until;
+                    }
+                    if (!goOn || until == n) {
+                        boolean stopped = !(goOn && endsByItself(a.sound, a.pitch));
+                        plays.add(new Solver.Play(a.sound, rateOf[a.pitch], a.start, a.length, stopped, a.gain));
+                        layer.active.remove(i);
                     }
                 }
-                boolean goOn = until > a.length && drop > 0;
-                if (goOn) {
-                    for (int t = a.length; t < until && a.start + t < frames; t++) {
-                        row(e, a.pitch, t, tmp);
-                        int at = (a.start + t) * B;
-                        for (int b = 0; b < B; b++) r[at + b] -= a.gain * tmp[b];
+                // 2. new sounds, the best first, while they help
+                int tick = from / Spectra.FRAMES_PER_TICK;
+                boolean[] tried = new boolean[candidates];
+                while (startsPerTick[tick] < s.maxPerTick) {
+                    double best = layer.threshold;
+                    int bestC = -1;
+                    float bestG = 0;
+                    int bestLen = 0;
+                    for (int c = 0; c < candidates; c++) {
+                        int atom = layer.candAtom[sl * candidates + c];
+                        if (atom < 0 || tried[c]) continue;
+                        int sound = atom / pitches;
+                        int pitch = atom % pitches;
+                        // a single hit is judged on its whole length (it can't be stopped), others on this slice
+                        int len = stoppable(sound) ? Math.min(to - from, horizon(sound, pitch)) : horizon(sound, pitch);
+                        Dictionary.Entry e = sounds.get(sound).entry();
+                        double cc = 0, aa = 0, rr = 0;
+                        for (int t = 0; t < len && from + t < frames; t++) {
+                            row(e, pitch, t, tmp);
+                            int at = (from + t) * B;
+                            for (int b = 0; b < B; b++) {
+                                float a = tmp[b];
+                                float v = layer.r[at + b];
+                                cc += layer.wMiss[b] * v * a;
+                                aa += layer.wMiss[b] * a * a;
+                                if (v > 0) rr += layer.wMiss[b] * v * v;
+                            }
+                        }
+                        if (cc <= 0 || aa <= 0 || rr <= 0 || cc / Math.sqrt(aa * rr) < minSimilarity) continue;
+                        float g = (float) Math.min(1, cc / aa);
+                        double drop = 0;
+                        for (int t = 0; t < len; t++) {
+                            row(e, pitch, t, tmp);
+                            if (from + t >= frames) {
+                                for (int b = 0; b < B; b++) drop -= over[b] * g * g * tmp[b] * tmp[b];
+                                continue;
+                            }
+                            int at = (from + t) * B;
+                            for (int b = 0; b < B; b++) {
+                                float v = layer.r[at + b];
+                                drop += layer.cost(v, b) - layer.cost(v - g * tmp[b], b);
+                            }
+                        }
+                        if (drop > best) {
+                            best = drop;
+                            bestC = c;
+                            bestG = g;
+                            bestLen = len;
+                        }
                     }
-                    a.length = until;
-                }
-                if (!goOn || until == n) {
-                    // stopped at this slice's start, or it ran to its horizon (ends by itself or must be stopped)
-                    boolean stopped = !(goOn && ending);
-                    plays.add(new Solver.Play(a.sound, rateOf[a.pitch], a.start, a.length, stopped, a.gain));
-                    if (sounds.get(a.sound).stream()) streams--;
-                    active.remove(i);
-                }
-            }
-            // 2. new sounds, the best first, while they help
-            int tick = from / Spectra.FRAMES_PER_TICK;
-            int[] used = new int[k];
-            while (true) {
-                if (active.size() >= s.maxVoices || startsPerTick[tick] >= s.maxPerTick) break;
-                double best = threshold;
-                int bestC = -1;
-                float bestG = 0;
-                for (int c = 0; c < k; c++) {
-                    int atom = candAtom[sl * k + c];
-                    if (atom < 0 || used[c] > 0) continue;
+                    if (bestC < 0) break;
+                    tried[bestC] = true;
+                    int atom = layer.candAtom[sl * candidates + bestC];
                     int sound = atom / pitches;
                     int pitch = atom % pitches;
-                    int len = Math.min(to - from, horizon(sound, pitch));
+                    boolean stream = sounds.get(sound).stream();
+                    boolean free = true;
+                    for (int t = from; t < from + bestLen && t < voices.length; t++) {
+                        if (voices[t] >= s.maxVoices || stream && streams[t] >= s.maxStreams) {
+                            free = false;
+                            break;
+                        }
+                    }
+                    if (!free || !rateOk(startsOf, sound, from)) continue;
                     Dictionary.Entry e = sounds.get(sound).entry();
-                    double cc = 0, aa = 0, rr = 0;
-                    for (int t = 0; t < len; t++) {
+                    for (int t = 0; t < bestLen && from + t < frames; t++) {
                         row(e, pitch, t, tmp);
                         int at = (from + t) * B;
-                        for (int b = 0; b < B; b++) {
-                            float a = tmp[b];
-                            float v = r[at + b];
-                            cc += w[b] * v * a;
-                            aa += w[b] * a * a;
-                            if (v > 0) rr += w[b] * v * v;
-                        }
+                        for (int b = 0; b < B; b++) layer.r[at + b] -= bestG * tmp[b];
                     }
-                    if (cc <= 0 || aa <= 0 || rr <= 0 || cc / Math.sqrt(aa * rr) < minSimilarity) continue;
-                    float g = (float) Math.min(1, cc / aa);
-                    double drop = 0;
-                    for (int t = 0; t < len; t++) {
-                        row(e, pitch, t, tmp);
-                        int at = (from + t) * B;
-                        for (int b = 0; b < B; b++) {
-                            float v = r[at + b];
-                            drop += cost(v, b) - cost(v - g * tmp[b], b);
-                        }
+                    for (int t = from; t < from + bestLen && t < voices.length; t++) {
+                        voices[t]++;
+                        if (stream) streams[t]++;
                     }
-                    if (drop > best) {
-                        best = drop;
-                        bestC = c;
-                        bestG = g;
+                    startsOf.computeIfAbsent(sound, x -> new ArrayList<>()).add(from);
+                    startsPerTick[tick]++;
+                    layer.placed++;
+                    int n = horizon(sound, pitch);
+                    if (bestLen >= n) {
+                        plays.add(new Solver.Play(sound, rateOf[pitch], from, n, !endsByItself(sound, pitch), bestG));
+                    } else {
+                        layer.active.add(new Active(sound, pitch, from, bestG, bestLen));
                     }
-                }
-                if (bestC < 0) break;
-                used[bestC] = 1;
-                int atom = candAtom[sl * k + bestC];
-                int sound = atom / pitches;
-                int pitch = atom % pitches;
-                if (sounds.get(sound).stream() && streams >= s.maxStreams) continue;
-                if (!rateOk(startsOf, sound, from)) continue;
-                int len = Math.min(to - from, horizon(sound, pitch));
-                Dictionary.Entry e = sounds.get(sound).entry();
-                for (int t = 0; t < len; t++) {
-                    row(e, pitch, t, tmp);
-                    int at = (from + t) * B;
-                    for (int b = 0; b < B; b++) r[at + b] -= bestG * tmp[b];
-                }
-                startsOf.computeIfAbsent(sound, x -> new ArrayList<>()).add(from);
-                if (sounds.get(sound).stream()) streams++;
-                startsPerTick[tick]++;
-                int n = horizon(sound, pitch);
-                if (len >= n) {
-                    // over within its first slice: whole if it ends by itself, else stopped at its horizon
-                    plays.add(new Solver.Play(sound, rateOf[pitch], from, n, !endsByItself(sound, pitch), bestG));
-                    if (sounds.get(sound).stream()) streams--;
-                } else {
-                    active.add(new Active(sound, pitch, from, bestG, len));
                 }
             }
             // FORMAT: mosaic progress (slices)
-            if (slices >= 10 && (sl + 1) % (slices / 10) == 0) say.accept("slices: " + (sl + 1) * 100 / slices + "%");
+            if (slices >= 10 && (sl + 1) % (slices / 10) == 0) say.accept("placing: " + (sl + 1) * 100 / slices + "%");
         }
-        for (Active a : active) plays.add(new Solver.Play(a.sound, rateOf[a.pitch], a.start, a.length, true, a.gain));
+        for (Layer l : layers) {
+            for (Active a : l.active) plays.add(new Solver.Play(a.sound, rateOf[a.pitch], a.start, a.length, true, a.gain));
+        }
 
         Shared.Keys keys = Shared.keys(plays, sounds);
+        StringBuilder report = new StringBuilder();
+        double total = 0;
         double left = 0;
-        for (int t = 0; t < frames; t++) for (int b = 0; b < B; b++) left += cost(r[t * B + b], b);
-        long explained = Math.round(Math.max(0, 100 * (1 - left / Math.max(1e-12, total))));
-        int[] voices = new int[frames + 1];
-        for (Solver.Play p : keys.plays()) for (int t = p.start(); t < Math.min(frames, p.start() + p.length()); t++) voices[t]++;
+        for (Layer l : layers) {
+            double rest = 0;
+            for (int t = 0; t < frames; t++) for (int b = 0; b < B; b++) rest += l.cost(l.r[t * B + b], b);
+            total += l.total;
+            left += rest;
+            // FORMAT: mosaic slice layer report
+            report.append(l.name).append(": ").append(l.placed).append(" placed, explains ")
+                    .append(Math.round(Math.max(0, 100 * (1 - rest / Math.max(1e-12, l.total))))).append("%\n");
+        }
         int most = 0;
         for (int v : voices) most = Math.max(most, v);
         long cut = keys.plays().stream().filter(Solver.Play::stopped).count();
         // FORMAT: mosaic result summary (slices)
-        String report = "slices of " + slice * 10 + " ms: " + keys.plays().size() + " sounds (" + cut + " cut off), at most "
-                + most + " at once, explains " + explained + "% of the input"
-                + (keys.dropped() > 0 ? "; " + keys.dropped() + " sounds left out (no free stop key)" : "") + "\n";
-        return new Solver.Result(keys.plays(), keys.use(), keys.source(), report);
+        report.append("slices of ").append(slice * 10).append(" ms: ").append(keys.plays().size()).append(" sounds (")
+                .append(cut).append(" cut off), at most ").append(most).append(" at once, explains ")
+                .append(Math.round(Math.max(0, 100 * (1 - left / Math.max(1e-12, total))))).append("% of the input")
+                .append(keys.dropped() > 0 ? "; " + keys.dropped() + " sounds left out (no free stop key)" : "").append('\n');
+        return new Solver.Result(keys.plays(), keys.use(), keys.source(), report.toString());
     }
 
-    /** The rate limit: at most rate_limit_count starts of one file in any rate_limit_ticks long window. */
+    /**
+     * Per frame and bin, the share of the input that is tonal (0..1): the median over 17 frames (170 ms, what holds
+     * still in time: tones) against the median over 17 bins (8.5 semitones, what holds still across frequencies:
+     * noise and hits), as a soft mask H² / (H² + P²).
+     */
+    private float[] harmonicShare(float[] spec) {
+        float[] out = new float[spec.length];
+        float[] window = new float[17];
+        for (int t = 0; t < frames; t++) {
+            for (int b = 0; b < B; b++) {
+                int n = 0;
+                for (int d = -8; d <= 8; d++) if (t + d >= 0 && t + d < frames) window[n++] = spec[(t + d) * B + b];
+                Arrays.sort(window, 0, n);
+                float h = window[n / 2];
+                n = 0;
+                for (int d = -8; d <= 8; d++) if (b + d >= 0 && b + d < B) window[n++] = spec[t * B + b + d];
+                Arrays.sort(window, 0, n);
+                float p = window[n / 2];
+                float hh = h * h;
+                float pp = p * p;
+                out[t * B + b] = hh + pp > 0 ? hh / (hh + pp) : 0;
+            }
+        }
+        return out;
+    }
+
+    /** The rate limit: at most rate_limit.count starts of one file in any rate_limit.ticks long window. */
     private boolean rateOk(Map<Integer, List<Integer>> startsOf, int sound, int start) {
         List<Integer> mine = startsOf.get(sound);
         if (mine == null) return true;
@@ -306,15 +472,17 @@ final class Slicer {
         return count <= s.rateCount;
     }
 
-    /** The best few sound starts per slice, by how well their first slice fits the input (all cores). */
-    private void screen(int slices, int k, int[] candAtom, float[] candScore) throws Exception {
+    /** The best few sound starts per slice for one layer, by how well their first slice fits its part (all cores). */
+    private void screen(Layer layer, int slices) throws Exception {
+        float[] r = layer.r;
         float[] rw = new float[r.length];
         for (int t = 0; t < frames; t++) {
             for (int b = 0; b < B; b++) {
                 float v = r[t * B + b];
-                rw[t * B + b] = v * (v > 0 ? w[b] : over[b]);
+                rw[t * B + b] = v * (v > 0 ? layer.wMiss[b] : over[b]);
             }
         }
+        int k = candidates;
         int chunks = Math.max(1, Math.min(slices, pool.getParallelism() * 4));
         pool.submit(() -> IntStream.range(0, chunks).parallel().forEach(chunk -> {
             int from = (int) ((long) slices * chunk / chunks);
@@ -322,19 +490,23 @@ final class Slicer {
             float[] head = new float[slice * B];
             float[] tmp = new float[B];
             for (int sound = 0; sound < sounds.size(); sound++) {
+                if (layer.kind == Kind.BASS && features[sound].purity < s.bassPurity) continue;
+                if (layer.kind == Kind.MELODY && features[sound].note == Features.NONE) continue;
                 Dictionary.Entry entry = sounds.get(sound).entry();
                 for (int p = 0; p < pitches; p++) {
-                    if (s.skipLong && !endsByItself(sound, p)) continue;
+                    if (!usable(sound, p)) continue;
+                    if (layer.kind == Kind.MELODY && tonality(sound, p, slice) < s.melodyTonality) continue;
                     int len = Math.min(slice, horizon(sound, p));
                     double aw = 0;
                     for (int t = 0; t < len; t++) {
                         row(entry, p, t, tmp);
                         System.arraycopy(tmp, 0, head, t * B, B);
-                        for (int b = 0; b < B; b++) aw += w[b] * tmp[b] * tmp[b];
+                        for (int b = 0; b < B; b++) aw += layer.wMiss[b] * tmp[b] * tmp[b];
                     }
                     if (aw <= 0) continue;
                     int atom = sound * pitches + p;
                     for (int sl = from; sl < to; sl++) {
+                        if (layer.kind == Kind.MELODY && !layer.takes(sound, p, sl)) continue;
                         int start = sl * slice;
                         int n = Math.min(len, frames - start);
                         float c0 = 0, c1 = 0, c2 = 0, c3 = 0;
@@ -355,15 +527,15 @@ final class Slicer {
                         int base = sl * k;
                         int weakest = base;
                         for (int i = base; i < base + k; i++) {
-                            if (candAtom[i] < 0) {
+                            if (layer.candAtom[i] < 0) {
                                 weakest = i;
                                 break;
                             }
-                            if (candScore[i] < candScore[weakest]) weakest = i;
+                            if (layer.candScore[i] < layer.candScore[weakest]) weakest = i;
                         }
-                        if (candAtom[weakest] < 0 || score > candScore[weakest]) {
-                            candAtom[weakest] = atom;
-                            candScore[weakest] = (float) score;
+                        if (layer.candAtom[weakest] < 0 || score > layer.candScore[weakest]) {
+                            layer.candAtom[weakest] = atom;
+                            layer.candScore[weakest] = (float) score;
                         }
                     }
                 }

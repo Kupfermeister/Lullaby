@@ -62,6 +62,14 @@ final class JavaFunctions {
             push(L, problem);
             return 1;
         });
+        // config sound_mosaicing (the whole section as one wire table); once per load. nil, or a warning text.
+        // Sound mosaicing: remove these lines to remove it (see mosaic/package-info.java).
+        addFree(lua, "mosaic_config", L -> {
+            String problem = io.github.kupfermeister.lullaby.mosaic.Mosaic.configure(Wire.read(L.toBuffer(1)));
+            if (problem == null) return 0;
+            push(L, problem);
+            return 1;
+        });
         addFree(lua, "read_config", L -> {
             String config = engine.readConfig();
             if (config == null) return 0;

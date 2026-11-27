@@ -45,9 +45,10 @@ public final class SoundSeeds {
     /**
      * One way to play one exact file: the sound (event) whose list has it, the seed that picks it, and that list line's
      * volume and pitch, which the game multiplies into the packet's (and clamps the pitch to 0.5 .. 2 after). stream:
-     * the game streams it from disk (music, records; few can play at once).
+     * the game streams it from disk (music, records; few can play at once). owner: the sound whose own list has the file
+     * line (the same as sound, unless sound reaches it through an "event" line that points at another sound).
      */
-    public record Use(String sound, String file, float volume, float pitch, boolean stream, long seed) {
+    public record Use(String sound, String file, float volume, float pitch, boolean stream, long seed, String owner) {
     }
 
     private static final long M = 0x5DEECE66DL; // the game's (and java.util.Random's) multiplier
@@ -107,10 +108,11 @@ public final class SoundSeeds {
             Map<String, Long> found = seeds.computeIfAbsent(name, SoundSeeds::search);
             listSize.put(name, found.size());
             for (var f : found.entrySet()) {
-                Entry line = line(name, f.getKey(), 0);
+                String[] owner = new String[1];
+                Entry line = line(name, f.getKey(), 0, owner);
                 if (line == null) continue;
                 out.computeIfAbsent(f.getKey(), k -> new ArrayList<>()).add(new Use(name, f.getKey(), line.volume,
-                        line.pitch, line.stream, f.getValue()));
+                        line.pitch, line.stream, f.getValue(), owner[0]));
             }
         }
         java.util.Comparator<Use> best = java.util.Comparator
@@ -127,15 +129,16 @@ public final class SoundSeeds {
         return uses;
     }
 
-    /** The file's own line in the sound's list (following "event" lines), for its volume, pitch and stream. */
-    private static Entry line(String name, String file, int depth) {
+    /** The file's own line in the sound's list (following "event" lines), for its volume, pitch and stream; owner[0]: whose list. */
+    private static Entry line(String name, String file, int depth, String[] owner) {
         List<Entry> list = pools().get(name);
         if (list == null || depth > 16) return null;
         for (Entry e : list) {
             if (e.event) {
-                Entry inner = line(e.name, file, depth + 1);
+                Entry inner = line(e.name, file, depth + 1, owner);
                 if (inner != null) return inner;
             } else if (e.name.equals(file) && e.weight > 0) {
+                owner[0] = name;
                 return e;
             }
         }

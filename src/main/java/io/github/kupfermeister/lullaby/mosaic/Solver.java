@@ -56,19 +56,6 @@ final class Solver {
     }
 
     private static final int B = Spectra.BINS;
-    private static final int NONE = -1;
-    /** Harmonics 1..6 in bins above the fundamental (2 bins per semitone) and their weights, for the pitch guess. */
-    private static final int[] HARMONIC = {0, 24, 38, 48, 56, 62};
-    private static final float[] HARMONIC_WEIGHT = {1f, 0.85f, 0.72f, 0.61f, 0.52f, 0.44f};
-
-    /** What is worked out once per sound file: how tonal it is up to each frame, its first note, bass purity. */
-    private static final class Features {
-        double[] cumTone; // energy x peakiness of frames that hold the first note, summed up to each frame
-        double[] cumEnergy;
-        int note = NONE; // bin of the first note
-        int noteFrames; // how long the first note lasts (frames)
-        float purity; // share of energy below bass_below_hz
-    }
 
     private enum Kind { MELODY, BASS, MAIN, DETAIL }
 
@@ -88,7 +75,6 @@ final class Solver {
     private final int[] shiftOf; // pitch index -> bins the spectrum moves
     private final int grid;
     private final int minLength;
-    private final int cutOnlyLonger;
     private final int maxPlay;
     private final int head;
     private final int candidates;
@@ -107,7 +93,7 @@ final class Solver {
     private final List<Play> plays = new ArrayList<>();
     private int step;
 
-    Solver(Settings s, List<Sound> sounds, ForkJoinPool pool, Consumer<String> say) throws Exception {
+    Solver(Settings s, List<Sound> sounds, Features[] features, ForkJoinPool pool, Consumer<String> say) {
         this.s = s;
         this.sounds = sounds;
         this.w = Spectra.weights(s);
@@ -124,14 +110,11 @@ final class Solver {
         }
         this.grid = s.subtick ? 1 : Spectra.FRAMES_PER_TICK;
         this.minLength = frames(s.minLength, true);
-        this.cutOnlyLonger = (int) Math.round(s.cutOnlyLonger * 100);
         this.maxPlay = Math.max(1, frames(s.maxPlaySeconds, false));
         this.head = Math.min(12, 4 * s.precision);
         this.candidates = s.candidates * s.precision;
         this.minGain = s.minGain / s.saturation;
-        this.features = new Features[sounds.size()];
-        pool.submit(() -> IntStream.range(0, sounds.size()).parallel().forEach(i -> features[i] = analyse(sounds.get(i))))
-                .get();
+        this.features = features;
     }
 
     /** Seconds as frames; on the tick grid unless subtick (up for a minimum, down for a maximum). */
@@ -150,129 +133,9 @@ final class Solver {
         return (float) (1 + (base - 1) / Math.sqrt(s.saturation));
     }
 
-    // ---- sound analysis ----
-
-    /** The strongest fundamental of a frame by its harmonics, NONE if the frame is quiet or not peaky. */
-    private static int pitchOf(float[] spec, int row, float peak, double energy, double loudest) {
-        if (peak < 0.3 || energy < loudest * 1e-3 || energy <= 0) return NONE;
-        int best = NONE;
-        double bestScore = 0;
-        for (int f0 = 0; f0 < B; f0++) {
-            double score = 0;
-            for (int h = 0; h < HARMONIC.length; h++) {
-                int b = f0 + HARMONIC[h];
-                if (b >= B) break;
-                score += spec[row + b] * HARMONIC_WEIGHT[h];
-            }
-            if (score > bestScore) {
-                bestScore = score;
-                best = f0;
-            }
-        }
-        return best;
-    }
-
-    /** Same tone, an octave apart counting as the same (the guess can slip by an octave), half a semitone of slack. */
-    private static boolean sameTone(int a, int b) {
-        if (a == NONE || b == NONE) return false;
-        int d = Math.floorMod(a - b, 24);
-        return d <= 1 || d >= 23;
-    }
-
-    private Features analyse(Sound snd) {
-        Dictionary.Entry e = snd.entry;
-        int n = e.frames();
-        float[] spec = new float[n * B];
-        for (int i = 0; i < spec.length; i++) spec[i] = Spectra.fromByte(e.spec()[i]);
-        float[] peak = Spectra.tonalityPerFrame(spec, n);
-        double[] energy = new double[n];
-        double loudest = 0;
-        double low = 0;
-        double all = 0;
-        for (int t = 0; t < n; t++) {
-            for (int b = 0; b < B; b++) {
-                double v = (double) spec[t * B + b] * spec[t * B + b];
-                energy[t] += v;
-                if (Spectra.frequency(b) < s.bassBelowHz) low += v;
-            }
-            all += energy[t];
-            loudest = Math.max(loudest, energy[t]);
-        }
-        int[] pitch = new int[n];
-        for (int t = 0; t < n; t++) pitch[t] = pitchOf(spec, t * B, peak[t], energy[t], loudest);
-        Features f = new Features();
-        f.purity = all > 0 ? (float) (low / all) : 0;
-        // the first note: the most common pitch in the 5 frames from the loudest frame of the first 200 ms
-        int onset = 0;
-        for (int t = 0; t < Math.min(n, 20); t++) if (energy[t] > energy[onset]) onset = t;
-        Map<Integer, Integer> count = new HashMap<>();
-        for (int t = onset; t < Math.min(n, onset + 5); t++) if (pitch[t] != NONE) count.merge(pitch[t], 1, Integer::sum);
-        f.note = count.entrySet().stream().max(Map.Entry.comparingByValue()).map(Map.Entry::getKey).orElse(NONE);
-        f.cumTone = new double[n + 1];
-        f.cumEnergy = new double[n + 1];
-        int miss = 0;
-        boolean ended = false;
-        for (int t = 0; t < n; t++) {
-            boolean holds = sameTone(pitch[t], f.note);
-            f.cumTone[t + 1] = f.cumTone[t] + (holds ? energy[t] * peak[t] : 0);
-            f.cumEnergy[t + 1] = f.cumEnergy[t] + energy[t];
-            if (!ended && t >= onset) {
-                if (holds) {
-                    miss = 0;
-                    f.noteFrames = t + 1;
-                } else if (++miss >= 3) {
-                    ended = true;
-                }
-            }
-        }
-        return f;
-    }
-
     /** How tonal the sound is up to this many frames played at this pitch (0..1). */
     private float tonality(int sound, int pitch, int length) {
-        Double o = sounds.get(sound).override;
-        if (o != null) return o.floatValue();
-        Features f = features[sound];
-        int src = (int) Math.min(f.cumEnergy.length - 1, Math.ceil(length * rateOf[pitch]));
-        return f.cumEnergy[src] > 0 ? (float) (f.cumTone[src] / f.cumEnergy[src]) : 0;
-    }
-
-    private static final String[] NOTE_NAMES = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
-
-    /** "C4" for a bin (bin 0 is A1, two bins per semitone; between two notes it takes the nearer, "~" marks it). */
-    static String noteName(int bin) {
-        if (bin == NONE) return "-";
-        int midi = 33 + bin / 2;
-        return NOTE_NAMES[midi % 12] + (midi / 12 - 1) + (bin % 2 == 1 ? "~" : "");
-    }
-
-    /** tonality.txt: every sound in use with its tonality, first note, how long it lasts, bass purity and length. */
-    void writeSoundList(Path out) throws IOException {
-        Integer[] order = new Integer[sounds.size()];
-        float[] tone = new float[sounds.size()];
-        int middle = pitches / 2;
-        for (int i = 0; i < order.length; i++) {
-            order[i] = i;
-            tone[i] = tonality(i, middle, Math.min(sounds.get(i).entry.frames(), maxPlay));
-        }
-        Arrays.sort(order, (a, b) -> Float.compare(tone[b], tone[a]));
-        StringBuilder sb = new StringBuilder();
-        // FORMAT: tonality.txt header
-        sb.append("# Every sound in the last mosaic, most tonal first. Worked out from each file, nothing picked by hand:\n")
-                .append("# tonality: how much of it (up to max_play_seconds) is one held tone, the tone of its first note\n")
-                .append("#   (energy in peaks while the pitch stays on that note; a melody counts only while its first note lasts)\n")
-                .append("# note: its first note (~: between two notes), note s: how long that note lasts,\n")
-                .append("# bass: share of its energy below bass_below_hz, s: its length. * = tonality set in settings.txt\n")
-                .append("# tonality  note  note s  bass  s      file\n");
-        for (int i : order) {
-            Features f = features[i];
-            Dictionary.Entry e = sounds.get(i).entry;
-            sb.append(String.format(Locale.ROOT, "%.3f%s    %-5s %5.2f   %.2f  %-6s %s%n", tone[i],
-                    sounds.get(i).override != null ? "*" : " ", noteName(f.note), f.noteFrames / 100.0, f.purity,
-                    e.realFrames() < 0 ? ">" + (int) e.seconds() : String.format(Locale.ROOT, "%.2f", e.realFrames() / 100.0),
-                    e.file()));
-        }
-        Files.writeString(out, sb.toString());
+        return features[sound].tonality((int) Math.ceil(length * rateOf[pitch]), sounds.get(sound).override);
     }
 
     // ---- a sound at a pitch ----
@@ -287,28 +150,29 @@ final class Solver {
         return real < 0 ? -1 : framesAt(real, pitch);
     }
 
-    /** Longer than max_play_seconds: must be cut off by then (or is skipped with long_sounds = skip). */
+    /** May be cut off (Features: it hits again or holds its loudness); else it always plays whole. */
+    private boolean mayCut(int sound, int pitch) {
+        return features[sound].stoppable;
+    }
+
+    /** A stoppable sound longer than max_play_seconds: must be cut off by then. */
     private boolean tooLong(int sound, int pitch) {
+        if (!mayCut(sound, pitch)) return false;
         int real = realFrames(sound, pitch);
         return real < 0 || real > maxPlay;
     }
 
-    /** The frames that can play: the whole sound, or max_play_seconds of it. */
+    /** The frames that can play: a single hit whole, a stoppable sound at most max_play_seconds. */
     private int horizon(int sound, int pitch) {
         int stored = framesAt(sounds.get(sound).entry.frames(), pitch);
-        return tooLong(sound, pitch) ? Math.min(stored, maxPlay) : Math.min(stored, realFrames(sound, pitch));
-    }
-
-    /** Only sounds at least cut_only_longer_than long (at this pitch) may be cut off. */
-    private boolean mayCut(int sound, int pitch) {
         int real = realFrames(sound, pitch);
-        return real < 0 || real >= cutOnlyLonger;
+        if (!mayCut(sound, pitch)) return real < 0 ? stored : Math.min(stored, real);
+        return tooLong(sound, pitch) ? Math.min(stored, maxPlay) : Math.min(stored, real);
     }
 
     private boolean usable(int sound, int pitch) {
-        if (s.skipLong && tooLong(sound, pitch)) return false;
         int n = horizon(sound, pitch);
-        return mayCut(sound, pitch) ? n >= minLength : n >= 1;
+        return mayCut(sound, pitch) ? n >= minLength : n >= 1 && realFrames(sound, pitch) >= 0;
     }
 
     /** Row t of the sound at this pitch: frames squeezed by the rate, bins shifted. */
@@ -531,8 +395,8 @@ final class Solver {
             tonal[t] = (float) (sum / n);
             double plain = 0;
             for (int b = 0; b < B; b++) plain += (double) r[t * B + b] * r[t * B + b];
-            inputPitch[t] = pitchOf(r, t * B, per[t], plain, loudest);
-            melodic[t] = tonal[t] >= 0.5 && inputPitch[t] != NONE;
+            inputPitch[t] = Features.pitchOf(r, t * B, per[t], plain, loudest);
+            melodic[t] = tonal[t] >= 0.5 && inputPitch[t] != Features.NONE;
         }
         cumEnergy = new double[frames + 1];
         cumTonalEnergy = new double[frames + 1];
@@ -548,7 +412,7 @@ final class Solver {
         return switch (layer.kind) {
             case MELODY -> {
                 Features f = features[sound];
-                if (f.note == NONE || tonality(sound, pitch, Math.max(minLength, 10)) < s.melodyTonality) yield false;
+                if (f.note == Features.NONE || tonality(sound, pitch, Math.max(minLength, 10)) < s.melodyTonality) yield false;
                 int note = f.note + shiftOf[pitch];
                 boolean hit = false;
                 for (int t = start; t < Math.min(frames, start + head); t++) {

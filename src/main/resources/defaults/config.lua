@@ -1,4 +1,6 @@
--- Lullaby config. Changes apply on /lullaby reload.
+-- Lullaby config. Changes apply on /lullaby reload. In VS Code (with lullaby.d.lua next to this file) pointing at a
+-- setting shows what it does, and typing suggests the names and values.
+---@type config
 return {
   -- Lua libraries scripts may use. All locked (false) by default, because each one can harm the server.
   unlock = {

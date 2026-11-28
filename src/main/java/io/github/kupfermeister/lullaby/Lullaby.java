@@ -94,6 +94,7 @@ public final class Lullaby extends JavaPlugin {
         blocksOn = false;
         LullaBlend.stop();
         BlockEngine.stop();
+        io.github.kupfermeister.lullaby.nms.BreakSpeed.stop();
         if (engine != null) {
             engine.unload(false); // finals of running tasks run here, then server.data, w.data and c.data are saved
             engine.closeData();

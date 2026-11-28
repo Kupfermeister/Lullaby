@@ -51,6 +51,12 @@ return {
   lullablend_port = false,
   lullablend_bind = "0.0.0.0",
 
+  -- TEST (groundwork for custom block hardness): every player's game is told it can't mine anything (its break speed
+  -- attribute is 0) until the player starts hitting a block; then it gets the real value back, and 0 again when they
+  -- stop. Each change says "attribute set to ..." in chat. Test rule: grass blocks stay at 0, so they can't be mined.
+  -- The server's own value never changes and the server still checks every break. false: off.
+  custom_hardness = true,
+
   -- Sound mosaicing: /lullaby mosaic play <file> [filters] [-overwrite] rebuilds an audio file (.wav, .mp3, .ogg) in
   -- plugins/lullaby/mosaic out of Minecraft's own sounds and plays it to you. A file is worked out once and kept
   -- (in mosaic/made, with a preview .wav); -overwrite works it out again, for example after changing these.

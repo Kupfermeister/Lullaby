@@ -275,6 +275,7 @@ local DEFAULTS = {
 	block_show_sections = 128,
 	lullablend_port = false,
 	lullablend_bind = "0.0.0.0",
+	custom_hardness = true, -- TEST, on for now (nms/BreakSpeed.java)
 }
 
 -- Reads config.lua (a Lua file that returns a table) with nothing in reach, fills in defaults for missing keys.
@@ -495,6 +496,15 @@ function I.setup()
 	J.set_error_window(tonumber(I.config.error_repeat_seconds) or 10)
 	I.data_setup(I.config) -- data.lua
 	I.blocks_setup(I.config)
+	local hardness = I.config.custom_hardness
+	if hardness == nil then hardness = DEFAULTS.custom_hardness end
+	if type(hardness) ~= "boolean" then
+		-- FORMAT: bad custom_hardness in the config
+		J.report("warning", "plugins/lullaby/config.lua", -1, "loading the config",
+			"custom_hardness must be true or false (using " .. tostring(DEFAULTS.custom_hardness) .. ")")
+		hardness = DEFAULTS.custom_hardness
+	end
+	J.break_speed_config(hardness)
 	-- Sound mosaicing (mosaic/Mosaic.java): Java checks the whole section. Remove these lines to remove the feature.
 	local mosaic = I.config.sound_mosaicing
 	local problem = J.mosaic_config(I.wire(type(mosaic) == "table" and mosaic or {}))

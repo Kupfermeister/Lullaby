@@ -62,6 +62,12 @@ final class JavaFunctions {
             push(L, problem);
             return 1;
         });
+        // config custom_hardness (true/false); once per load. TEST: holds every game's break speed at 0 until the
+        // player starts hitting a block (nms/BreakSpeed.java).
+        addFree(lua, "break_speed_config", L -> {
+            io.github.kupfermeister.lullaby.nms.BreakSpeed.configure(engine.plugin(), L.toBoolean(1));
+            return 0;
+        });
         // config sound_mosaicing (the whole section as one wire table); once per load. nil, or a warning text.
         // Sound mosaicing: remove these lines to remove it (see mosaic/package-info.java).
         addFree(lua, "mosaic_config", L -> {

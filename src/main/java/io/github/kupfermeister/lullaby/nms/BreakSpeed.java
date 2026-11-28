@@ -42,9 +42,9 @@ import org.bukkit.plugin.Plugin;
  * custom block's hardness and the hardness of the block it looks like, so the game mines it at its real speed.
  *
  * <p>Only the player's game is lied to: the server's own attribute never changes, and the server still checks every
- * break with the real value (so this can't make anything breakable that isn't). Test rule: on a grass block the value
- * stays 0, so grass blocks can't be mined (unless the server sees an instant break, e.g. a fast enough tool).
- * Each change says {@code attribute set to X} in that player's chat.
+ * break with the real value (so this can't make anything breakable that isn't). Blocks the server breaks at once
+ * (flowers, or anything with a fast enough tool) keep 0: the server breaks them alone and the breaker gets vanilla's
+ * break effects from here, once.
  *
  * <p>How: one hook per player in the network pipeline, right before vanilla's Connection. Incoming, it watches the
  * "start / stop / abort digging" packets and answers at once on Netty's thread (no wait for the main thread, which
@@ -59,6 +59,11 @@ public final class BreakSpeed {
     private static final long NONE = Long.MIN_VALUE; // no block (BlockPos.asLong never gives it for a real position)
     private static final Listener JOINS = new Listener() { };
     private static boolean on;
+
+    /** Config custom_hardness as set at this load. */
+    public static boolean on() {
+        return on;
+    }
 
     private BreakSpeed() {
     }
@@ -189,12 +194,7 @@ public final class BreakSpeed {
         }
 
         private void send(ChannelHandlerContext ctx, AttributeInstance value) {
-            ctx.write(new ClientboundUpdateAttributesPacket(id, List.of(value)));
-            ctx.writeAndFlush(new ClientboundSystemChatPacket(Component.literal("attribute set to " + text(value.getValue())), false));
-        }
-
-        private static String text(double v) {
-            return v == Math.rint(v) && Math.abs(v) < 1e15 ? Long.toString((long) v) : Double.toString(v);
+            ctx.writeAndFlush(new ClientboundUpdateAttributesPacket(id, List.of(value)));
         }
 
         @Override
@@ -203,11 +203,17 @@ public final class BreakSpeed {
                 switch (a.getAction()) {
                     case START_DESTROY_BLOCK -> {
                         started = a.getPos().asLong();
-                        startedHeld = held;
-                        if (!isGrass(a.getPos())) {
+                        // Creative breaks at once in the game itself, with its own effects, whatever the value.
+                        if (player.getAbilities().instabuild) {
+                            startedHeld = false;
+                        } else if (instant(a.getPos())) {
+                            // The server breaks it right on this packet. The game stays at 0, so only the server
+                            // breaks it and the effects come once, from broken(). (Releasing here raced: the game
+                            // could break it itself a tick later and play the effects a second time.)
+                            startedHeld = held;
+                        } else {
+                            startedHeld = false; // the server waits for the game's "stop": the game plays the effects
                             if (held) release(ctx);
-                        } else if (!held) {
-                            hold(ctx);
                         }
                     }
                     case ABORT_DESTROY_BLOCK, STOP_DESTROY_BLOCK -> {
@@ -221,14 +227,16 @@ public final class BreakSpeed {
         }
 
         /**
-         * Reads the block on Netty's thread, without loading anything: a block changed in this very moment may read as
-         * its old state, which is fine for a test.
+         * Whether the server breaks this block at once when hitting starts: vanilla's own test (destroy progress of
+         * one tick at least 1, ServerPlayerGameMode). Read on Netty's thread without loading anything; the block,
+         * the held tool or an effect changing in this very moment may read as before (then at worst the effects come
+         * twice or not at all for that one block).
          */
-        private boolean isGrass(BlockPos pos) {
+        private boolean instant(BlockPos pos) {
             LevelChunk chunk = player.level().getChunkIfLoaded(pos.getX() >> 4, pos.getZ() >> 4);
             if (chunk == null) return false;
             BlockState state = chunk.getBlockState(pos);
-            return state.is(Blocks.GRASS_BLOCK);
+            return state.getDestroyProgress(player, chunk, pos) >= 1.0F;
         }
 
         @Override

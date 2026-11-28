@@ -10,22 +10,33 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.ChannelPromise;
+import io.papermc.paper.event.server.ServerResourcesReloadedEvent;
 import it.unimi.dsi.fastutil.shorts.Short2ObjectOpenHashMap;
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.RecordComponent;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.Set;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.HolderSet;
 import net.minecraft.core.Holder;
 import net.minecraft.core.MappedRegistry;
 import net.minecraft.core.Registry;
 import net.minecraft.core.SectionPos;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -48,58 +59,83 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.TagKey;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.component.Tool;
+import net.minecraft.world.level.EmptyBlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.chunk.PalettedContainerFactory;
 import org.bukkit.Bukkit;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
-import io.papermc.paper.event.server.ServerResourcesReloadedEvent;
 import org.bukkit.event.world.WorldInitEvent;
 import org.bukkit.plugin.Plugin;
 
 /**
- * PROTOTYPE: real custom blocks ({@code lullaby:...}). Minecraft can't add blocks once it has started, so they are put
- * into vanilla's block list (the block registry) by force while the plugin loads, before any world exists. On the
- * server they are real blocks in every way (events, /setblock, saving, pistons, explosions see them as themselves).
- * Three things keep the rest of the world from noticing:
+ * Custom blocks ({@code lullaby:...}) and changed vanilla blocks, declared with {@code register_block{ }}.
+ *
+ * <p><b>New blocks are real.</b> Minecraft only takes new blocks before any world exists, so they are put into
+ * vanilla's block list (the block registry) by force while the plugin loads ({@link #loadLedger}). On the server they
+ * are real blocks in every way: events, /setblock, saving, pistons, explosions, other plugins' registry lookups see
+ * them as themselves. Scripts run later, so Lullaby keeps every declared block in a ledger, {@code
+ * plugins/lullaby/blocks.txt}: a block declared for the first time exists from the next server start on (the
+ * declaration says so), and a block whose declaration is gone stays as it was (an orphan), so placed blocks are kept
+ * until its line is deleted from the ledger.
+ *
+ * <p>Each new block has a <i>carrier</i> (a vanilla block state): it copies all of the carrier's settings (hardness,
+ * sounds, light, tags such as mineable/pickaxe) but not the carrier's Java behaviour (a plain block for now). Every
+ * block, new or vanilla, may have an <i>appearance</i>: the vanilla state the players' games are shown (default: the
+ * carrier, or the vanilla block itself).
  *
  * <ul>
- * <li><b>The disk.</b> A custom block is saved in the chunk as its <i>carrier</i> with one extra property,
- * {@code stone[lullaby=lullaby:test_block]} (plus its own properties as {@code lullaby.<name>}). Lullaby reads that
- * back as the custom block; without Lullaby, vanilla reads it as plain stone (vanilla skips properties it doesn't
- * know), so removing the plugin leaves carriers, not holes. This needs Lullaby's own chunk codec in each world
+ * <li><b>The disk.</b> A new block is saved in the chunk as its carrier with one extra property,
+ * {@code stone[lullaby=lullaby:ruby_ore]} (plus its own properties as {@code lullaby.<name>}). Lullaby reads that back
+ * as the new block; without Lullaby, vanilla reads plain stone (vanilla skips properties it doesn't know), so
+ * removing the plugin leaves carriers, not holes. This needs Lullaby's own chunk codec in each world
  * ({@link #worldCreated}, before the world loads any chunk; Paper's anti-xray reads chunks with vanilla's codec, so
  * custom blocks need anti-xray off).</li>
  * <li><b>The players' games.</b> They only know vanilla's blocks: an unknown block number in a packet breaks them. A
- * hook in each player's pipeline ({@link ClientHook}) turns every custom state into its <i>appearance</i> (a vanilla
- * state) in every packet that carries block states: chunks, block updates, break effects, block particles, entity
- * data (block displays, endermen). Not yet: falling block spawns, statistics, block events (custom blocks have none).</li>
- * <li><b>Bukkit.</b> It has no Material for a custom block, so {@code getType()} gives the carrier's.</li>
+ * hook in each player's pipeline ({@link ClientHook}) puts the appearance into every packet that shows a block:
+ * chunks, block updates, block displays and endermen's held block. Break effects and block particles the server sends
+ * are the block's own instead (a new block's carrier, a vanilla block itself), so they sound and look like what the
+ * block really is. The game's own hit particles and hit, step and fall sounds can't be reached from the server: the
+ * game makes them from the block it is shown. Not yet: falling block spawns, statistics.</li>
+ * <li><b>Mining speed.</b> The game works out mining speed from the block it is shown. When the appearance mines
+ * differently (hardness, needed tool, tool speed), the game and the server disagree; with {@code custom_hardness}
+ * off that is refused at load (red error) and the block is shown as itself.</li>
+ * <li><b>Bukkit.</b> Its Material list is fixed (a Java enum), so a new block can't have its own Material;
+ * {@code getType()} gives the carrier's. Paper's block registry (BlockType) does have the new block.</li>
  * </ul>
  *
- * <p>A custom block copies all of its carrier's settings (hardness, sounds, light, tags such as mineable/pickaxe) but
- * not its Java behaviour: it is a plain block for now. Later: other custom sounds and particles per block
- * ({@code register_block{}} fields), loot tables, the orphan ledger, per-player appearance.
- *
- * <p>Threads: registration on the main thread at plugin load; {@link #REMAP} is written once there and only read
- * afterwards (Netty's threads read it in the hook).
+ * <p>Threads: registration at plugin load and declarations at script load, on the main thread. {@link #maps} is
+ * swapped whole and only read by Netty's threads.
  */
 public final class CustomBlocks {
 
-    /** A registered custom block. */
-    public record Custom(String id, Block block, BlockState carrier, BlockState appearance) {
+    /** A registered new block. carrier: as registered this run (a changed carrier needs a restart). */
+    public record Custom(String id, Block block, BlockState carrier) {
+    }
+
+    /** What the hook needs, swapped whole: state number → the number the game is shown / its own effects use. */
+    private record Maps(int[] look, int[] effects) {
+        boolean changes(int id) {
+            return id >= 0 && id < look.length && look[id] != id;
+        }
     }
 
     private static final Map<String, Custom> BY_ID = new LinkedHashMap<>();
     private static final Map<Block, Custom> BY_BLOCK = new IdentityHashMap<>();
-    /** Block state number → the number the players' games get. Identity for vanilla states; null: no custom blocks. */
-    private static volatile int[] REMAP;
-    private static int vanillaStates; // custom states are numbered from here on
+    /** Ledger lines as on disk: id → { carrier text, appearance text }. */
+    private static final Map<String, String[]> LEDGER = new LinkedHashMap<>();
+    /** Block → the state its states are shown as (new blocks: from the ledger or declaration; vanilla: declared). */
+    private static Map<Block, BlockState> appearance = new IdentityHashMap<>();
+    private static volatile Maps maps;
+    private static Path ledgerFile;
     private static final String NAME = "lullaby_custom_blocks"; // the hook's name in a player's network pipeline
     private static final String KEY = "lullaby"; // the extra property on disk
     private static final Listener LISTENER = new Listener() { };
@@ -107,27 +143,59 @@ public final class CustomBlocks {
     private CustomBlocks() {
     }
 
-    /** True once any custom block exists (then the codec and the client hook are needed). */
-    public static boolean any() {
-        return !BY_ID.isEmpty();
-    }
-
     public static Custom byBlock(Block block) {
         return BY_BLOCK.get(block);
     }
 
-    // ---- registration (plugin load, main thread, before any world) -------------------------------------------
+    // ---- the ledger and registration (plugin load, main thread, before any world) --------------------------------
 
-    /**
-     * Registers one custom block. {@code id}: "namespace:path" (not minecraft). Its settings are copied from the
-     * carrier's block. Throws with a clear message on a bad id or when the registry can't be opened.
-     */
-    public static Custom register(String id, BlockState carrier, BlockState appearance) {
+    // FORMAT: blocks.txt, the ledger. Lines: id TAB carrier TAB appearance (vanilla's block state text); # comments.
+    private static final String LEDGER_HEAD = """
+            # Lullaby's new blocks (register_block{ } in scripts writes this file; don't change it while the server runs).
+            # Each line: id, carrier, appearance (TAB between). A block here exists from server start on, even when no script
+            # declares it anymore, so placed ones are kept. Delete its line and restart to remove it: it then loads as its carrier.
+            """;
+
+    /** Registers every block in the ledger. Problems are logged and skip that line; the rest still load. */
+    public static void loadLedger(Path dataFolder, org.slf4j.Logger log) {
+        ledgerFile = dataFolder.resolve("blocks.txt");
+        if (!Files.exists(ledgerFile)) return;
+        List<String> lines;
+        try {
+            lines = Files.readAllLines(ledgerFile, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            log.error("Lullaby could not read {}; no new blocks this run", ledgerFile, e); // FORMAT
+            return;
+        }
+        for (String line : lines) {
+            if (line.isBlank() || line.startsWith("#")) continue;
+            String[] p = line.split("\t");
+            try {
+                if (p.length != 3) throw new IllegalArgumentException("needs id, carrier and appearance");
+                BlockState carrier = vanillaState(p[1], "carrier");
+                BlockState look = vanillaState(p[2], "appearance");
+                Custom c = register(p[0], carrier);
+                appearance.put(c.block, look);
+                LEDGER.put(c.id, new String[] {p[1], p[2]});
+            } catch (RuntimeException e) {
+                log.error("Lullaby: blocks.txt line \"{}\": {}", line, e.getMessage()); // FORMAT
+            }
+        }
+        buildMaps();
+    }
+
+    private static BlockState vanillaState(String text, String what) {
+        BlockState state = Block.stateById(Nms.blockStateParse(text));
+        if (BY_BLOCK.containsKey(state.getBlock())) throw new IllegalArgumentException(what + " must be a vanilla block, got " + text);
+        return state;
+    }
+
+    /** Puts one new block into vanilla's block registry. Its settings are copied from the carrier's block. */
+    private static Custom register(String id, BlockState carrier) {
         Identifier key = Identifier.parse(id);
-        if (key.getNamespace().equals("minecraft")) throw new IllegalArgumentException("a custom block id can't be minecraft:, got " + id);
+        if (key.getNamespace().equals("minecraft")) throw new IllegalArgumentException("a new block can't be minecraft:, got " + id);
         if (BuiltInRegistries.BLOCK.containsKey(key)) throw new IllegalArgumentException("block " + id + " exists already");
         MappedRegistry<Block> registry = (MappedRegistry<Block>) BuiltInRegistries.BLOCK;
-        if (vanillaStates == 0) vanillaStates = Block.BLOCK_STATE_REGISTRY.size();
         Block block;
         try {
             Field frozen = MappedRegistry.class.getDeclaredField("frozen");
@@ -156,28 +224,29 @@ public final class CustomBlocks {
         }
         copyTags(block, carrier.getBlock());
         setBukkitMaterial(block, carrier);
-        Custom custom = new Custom(key.toString(), block, carrier, appearance);
+        Custom custom = new Custom(key.toString(), block, carrier);
         BY_ID.put(custom.id, custom);
         BY_BLOCK.put(block, custom);
-        buildRemap();
         return custom;
     }
 
-    private static void buildRemap() {
-        int[] remap = new int[Block.BLOCK_STATE_REGISTRY.size()];
-        for (int i = 0; i < remap.length; i++) remap[i] = i;
-        for (Custom c : BY_ID.values()) {
-            for (BlockState state : c.block.getStateDefinition().getPossibleStates()) {
-                remap[Block.getId(state)] = Block.getId(c.appearance);
-            }
+    private static void buildMaps() {
+        int size = Block.BLOCK_STATE_REGISTRY.size();
+        int[] look = new int[size], effects = new int[size];
+        for (int i = 0; i < size; i++) look[i] = effects[i] = i;
+        for (Map.Entry<Block, BlockState> e : appearance.entrySet()) {
+            for (BlockState state : e.getKey().getStateDefinition().getPossibleStates()) look[Block.getId(state)] = Block.getId(e.getValue());
         }
-        REMAP = remap;
+        for (Custom c : BY_ID.values()) {
+            for (BlockState state : c.block.getStateDefinition().getPossibleStates()) effects[Block.getId(state)] = Block.getId(c.carrier);
+        }
+        maps = new Maps(look, effects);
     }
 
     /**
-     * A custom block gets the same tags as its carrier (mineable/pickaxe and so on: tools, fire, mobs read them).
-     * Vanilla only fills tags from data packs, which never name custom blocks, so this runs again after each data
-     * pack reload (vanilla empties them then). Before the data packs are loaded the tags are empty but bound.
+     * A new block gets the same tags as its carrier (mineable/pickaxe and so on: tools, fire, mobs read them).
+     * Vanilla only fills tags from data packs, which never name new blocks, so this runs again after each data pack
+     * reload (vanilla empties them then). Before the data packs are loaded the tags are empty but bound.
      */
     private static void copyTags(Block block, Block carrier) {
         List<TagKey<Block>> tags;
@@ -191,39 +260,191 @@ public final class CustomBlocks {
             bind.setAccessible(true);
             bind.invoke(block.builtInRegistryHolder(), tags);
         } catch (ReflectiveOperationException e) {
-            throw new IllegalStateException("Lullaby bug: can't set a custom block's tags on this version (" + e + ")", e);
+            throw new IllegalStateException("Lullaby bug: can't set a new block's tags on this version (" + e + ")", e);
         }
     }
 
-    /** Paper keeps each state's Bukkit Material in a field; a custom state gets its carrier's. */
+    /** Paper keeps each state's Bukkit Material in a field; a new block's states get their carrier's. */
     private static void setBukkitMaterial(Block block, BlockState carrier) {
         try {
             Field f = BlockState.class.getDeclaredField("cachedMaterial");
             f.setAccessible(true);
             for (BlockState state : block.getStateDefinition().getPossibleStates()) f.set(state, carrier.getBukkitMaterial());
         } catch (ReflectiveOperationException e) {
-            throw new IllegalStateException("Lullaby bug: can't set a custom block's Bukkit type on this version (" + e + ")", e);
+            throw new IllegalStateException("Lullaby bug: can't set a new block's Bukkit type on this version (" + e + ")", e);
+        }
+    }
+
+    // ---- declarations (each script load, main thread) ---------------------------------------------------------
+
+    /**
+     * register_block{ } of all scripts, once they have loaded. {@code text}: one declaration per line, "id TAB
+     * carrier TAB appearance TAB file TAB line" (carrier and appearance: block state text or empty). Gives back the
+     * problems, one per line: "error|warning TAB file TAB line TAB message". Applies what can change now (appearance),
+     * writes the ledger for what needs a restart (new blocks, other carriers), and resends the chunks if what
+     * players see changed. {@code customHardness}: config custom_hardness (BreakSpeed).
+     */
+    public static String declare(String text, boolean customHardness) {
+        List<String> problems = new ArrayList<>();
+        Map<Block, BlockState> look = new IdentityHashMap<>();
+        Set<String> seen = new HashSet<>();
+        boolean ledgerChanged = false;
+        for (String line : text.split("\n")) {
+            if (line.isEmpty()) continue;
+            String[] p = line.split("\t", -1);
+            String file = p[3], where = p[4];
+            try {
+                Identifier key = Identifier.parse(p[0]);
+                String id = key.toString();
+                if (!seen.add(id)) throw new IllegalArgumentException(id + " is declared twice");
+                Custom c = BY_ID.get(id);
+                Block vanilla = c == null ? BuiltInRegistries.BLOCK.getOptional(key).orElse(null) : null;
+                if (c == null && vanilla != null) {
+                    // A vanilla block: it is its own carrier; only what can change on it is set.
+                    if (!p[1].isEmpty()) throw new IllegalArgumentException(id + " is a vanilla block, so it is its own carrier (leave carrier out)");
+                    if (!p[2].isEmpty()) {
+                        BlockState a = vanillaState(p[2], "appearance");
+                        String mismatch = customHardness ? null : mismatch(vanilla.defaultBlockState(), a);
+                        if (mismatch != null) problems.add(problem("error", file, where, id + " looks like " + p[2] + ", but " + mismatch + HARDNESS_OFF + " it is shown as itself."));
+                        else look.put(vanilla, a);
+                    }
+                    continue;
+                }
+                if (p[1].isEmpty()) throw new IllegalArgumentException(id + " is a new block: it needs carrier = a vanilla block state");
+                if (key.getNamespace().equals("minecraft")) {
+                    throw new IllegalArgumentException(id + " is not a vanilla block; a new block needs its own namespace, like lullaby:" + key.getPath());
+                }
+                BlockState carrier = vanillaState(p[1], "carrier");
+                String carrierText = Nms.blockStateText(Block.getId(carrier));
+                BlockState a = p[2].isEmpty() ? carrier : vanillaState(p[2], "appearance");
+                String appearanceText = Nms.blockStateText(Block.getId(a));
+                String[] old = LEDGER.get(id);
+                if (old == null || !old[0].equals(carrierText) || !old[1].equals(appearanceText)) {
+                    LEDGER.put(id, new String[] {carrierText, appearanceText});
+                    ledgerChanged = true;
+                }
+                if (c == null) {
+                    problems.add(problem("warning", file, where, id + " is new: restart the server so it exists (Minecraft only takes new blocks at start)."));
+                    continue;
+                }
+                if (c.carrier != carrier) {
+                    problems.add(problem("warning", file, where, id + ": the carrier changes from " + Nms.blockStateText(Block.getId(c.carrier))
+                            + " to " + carrierText + " at the next server start; until then it stays."));
+                }
+                String mismatch = customHardness ? null : mismatch(c.block.defaultBlockState(), a);
+                if (mismatch != null) {
+                    problems.add(problem("error", file, where, id + " looks like " + appearanceText + ", but " + mismatch + HARDNESS_OFF
+                            + " it is shown as its carrier."));
+                    look.put(c.block, c.carrier);
+                } else {
+                    look.put(c.block, a);
+                }
+            } catch (RuntimeException e) {
+                problems.add(problem("error", file, where, "register_block{}: " + e.getMessage()));
+            }
+        }
+        // Orphans: registered blocks no script declares now keep their last appearance (checked like declared ones).
+        for (Custom c : BY_ID.values()) {
+            if (look.containsKey(c.block)) continue;
+            BlockState a = appearance.getOrDefault(c.block, c.carrier);
+            if (!customHardness && mismatch(c.block.defaultBlockState(), a) != null) a = c.carrier;
+            look.put(c.block, a);
+        }
+        if (ledgerChanged) writeLedger(problems);
+        boolean changed = !look.equals(appearance);
+        appearance = look;
+        buildMaps();
+        if (changed) resendChunks();
+        return String.join("\n", problems);
+    }
+
+    private static final String HARDNESS_OFF = ", so the game would mine it at another speed than the server."
+            + " custom_hardness is off in the config: until it is on or the appearance mines the same,";
+
+    private static String problem(String kind, String file, String line, String message) {
+        return kind + "\t" + file + "\t" + line + "\t" + message.replace('\n', ' ');
+    }
+
+    /**
+     * Why the game, shown {@code look}, would mine the real block {@code real} at another speed, or null if it
+     * mines the same. Vanilla's inputs that depend on the block: its hardness, whether it needs the right tool for
+     * drops, and every tool's rules (which blocks a tool is fast on or right for: read from every item's tool
+     * component, so no list of tags is written here).
+     */
+    private static String mismatch(BlockState real, BlockState look) {
+        float hr = real.getDestroySpeed(EmptyBlockGetter.INSTANCE, BlockPos.ZERO);
+        float hl = look.getDestroySpeed(EmptyBlockGetter.INSTANCE, BlockPos.ZERO);
+        if (hr != hl) return "its hardness is " + Codecs.numberText(hr) + " and the appearance's is " + Codecs.numberText(hl);
+        if (real.requiresCorrectToolForDrops() != look.requiresCorrectToolForDrops()) {
+            return (real.requiresCorrectToolForDrops() ? "it needs" : "it doesn't need") + " the right tool and the appearance "
+                    + (look.requiresCorrectToolForDrops() ? "does" : "doesn't");
+        }
+        Holder<Block> hReal = real.getBlock().builtInRegistryHolder(), hLook = look.getBlock().builtInRegistryHolder();
+        for (Item item : BuiltInRegistries.ITEM) {
+            Tool tool = item.components().get(DataComponents.TOOL);
+            if (tool == null) continue;
+            for (Tool.Rule rule : tool.rules()) {
+                HolderSet<Block> set = rule.blocks();
+                if (set.contains(hReal) != set.contains(hLook)) {
+                    return BuiltInRegistries.ITEM.getKey(item) + " mines " + (set.contains(hReal) ? "it" : "the appearance")
+                            + " differently than " + (set.contains(hReal) ? "the appearance" : "it");
+                }
+            }
+        }
+        return null;
+    }
+
+    private static void writeLedger(List<String> problems) {
+        StringBuilder out = new StringBuilder(LEDGER_HEAD);
+        for (Map.Entry<String, String[]> e : LEDGER.entrySet()) {
+            out.append(e.getKey()).append('\t').append(e.getValue()[0]).append('\t').append(e.getValue()[1]).append('\n');
+        }
+        try {
+            Path tmp = ledgerFile.resolveSibling("blocks.txt.tmp");
+            Files.writeString(tmp, out, StandardCharsets.UTF_8);
+            Files.move(tmp, ledgerFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException e) {
+            problems.add(problem("error", "plugins/lullaby/blocks.txt", "-1", "could not write the block ledger: " + e.getMessage()));
+        }
+    }
+
+    /** Sends every loaded chunk a player can see again (after appearances changed on reload). */
+    private static void resendChunks() {
+        Map<org.bukkit.World, Set<Long>> done = new HashMap<>();
+        for (org.bukkit.entity.Player p : Bukkit.getOnlinePlayers()) {
+            org.bukkit.World w = p.getWorld();
+            Set<Long> set = done.computeIfAbsent(w, k -> new HashSet<>());
+            int r = p.getViewDistance(), cx = p.getLocation().getBlockX() >> 4, cz = p.getLocation().getBlockZ() >> 4;
+            for (int x = cx - r; x <= cx + r; x++) {
+                for (int z = cz - r; z <= cz + r; z++) {
+                    if (w.isChunkLoaded(x, z) && set.add(((long) x << 32) ^ (z & 0xFFFFFFFFL))) w.refreshChunk(x, z);
+                }
+            }
         }
     }
 
     // ---- turning on (plugin enable, before the worlds load) ------------------------------------------------------
 
     /**
-     * Puts Lullaby's chunk codec into each world as it is created, the client hook into each player, and the tags
-     * back after each data pack reload. Must run before the first world loads (Lullaby loads at STARTUP for this).
+     * Puts Lullaby's chunk codec into each world as it is created (only when new blocks exist), the client hook into
+     * each player, and the tags back after each data pack reload. Runs before the first world loads (Lullaby loads
+     * at STARTUP for this).
      */
-    public static void start(Plugin plugin) {
-        if (!any()) return;
-        Bukkit.getPluginManager().registerEvent(WorldInitEvent.class, LISTENER, EventPriority.LOWEST, (l, e) -> {
-            if (e instanceof WorldInitEvent init) worldCreated(((org.bukkit.craftbukkit.CraftWorld) init.getWorld()).getHandle());
-        }, plugin);
+    public static void start(Plugin plugin, Path dataFolder) {
+        if (ledgerFile == null) ledgerFile = dataFolder.resolve("blocks.txt");
+        if (maps == null) buildMaps();
+        if (!BY_ID.isEmpty()) {
+            Bukkit.getPluginManager().registerEvent(WorldInitEvent.class, LISTENER, EventPriority.LOWEST, (l, e) -> {
+                if (e instanceof WorldInitEvent init) worldCreated(((org.bukkit.craftbukkit.CraftWorld) init.getWorld()).getHandle());
+            }, plugin);
+            for (ServerLevel level : MinecraftServer.getServer().getAllLevels()) worldCreated(level);
+        }
         Bukkit.getPluginManager().registerEvent(PlayerJoinEvent.class, LISTENER, EventPriority.LOWEST, (l, e) -> {
             if (e instanceof PlayerJoinEvent join) hook(((org.bukkit.craftbukkit.entity.CraftPlayer) join.getPlayer()).getHandle());
         }, plugin);
         Bukkit.getPluginManager().registerEvent(ServerResourcesReloadedEvent.class, LISTENER, EventPriority.MONITOR, (l, e) -> {
             for (Custom c : BY_ID.values()) copyTags(c.block, c.carrier.getBlock());
         }, plugin);
-        for (ServerLevel level : MinecraftServer.getServer().getAllLevels()) worldCreated(level);
         for (ServerPlayer player : MinecraftServer.getServer().getPlayerList().getPlayers()) hook(player);
     }
 
@@ -256,9 +477,9 @@ public final class CustomBlocks {
     // ---- the disk: carrier[lullaby=id] -------------------------------------------------------------------------
 
     /**
-     * Vanilla's block state codec, except that a custom state is written as its carrier with {@code lullaby=<id>}
-     * (and its own properties as {@code lullaby.<name>}) and read back from that. An unknown id (a block whose
-     * declaration was removed) reads as the carrier for now (later: the orphan ledger keeps it).
+     * Vanilla's block state codec, except that a new block's state is written as its carrier with {@code lullaby=<id>}
+     * (and its own properties as {@code lullaby.<name>}) and read back from that. An id that isn't registered (its
+     * ledger line was deleted) reads as the carrier.
      */
     static final Codec<BlockState> CODEC = new Codec<>() {
         @Override
@@ -284,7 +505,7 @@ public final class CustomBlocks {
                     Custom c = BY_ID.get(id.get());
                     if (c != null) {
                         BlockState state = c.block.defaultBlockState();
-                        for (var p : c.block.getStateDefinition().getProperties()) {
+                        for (Property<?> p : c.block.getStateDefinition().getProperties()) {
                             Optional<String> v = ops.get(props.get(), KEY + "." + p.getName()).flatMap(ops::getStringValue).result();
                             if (v.isPresent()) state = with(state, p, v.get());
                         }
@@ -296,11 +517,11 @@ public final class CustomBlocks {
         }
     };
 
-    private static <T extends Comparable<T>> BlockState with(BlockState state, net.minecraft.world.level.block.state.properties.Property<T> p, String value) {
+    private static <T extends Comparable<T>> BlockState with(BlockState state, Property<T> p, String value) {
         return p.getValue(value).map(v -> state.setValue(p, v)).orElse(state);
     }
 
-    // ---- the players' games: every custom state becomes its appearance ---------------------------------------
+    // ---- the players' games -----------------------------------------------------------------------------------
 
     private static void hook(ServerPlayer player) {
         Channel channel = player.connection.connection.channel;
@@ -319,46 +540,48 @@ public final class CustomBlocks {
 
     private static final ClientHook HOOK = new ClientHook();
 
-    /** Netty's threads; reads only REMAP. Changes no packet that holds no custom state. */
+    /** Netty's threads; reads only {@link #maps}. Leaves every packet alone that shows no changed block. */
     @ChannelHandler.Sharable
     private static final class ClientHook extends ChannelOutboundHandlerAdapter {
         @Override
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
-            int[] remap = REMAP;
-            if (remap != null && msg instanceof Packet<?> p) msg = rewrite(p, remap);
+            Maps m = maps;
+            if (m != null && msg instanceof Packet<?> p) msg = rewrite(p, m);
             super.write(ctx, msg, promise);
         }
     }
 
     @SuppressWarnings("unchecked")
-    private static Packet<?> rewrite(Packet<?> packet, int[] remap) {
+    private static Packet<?> rewrite(Packet<?> packet, Maps m) {
+        int[] look = m.look, fx = m.effects;
         switch (packet) {
-            case ClientboundLevelChunkWithLightPacket chunk -> rewriteChunk(chunk.chunkData(), remap);
+            case ClientboundLevelChunkWithLightPacket chunk -> rewriteChunk(chunk.chunkData(), m);
             case ClientboundBlockUpdatePacket u -> {
                 int id = Block.getId(u.getBlockState());
-                if (id >= vanillaStates) return new ClientboundBlockUpdatePacket(u.getPos(), Block.stateById(remap[id]));
+                if (m.changes(id)) return new ClientboundBlockUpdatePacket(u.getPos(), Block.stateById(look[id]));
             }
             case ClientboundSectionBlocksUpdatePacket u -> {
-                boolean[] custom = {false};
+                boolean[] changed = {false};
                 Short2ObjectOpenHashMap<BlockState> out = new Short2ObjectOpenHashMap<>();
                 SectionPos[] section = {null};
                 u.runUpdates((pos, state) -> {
                     if (section[0] == null) section[0] = SectionPos.of(pos);
                     int id = Block.getId(state);
-                    if (id >= vanillaStates) {
-                        custom[0] = true;
-                        state = Block.stateById(remap[id]);
+                    if (m.changes(id)) {
+                        changed[0] = true;
+                        state = Block.stateById(look[id]);
                     }
                     out.put(SectionPos.sectionRelativePos(pos), state);
                 });
-                if (custom[0]) return new ClientboundSectionBlocksUpdatePacket(section[0], out);
+                if (changed[0]) return new ClientboundSectionBlocksUpdatePacket(section[0], out);
             }
-            case ClientboundLevelEventPacket e when e.getType() == 2001 && e.getData() >= vanillaStates && e.getData() < remap.length ->
-                    {
-                        return new ClientboundLevelEventPacket(2001, e.getPos(), remap[e.getData()], e.isGlobalEvent());
-                    }
-            case ClientboundLevelParticlesPacket p when p.particle() instanceof BlockParticleOption b && Block.getId(b.getState()) >= vanillaStates -> {
-                BlockParticleOption swapped = new BlockParticleOption(b.getType(), Block.stateById(remap[Block.getId(b.getState())]));
+            // Break effects: the block's own (a new block's carrier), not its appearance.
+            case ClientboundLevelEventPacket e when e.getType() == 2001 && e.getData() >= 0 && e.getData() < fx.length && fx[e.getData()] != e.getData() -> {
+                return new ClientboundLevelEventPacket(2001, e.getPos(), fx[e.getData()], e.isGlobalEvent());
+            }
+            case ClientboundLevelParticlesPacket p when p.particle() instanceof BlockParticleOption b
+                    && fx[Block.getId(b.getState())] != Block.getId(b.getState()) -> {
+                BlockParticleOption swapped = new BlockParticleOption(b.getType(), Block.stateById(fx[Block.getId(b.getState())]));
                 return new ClientboundLevelParticlesPacket(swapped, p.overrideLimiter(), p.alwaysShow(), p.x(), p.y(), p.z(), p.xDist(),
                         p.yDist(), p.zDist(), p.xMaxSpeed(), p.yMaxSpeed(), p.zMaxSpeed(), p.count(), p.randomizationType());
             }
@@ -368,11 +591,11 @@ public final class CustomBlocks {
                 for (int i = 0; i < items.size(); i++) {
                     SynchedEntityData.DataValue<?> v = items.get(i);
                     SynchedEntityData.DataValue<?> nv = v;
-                    if (v.serializer() == EntityDataSerializers.BLOCK_STATE && v.value() instanceof BlockState s && Block.getId(s) >= vanillaStates) {
-                        nv = new SynchedEntityData.DataValue<>(v.id(), EntityDataSerializers.BLOCK_STATE, Block.stateById(remap[Block.getId(s)]));
+                    if (v.serializer() == EntityDataSerializers.BLOCK_STATE && v.value() instanceof BlockState s && m.changes(Block.getId(s))) {
+                        nv = new SynchedEntityData.DataValue<>(v.id(), EntityDataSerializers.BLOCK_STATE, Block.stateById(look[Block.getId(s)]));
                     } else if (v.serializer() == EntityDataSerializers.OPTIONAL_BLOCK_STATE && v.value() instanceof Optional<?> o
-                            && o.orElse(null) instanceof BlockState s && Block.getId(s) >= vanillaStates) {
-                        nv = new SynchedEntityData.DataValue<>(v.id(), EntityDataSerializers.OPTIONAL_BLOCK_STATE, Optional.of(Block.stateById(remap[Block.getId(s)])));
+                            && o.orElse(null) instanceof BlockState s && m.changes(Block.getId(s))) {
+                        nv = new SynchedEntityData.DataValue<>(v.id(), EntityDataSerializers.OPTIONAL_BLOCK_STATE, Optional.of(Block.stateById(look[Block.getId(s)])));
                     }
                     if (nv != v && out == null) out = new ArrayList<>(items);
                     if (out != null) out.set(i, nv);
@@ -383,7 +606,7 @@ public final class CustomBlocks {
                 List<Packet<? super ClientGamePacketListener>> out = new ArrayList<>();
                 boolean changed = false;
                 for (Packet<? super ClientGamePacketListener> sub : bundle.subPackets()) {
-                    Packet<? super ClientGamePacketListener> r = (Packet<? super ClientGamePacketListener>) rewrite(sub, remap);
+                    Packet<? super ClientGamePacketListener> r = (Packet<? super ClientGamePacketListener>) rewrite(sub, m);
                     changed |= r != sub;
                     out.add(r);
                 }
@@ -409,32 +632,40 @@ public final class CustomBlocks {
 
     /**
      * Rewrites the sections of a chunk packet in place (the packet may be shared by several players; rewriting
-     * twice gives the same result, since appearances are vanilla). Section layout (LevelChunkSection.write): two
+     * twice gives the same result, since appearances are vanilla blocks that aren't changed themselves... unless a
+     * vanilla block is shown as another changed vanilla block: then the second pass would change it again, so a
+     * rewritten buffer is remembered and never rewritten twice). Section layout (LevelChunkSection.write): two
      * shorts (block and fluid counts), the block states, then the biomes; each is one byte of bits per entry, the
      * palette (bits 0: one number; up to 8 for blocks / 3 for biomes: a count and that many numbers; more: none, the
-     * entries are the global numbers), then the packed entries as longs. Only numbers of custom states change, so
-     * every length stays except a palette number's own length (numbers are written in 1 to 5 bytes).
+     * entries are the global numbers), then the packed entries as longs.
      */
-    private static void rewriteChunk(ClientboundLevelChunkPacketData data, int[] remap) {
+    private static void rewriteChunk(ClientboundLevelChunkPacketData data, Maps m) {
         try {
-            byte[] in = (byte[]) CHUNK_BUFFER.get(data);
-            if (!hasCustom(in, remap.length)) return;
-            CHUNK_BUFFER.set(data, rewriteSections(in, remap));
+            synchronized (data) {
+                byte[] in = (byte[]) CHUNK_BUFFER.get(data);
+                if (DONE.containsKey(in) || !hasChanged(in, m)) return;
+                byte[] out = rewriteSections(in, m.look);
+                DONE.put(out, Boolean.TRUE);
+                CHUNK_BUFFER.set(data, out);
+            }
         } catch (IllegalAccessException e) {
             throw new IllegalStateException(e);
         }
     }
 
-    private static boolean hasCustom(byte[] in, int limit) {
+    /** Buffers this hook made (weak: freed with their packets). */
+    private static final Map<byte[], Boolean> DONE = java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+
+    private static boolean hasChanged(byte[] in, Maps m) {
         Reader r = new Reader(in);
         while (r.p < in.length) {
             r.p += 4;
             int bits = r.u8();
             if (bits == 0) {
-                if (r.varInt() >= vanillaStates) return true;
+                if (m.changes(r.varInt())) return true;
             } else if (bits <= 8) {
                 int n = r.varInt();
-                for (int i = 0; i < n; i++) if (r.varInt() >= vanillaStates) return true;
+                for (int i = 0; i < n; i++) if (m.changes(r.varInt())) return true;
                 r.p += longs(4096, bits) * 8;
             } else {
                 int count = longs(4096, bits);
@@ -442,7 +673,7 @@ public final class CustomBlocks {
                 long mask = (1L << bits) - 1;
                 for (int i = 0; i < count; i++) {
                     long v = r.i64();
-                    for (int j = 0; j < per; j++) if (((v >>> (j * bits)) & mask) >= vanillaStates) return true;
+                    for (int j = 0; j < per; j++) if (m.changes((int) ((v >>> (j * bits)) & mask))) return true;
                 }
             }
             r.skipBiomes();

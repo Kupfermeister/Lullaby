@@ -24,6 +24,13 @@ final class BlockFunctions {
             L.push(slots.add(Nms.worldKey(string(L, 1))));
             return 1;
         });
+        // register_block{ } of all scripts after loading: lines "id TAB carrier TAB appearance TAB file TAB line";
+        // gives back the problems as lines "kind TAB file TAB line TAB message" (nms/CustomBlocks.java).
+        add(lua, "blocks_declare", L -> {
+            push(L, io.github.kupfermeister.lullaby.nms.CustomBlocks.declare(string(L, 1),
+                    io.github.kupfermeister.lullaby.nms.BreakSpeed.on()));
+            return 1;
+        });
         // Block states travel as vanilla's state numbers (Block.getId); blocks.lua keeps one table per number.
         add(lua, "block_state_parse", L -> {
             L.push(Nms.blockStateParse(string(L, 1)));

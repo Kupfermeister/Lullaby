@@ -33,18 +33,15 @@ public final class Lullaby extends JavaPlugin {
 
     /**
      * Plugin load, before any world exists: custom blocks are registered here (vanilla's block list only takes them
-     * before the worlds load). PROTOTYPE: one built-in test block, lullaby:test_block (saved as stone, looks like a
-     * diamond block); later register_block{ } in data scripts.
+     * before the worlds load), from the ledger plugins/lullaby/blocks.txt that register_block{ } writes.
      */
     @Override
     public void onLoad() {
         if (!versionOk()) return; // onEnable says why
         try {
-            io.github.kupfermeister.lullaby.nms.CustomBlocks.register("lullaby:test_block",
-                    net.minecraft.world.level.block.Blocks.STONE.defaultBlockState(),
-                    net.minecraft.world.level.block.Blocks.DIAMOND_BLOCK.defaultBlockState());
+            io.github.kupfermeister.lullaby.nms.CustomBlocks.loadLedger(getDataPath(), getSLF4JLogger());
         } catch (RuntimeException e) {
-            getSLF4JLogger().error("Lullaby could not register its custom blocks; there are none this run", e); // FORMAT
+            getSLF4JLogger().error("Lullaby could not register its new blocks; there are none this run", e); // FORMAT
         }
     }
 
@@ -72,7 +69,7 @@ public final class Lullaby extends JavaPlugin {
             return;
         }
 
-        io.github.kupfermeister.lullaby.nms.CustomBlocks.start(this);
+        io.github.kupfermeister.lullaby.nms.CustomBlocks.start(this, getDataPath());
         getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event -> {
             event.registrar().register(LullabyCommand.build(this), "Lullaby: reload the scripts, show the version or the saved data", List.of());
             event.registrar().register(LullabyCommand.buildShort(this), "Lullaby: reload the scripts", List.of());

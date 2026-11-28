@@ -243,6 +243,72 @@ function state_methods.with(s, changes)
 end
 
 -- ---------------------------------------------------------------------------------------------------------------
+-- New and changed blocks (register_block{ }); Java does the rest (nms/CustomBlocks.java)
+-- ---------------------------------------------------------------------------------------------------------------
+
+local debug_getinfo = debug.getinfo -- private copy: the sandbox removes debug from scripts' reach
+local block_decls = {} -- this load's declarations, as Java's lines
+local REGISTER_BLOCK_TAKES = I.takes(0, "id", "carrier", "appearance")
+
+-- A block state given as text or block_state -> vanilla's text ("" when not given).
+local function state_text(a, key)
+	local v = a[key]
+	if v == nil then return "" end
+	local ok, s = pcall(lib.block_state, v)
+	if not ok then error("register_block{}: " .. key .. ": " .. tostring(s), 3) end
+	return tostring(s)
+end
+
+--[[doc
+name: register_block{ }
+kind: doing
+group: Blocks
+words: custom block new block override carrier appearance registry
+syntax: register_block{ id = text, carrier = block state, appearance = block state }
+lead: Declares a new block (an id with its own namespace, like "lullaby:ruby_ore") or changes a vanilla block (an id like "stone"). A new block is a real block on the server: /setblock, events, saving and other plugins see it by its id. It copies all settings of its carrier (hardness, sounds, tool, light) and is saved in the world as the carrier, so removing Lullaby leaves the carrier. Players' games are shown its appearance.
+arg: id | text | "namespace:name" for a new block; a vanilla id ("stone") to change that block.
+arg: carrier? | text · block_state | New blocks only (needed): the vanilla block it copies and is saved as.
+arg: appearance? | text · block_state | The vanilla block players see. Default: the carrier (a vanilla block: itself).
+returns: nothing
+note: Works only while scripts load (at the top of a file). Minecraft only takes new blocks at server start: a new block (or another carrier) is written into plugins/lullaby/blocks.txt and exists from the next start on (a yellow warning says so). A block no script declares anymore stays as it was, so placed ones are kept; delete its line in blocks.txt and restart to remove it. Break effects and block particles the server sends are the block's own (the carrier's), but the game's own hit particles and hit and step sounds come from the appearance (the server can't reach them). The game works out mining speed from the appearance too: with custom_hardness off in the config, an appearance that mines differently is a red error and the block is shown as itself.
+example:
+  register_block{ id = "lullaby:ruby_ore", carrier = "stone", appearance = "redstone_ore[lit=true]" }
+  register_block{ id = "dirt", appearance = "coarse_dirt" }
+expert: Thread | main thread, like every script
+expert: Cost | declaring: a few µs each; players' games: every chunk and block update sent is checked (about 1–5 µs per chunk without changed blocks, guess, not measured)
+expert: Under the hood | new blocks are put into vanilla's block registry at plugin load (CustomBlocks.java); a hook in each player's connection swaps the appearance into every packet that shows a block
+expert: Can fail | at load: id, carrier or appearance not a block (vanilla's message), a carrier that isn't vanilla, a carrier on a vanilla block, the same id twice, used after loading; an appearance that mines differently with custom_hardness off
+expert: Reload | appearances change at once (players get their chunks again); new blocks and carriers at the next server start
+expert: Time limit | not checked: it does no work in the game while loading
+status: unconfirmed
+]]
+function lib.register_block(a)
+	if type(a) ~= "table" then error("register_block{} needs { }: register_block{ id = \"lullaby:ruby_ore\", carrier = \"stone\" }", 2) end
+	if not I.loading then error("register_block{} works only while scripts load (at the top of a file)", 2) end
+	I.only(a, "register_block{}", REGISTER_BLOCK_TAKES, 2)
+	if type(a.id) ~= "string" then
+		error("register_block{}: id must be text like \"lullaby:ruby_ore\" or \"stone\", got " .. I.type_name(a.id), 2)
+	end
+	local carrier, appearance = state_text(a, "carrier"), state_text(a, "appearance")
+	local info = debug_getinfo(2, "Sl")
+	block_decls[#block_decls + 1] = table.concat({ (a.id:gsub("[\t\n]", " ")), carrier, appearance,
+		info.source:sub(2), tostring(info.currentline) }, "\t")
+end
+
+function I.blocks_begin()
+	block_decls = {}
+end
+
+-- After all scripts loaded: Java applies the declarations; its problems become normal reports at their lines.
+function I.blocks_declared()
+	local problems = J.blocks_declare(table.concat(block_decls, "\n"))
+	for line in problems:gmatch("[^\n]+") do
+		local kind, file, at, message = line:match("^([^\t]*)\t([^\t]*)\t([^\t]*)\t(.*)$")
+		J.report(kind, file, tonumber(at) or -1, "register_block{}", message)
+	end
+end
+
+-- ---------------------------------------------------------------------------------------------------------------
 -- Blocks (places)
 -- ---------------------------------------------------------------------------------------------------------------
 

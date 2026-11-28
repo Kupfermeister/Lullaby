@@ -38,7 +38,7 @@ import org.bukkit.Bukkit;
 import org.spigotmc.SpigotConfig;
 
 /**
- * Script commands ({@code command{ ... }}, library file commands.lua) as nodes on vanilla's own Brigadier dispatcher.
+ * Script commands ({@code register_command{ ... }}, library file commands.lua) as nodes on vanilla's own Brigadier dispatcher.
  * One instance per load of the scripts: {@link #clear} removes every command it added, and the next load adds the
  * new ones.
  *

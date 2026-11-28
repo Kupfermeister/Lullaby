@@ -462,7 +462,7 @@ T.event = { kind = "object", vanilla = "Lullaby's own view of a Paper event", id
             save = false, note = "over after the first wait; fields mapped with EVENT_JAVA_TYPES" }
 
 -- =================================================================================================================
--- COMMAND ARGUMENTS: command{} arg types are this file's types. Kept from today: word, text (rest of the line),
+-- COMMAND ARGUMENTS: register_command{} arg types are this file's types. Kept from today: word, text (rest of the line),
 -- integer, number, bool. More vanilla arguments, used when their area is built:
 --   EntityAnchorArgument (eyes/feet), SwizzleArgument (axes), Vec2Argument, ScoreHolderArgument,
 --   ScoreboardSlotArgument, OperationArgument, ObjectiveCriteriaArgument, NbtPathArgument, BlockPredicateArgument,

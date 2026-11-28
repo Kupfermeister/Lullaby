@@ -1,6 +1,6 @@
 -- Lullaby library: script commands.
 --
---   command{ "name", function(c) ... end, args = { ... }, branches = { ... }, permission = "x", show = function(p),
+--   register_command{ "name", function(c) ... end, args = { ... }, branches = { ... }, permission = "x", show = function(p),
 --            aliases = { "n" } }
 -- A command is a step. A step has an args line (values typed one after the other) and may split at the end of that
 -- line into branches: a key like `buy = { ... }` is a word to type, an unnamed entry `{ args = { ... }, ... }` is a
@@ -42,7 +42,7 @@ local runners = {}   -- executable node id -> { fn, checks = { { name, fn } }, o
 
 -- Every check below raises its message without a position (level 0); lib.command adds the script line.
 local function fail(message)
-	error("command{}: " .. message, 0)
+	error("register_command{}: " .. message, 0)
 end
 
 -- A word to type: anything without spaces, not empty (Kupfermeister: symbols allowed, "/set" gives WorldEdit-style //set).
@@ -263,11 +263,11 @@ function build_step(step, word, fn, parent, head_parent, checks, origin)
 end
 
 --[[doc
-name: command{ }
+name: register_command{ }
 kind: doing
 group: Commands
 words: slash brigadier cmd argument
-syntax: command{ "name", function(context) ... end, args = { ... }, branches = { ... }, permission = text, show = function(player), aliases = { ... } }
+syntax: register_command{ "name", function(context) ... end, args = { ... }, branches = { ... }, permission = text, show = function(player), aliases = { ... } }
 lead: Adds a script command. Its args are values typed one after the other; at the end it may split into branches: a key like buy = { ... } is a word to type, an unnamed { args = { ... } } starts with a value. Every branch takes the same fields again. The function gets context: context.player (nil from the console) and context.args.<name>.
 arg: 1 | text | The command name, without /.
 arg: 2? | function | Runs when the line is typed to its end. Without it, the command only leads to its branches.
@@ -279,7 +279,7 @@ arg: aliases? | list of text | Other names (word steps only).
 returns: nothing
 note: Works only while scripts load (at the top of a file). permission, show and suggest are worked out on join, after /lullaby reload and with refresh_commands{ }; check runs when the command runs and its text is shown in red.
 example:
-  command{ "heal", function(context)
+  register_command{ "heal", function(context)
     message{ player = context.player, text = "Healed " .. context.args.amount }
   end, args = { { name = "amount", type = "integer", min = 1, max = 20 } } }
 expert: Thread | main thread, like every script
@@ -290,10 +290,10 @@ expert: Reload | every script command is removed and players get the new list
 expert: Time limit | the function runs as a task; checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
-function lib.command(a)
-	if type(a) ~= "table" then error("command{} needs { }: command{ \"name\", function(c) ... end }", 2) end
+function lib.register_command(a)
+	if type(a) ~= "table" then error("register_command{} needs { }: register_command{ \"name\", function(c) ... end }", 2) end
 	-- players' trees are worked out after loading, so a later command would be half there
-	if not I.loading then error("command{} works only while scripts load (at the top of a file)", 2) end
+	if not I.loading then error("register_command{} works only while scripts load (at the top of a file)", 2) end
 	local ok, err = pcall(check_command, a)
 	if not ok then error(err, 2) end
 	J.cmd_register(build_step(a, a[1], a[2], -1, nil, {}, "/" .. a[1]))

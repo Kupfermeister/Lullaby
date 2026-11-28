@@ -17,6 +17,6 @@
 -- on{ "PlayerJoinEvent", function(event) run{ countdown, args = { event.player } } end }
 
 -- A command: /pay <target> <amount>
--- command{ "pay", function(context)
+-- register_command{ "pay", function(context)
 --   message{ player = context.args.target, text = "You got " .. context.args.amount .. " coins" }
 -- end, args = { { name = "target", type = "player" }, { name = "amount", type = "integer", min = 1 } } }

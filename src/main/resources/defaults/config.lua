@@ -51,10 +51,11 @@ return {
   lullablend_port = false,
   lullablend_bind = "0.0.0.0",
 
-  -- TEST (groundwork for custom block hardness): every player's game is told it can't mine anything (its break speed
+  -- Groundwork for custom block hardness: every player's game is told it can't mine anything (its break speed
   -- attribute is 0) until the player starts hitting a block; then it gets the real value back, and 0 again when they
-  -- stop. Each change says "attribute set to ..." in chat. Test rule: grass blocks stay at 0, so they can't be mined.
-  -- The server's own value never changes and the server still checks every break. false: off.
+  -- stop. Blocks the server breaks at once stay at 0 (the server breaks them alone and sends the break effects).
+  -- The server's own value never changes and the server still checks every break. false: off; then register_block{ }
+  -- refuses an appearance that would mine at another speed than the block itself (red error).
   custom_hardness = true,
 
   -- Sound mosaicing: /lullaby mosaic play <file> [filters] [-overwrite] rebuilds an audio file (.wav, .mp3, .ogg) in

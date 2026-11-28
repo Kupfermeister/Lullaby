@@ -77,14 +77,16 @@ function I.load_all()
 		exists[path] = true
 		order[#order + 1] = path
 	end
-	I.loading = true -- command{} works only now (see commands.lua)
+	I.loading = true -- register_command{} and register_block{} work only now (see commands.lua, blocks.lua)
+	I.blocks_begin()
 	for i = 1, #order do load_file(order[i]) end
 	I.loading = false
+	I.blocks_declared() -- blocks.lua: all register_block{ } at once, so a removed one is seen as removed
 	return count
 end
 
 -- Called by Java for /lullaby run (LullabyCommand.java): one line of Lua, started at once as a task (so it may wait,
--- listen, start tasks: anything a handler may), with its own globals like a script file plus `me`. Only command{}
+-- listen, start tasks: anything a handler may), with its own globals like a script file plus `me`. Only register_command{}
 -- refuses, as anywhere after loading. Errors are normal reports, with "/lullaby run by <name>" as the via line, since
 -- the code has no file. When the line ends without an error, the sender gets "Done" (a player in chat, the console
 -- in the log; a command block nothing). A command block's line runs only with unlock.command_blocks.
@@ -124,7 +126,7 @@ group: Scripts
 words: run execute exec eval command chat console line test try debug ex me
 syntax: /lullaby run <lua code>
 lead: For experts: runs one line of Lua right away as its own task, like an event handler, with me as the player who typed it (nil from the console; with /execute as <player>, that player). Everything works, wait too: /lullaby run modify_entity{ entity = me, glowing = true } wait("5s") modify_entity{ entity = me, glowing = false }. When the line ends without an error you get a green "Done"; it shows no values by itself: use message{ player = me, text = ... } or print( ).
-note: Each line has its own globals, so nothing carries over to the next line or to the scripts. Only command{ } doesn't work (commands are made while scripts load). on{ }, after{ } and run{ } started here keep running until the next /lullaby reload. Errors are the normal red error, shown to every op and the console, with "via /lullaby run by <name>".
+note: Each line has its own globals, so nothing carries over to the next line or to the scripts. Only register_command{ } doesn't work (commands are made while scripts load). on{ }, after{ } and run{ } started here keep running until the next /lullaby reload. Errors are the normal red error, shown to every op and the console, with "via /lullaby run by <name>".
 expert: Permission | lullaby.run (ops have it) and lullaby.command; every use is written to the console with who typed it
 expert: Command blocks | refused unless unlock.command_blocks = true in the config: anyone who can edit a command block could run any code
 expert: Time limit | the config's script_time_limit, like any task; a wait starts the clock again

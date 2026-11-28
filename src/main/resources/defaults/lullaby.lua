@@ -10,7 +10,7 @@
 -- A countdown as its own task (the player is passed in args):
 -- local function countdown(player)
 --   for i = 3, 1, -1 do
---     message{ player = player, text = tostring(i) }
+--     message{ player = player, text = i .. "" }
 --     wait(1)
 --   end
 -- end

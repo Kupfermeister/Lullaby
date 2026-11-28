@@ -111,7 +111,7 @@ function I.raw_run(code, uuid, sender, from_block, who)
 		chunk()
 		-- FORMAT: /lullaby run ended without an error
 		local to = sender and I.player_by_uuid(sender)
-		if to then lib.message{ player = to, text = lib.component({ text = "Done", color = "green" }) }
+		if to then lib.message{ player = to, text = lib.text_component({ text = "Done", color = "green" }) }
 		elseif not from_block then lib.print("/lullaby run by " .. who .. ": done") end
 	end, { n = 0 }, origin)
 end

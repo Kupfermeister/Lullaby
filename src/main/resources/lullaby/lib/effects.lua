@@ -1,7 +1,7 @@
 -- Lullaby library: what players see and hear: message{ }, particle{ }, sound{ }, precise_sound{ }, stop_sound{ }, sound_seed( ), and
 -- the played_sound value.
---   message{ player = p, text = "Hi" | component{ text = "Hi", color = "red" } | { text = "Hi", color = "red" } }   chat message (a string
---       is literal text, as /tellraw "Hi"; a table is a component) -> true, false if p is offline
+--   message{ player = p, text = "Hi" | text_component{ text = "Hi", color = "red" } | { text = "Hi", color = "red" } }   chat message (a string
+--       is literal text, as /tellraw "Hi"; a table is a text_component) -> true, false if p is offline
 local J, lib, I = ...
 
 local type, error, setmetatable, tostring, tonumber, raw_next = type, error, setmetatable, tostring, tonumber, next
@@ -47,14 +47,14 @@ name: message{ }
 kind: doing
 group: Text
 words: chat send tell tellraw
-syntax: message{ player = player, text = text | component }
+syntax: message{ player = player, text = text | text_component }
 lead: Sends a chat message. Plain text is literal, like /tellraw.
 arg: player | player | Who gets it.
-arg: text | text · component | The message.
+arg: text | text · text_component · table | The message: text is literal (as /tellraw "Hi"), a table is read as text_component{ } reads it.
 returns: boolean (false if the player is offline)
-try: /lullaby run message{ player = me, text = component({ text = "Hello from Lullaby!", color = "gold" }) }
+try: /lullaby run message{ player = me, text = text_component{ text = "Hello from Lullaby!", color = "gold" } }
 expert: Thread | main thread, like every script
-expert: Cost | text 3–15 µs, a component 10–60 µs (guess, not measured)
+expert: Cost | text 3–15 µs, a text_component 10–60 µs (guess, not measured)
 expert: Under the hood | one Lua → Java call; packet System Chat (play, clientbound)
 expert: Can fail | an unknown field (the error lists the ones it takes), player or text of the wrong kind; an offline player gives false, no error
 expert: Reload | sent messages stay in chat
@@ -65,9 +65,9 @@ function lib.message(a)
 	if type(a) ~= "table" then error("message{} needs { }: message{ player = p, text = \"...\" }", 2) end
 	if kind_of[a.player] ~= "player" then error("message{}: player must be a player, got " .. I.type_name(a.player), 2) end
 	local text = a.text
-	local component = type(text) == "table" and (I.type_name(text) == "component" or debug_getmetatable(text) == nil)
+	local component = type(text) == "table" and (I.type_name(text) == "text_component" or debug_getmetatable(text) == nil)
 	if not component and type(text) ~= "string" then
-		error("message{}: text must be text or a component, got " .. I.type_name(text), 2)
+		error("message{}: text must be text or a text_component, got " .. I.type_name(text), 2)
 	end
 	I.only(a, "message{}", MESSAGE_TAKES, 2)
 	if component then return J.message_component(slot_of[a.player], I.wire(text)) end

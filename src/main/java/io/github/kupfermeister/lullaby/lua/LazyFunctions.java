@@ -79,11 +79,10 @@ final class LazyFunctions {
             push(L, Codecs.componentText(Codecs.componentFromTable(Wire.read(L.toBuffer(1)), slotLookup)));
             return 1;
         });
+        // text_component{ raw = text }: /tellraw's own reader
+        add(lua, "component_parse", L -> pushComponent(L, Codecs.componentOut(Codecs.componentParse(string(L, 1)), addSlot)));
         add(lua, "from_json", L -> {
-            Object value = Codecs.fromJson(string(L, 1), string(L, 2));
-            Object[] text = Codecs.componentOutIfText(value, addSlot);
-            if (text != null) return pushComponent(L, text);
-            L.push(slots.add(value));
+            L.push(slots.add(Codecs.fromJson(string(L, 1), string(L, 2))));
             return 1;
         });
     }

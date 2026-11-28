@@ -72,7 +72,7 @@ public final class EventList {
 
     /** Kinds a changed list may hold (EventBridge.setList makes these from Lua values). */
     private static final Set<String> LIST_WRITE = Set.of("item_stack", "entity", "player", "block", "block_snapshot",
-            "component", "text", "integer", "number", "boolean");
+            "text_component", "text", "integer", "number", "boolean");
 
     public static void main(String[] argv) throws IOException {
         Path out = Path.of(argv[0]);
@@ -115,7 +115,7 @@ public final class EventList {
         lines.add("# Field line: <TAB> name <TAB> getter <TAB> read kind <TAB> setter <TAB> setter's parameter class <TAB> write kind");
         lines.add("#   <TAB> enum: its class's simple name, \":\" and its words when 16 or fewer (Result:deny,default,allow);");
         lines.add("#   - where there is none");
-        lines.add("# KINDS: player entity world block chunk location vec3 block_pos aabb block_state damage item_stack component");
+        lines.add("# KINDS: player entity world block chunk location vec3 block_pos aabb block_state damage item_stack text_component");
         lines.add("#   text enum key uuid boolean integer number block_snapshot profile address effect played_sound sender, and");
         lines.add("#   list:<kind> (a List, Set or");
         lines.add("#   Collection); a list field without a setter can still have a write kind: Paper's list is meant to be changed");
@@ -318,7 +318,7 @@ public final class EventList {
     private static String common(Class<?> t) {
         if (t == Vector.class) return "vec3";
         if (t == BlockData.class) return "block_state";
-        if (Component.class.isAssignableFrom(t)) return "component";
+        if (Component.class.isAssignableFrom(t)) return "text_component";
         if (t == String.class) return "text";
         if (t == boolean.class || t == Boolean.class) return "boolean";
         if (t == int.class || t == Integer.class || t == long.class || t == Long.class || t == short.class

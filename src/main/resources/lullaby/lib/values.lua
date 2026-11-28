@@ -58,7 +58,7 @@ local function number(value, what, field)
 		if I.is_int64(value) then
 			local n = tonumber(value)
 			if n >= -2 ^ 53 and n <= 2 ^ 53 then return n end
-			error(what .. ": " .. field .. " is too big for a position (" .. lib.tostring(value) .. ")", 0)
+			error(what .. ": " .. field .. " is too big for a position (" .. I.to_text(value) .. ")", 0)
 		end
 		error(what .. ": " .. field .. " must be a number, got " .. I.type_name(value), 0)
 	end
@@ -137,7 +137,9 @@ end
 -- __newindex and gives an error; reading v.x maps the name to its slot.
 -- computed (optional): field name -> function(value), for a field that is worked out on read, not stored
 -- (location.block).
+local computed_of, text_form = {}, nil -- metatable -> its computed table; text_form below
 local function value_type(name, fields, methods, computed)
+	computed = computed or {} -- also gets .string below (text_form), so the type's error lists it
 	local index_of = {}
 	for i = 1, #fields do index_of[fields[i]] = i end
 	local has -- "x, y, z, :length(), ..." for the error on a name it doesn't have; made on first need
@@ -145,13 +147,13 @@ local function value_type(name, fields, methods, computed)
 		__index = function(v, key)
 			local i = index_of[key]
 			if i then return rawget(v, i) end -- rawget: a field may be nil (a damage without causing)
-			local work = computed and computed[key]
+			local work = computed[key]
 			if work then return work(v) end
 			local method = methods[key]
 			if method then return method end
 			if not has then
 				local extra, names = {}, {}
-				for k in pairs(computed or {}) do extra[#extra + 1] = k end
+				for k in pairs(computed) do extra[#extra + 1] = k end
 				for k in pairs(methods) do names[#names + 1] = ":" .. k .. "()" end
 				table.sort(extra)
 				table.sort(names)
@@ -177,10 +179,14 @@ local function value_type(name, fields, methods, computed)
 	end
 	kind_by_meta[meta] = name
 	I.value_fields[name] = fields
+	computed_of[meta] = computed
 	return meta
 end
 
 I.value_type = value_type -- entities.lua makes damage with it
+
+-- v.string: the text form the type's maker reads back (vec3(v.string) == v). Only types that have one get it.
+text_form = function(meta, f) computed_of[meta].string = f end
 
 local function is(meta, value)
 	return type(value) == "table" and I.debug_getmetatable(value) == meta
@@ -224,6 +230,7 @@ syntax: block_pos( x, y, z ) → block_pos
 lead: A block position: whole numbers (vanilla BlockPos). Also takes a value of its own type (returned as is), a table { 1, 2, 3 } or { x = , y = , z = }, or command text like "1 64 -3".
 arg: x, y, z | number | Whole numbers.
 returns: block_pos
+field: string | text | The text form "1 64 -3": block_pos(p.string) makes it again, and commands take it.
 field: x | number | East (+) or west (−).
 field: y | number | Up (+) or down (−).
 field: z | number | South (+) or north (−).
@@ -259,6 +266,7 @@ syntax: section_pos( x, y, z ) → section_pos
 lead: A 16×16×16 cube of blocks: whole numbers (vanilla SectionPos). Also takes a value of its own type (returned as is), a table { 1, 2, 3 } or { x = , y = , z = }, or command text like "1 4 -3".
 arg: x, y, z | number | Whole numbers.
 returns: section_pos
+field: string | text | The text form "0 4 -1": section_pos(s.string) makes it again.
 field: x | number | In sections (16 blocks each).
 field: y | number | In sections.
 field: z | number | In sections.
@@ -289,6 +297,7 @@ syntax: chunk_pos( x, z ) → chunk_pos
 lead: A 16×16 column of blocks: whole numbers (vanilla ChunkPos). Also takes a value of its own type (returned as is), a table { 1, 2 } or { x = , z = }, or command text like "1 -3".
 arg: x, z | number | Whole numbers.
 returns: chunk_pos
+field: string | text | The text form "0 -1": chunk_pos(c.string) makes it again.
 field: x | number | In chunks (16 blocks each).
 field: z | number | In chunks.
 method: a == b | boolean | Same numbers.
@@ -353,6 +362,8 @@ function block_methods.section_pos(v)
 end
 
 SECTION.__tostring = BLOCK.__tostring
+text_form(BLOCK, BLOCK.__tostring)
+text_form(SECTION, BLOCK.__tostring)
 function section_methods.offset(v, dx, dy, dz)
 	need(SECTION, v, "section_pos:offset", "a section_pos (use : not .)")
 	dx, dy, dz = whole(dx, "offset", "dx"), whole(dy, "offset", "dy"), whole(dz, "offset", "dz")
@@ -378,6 +389,7 @@ function section_methods.contains(v, pos)
 end
 
 CHUNK.__tostring = function(v) return number_text(v[1]) .. " " .. number_text(v[2]) end
+text_form(CHUNK, CHUNK.__tostring)
 function chunk_methods.offset(v, dx, dz)
 	need(CHUNK, v, "chunk_pos:offset", "a chunk_pos (use : not .)")
 	dx, dz = whole(dx, "offset", "dx"), whole(dz, "offset", "dz")
@@ -419,6 +431,7 @@ syntax: vec3( x, y, z ) → vec3
 lead: An exact position or direction: decimals (vanilla Vec3). Also takes a value of its own type (returned as is), a table { 1, 2, 3 } or { x = , y = , z = }, or command text like "1.5 64 -3".
 arg: x, y, z | number | Decimals.
 returns: vec3
+field: string | text | The text form "1.5 64 -3" (exact numbers): vec3(v.string) makes it again, and commands take it.
 field: x | number | East (+) or west (−).
 field: y | number | Up (+) or down (−).
 field: z | number | South (+) or north (−).
@@ -488,6 +501,7 @@ VEC.__div = function(a, b)
 end
 VEC.__unm = function(a) return new_vec(-a[1], -a[2], -a[3]) end
 VEC.__tostring = BLOCK.__tostring
+text_form(VEC, BLOCK.__tostring)
 
 local function self_vec(v, name) return need(VEC, v, "vec3:" .. name, "a vec3 (use : not .)") end
 
@@ -577,6 +591,7 @@ lead: A direction as yaw and pitch, in degrees. Also takes a value of its own ty
 arg: yaw | number | Degrees around the vertical axis.
 arg: pitch | number | Degrees up or down.
 returns: yaw_pitch
+field: string | text | The text form "90 0": yaw_pitch(r.string) makes it again.
 field: yaw | number | Degrees around the vertical axis: 0 south, 90 west, 180 north, −90 east.
 field: pitch | number | Degrees up (−) or down (+); −90 straight up, 90 straight down.
 method: a == b | boolean | Same numbers.
@@ -601,6 +616,7 @@ lib.yaw_pitch = setmetatable({}, {
 	__metatable = false,
 })
 YP.__tostring = CHUNK.__tostring
+text_form(YP, CHUNK.__tostring)
 
 -- The direction a yaw/pitch looks at, length 1 (the same formula as vanilla's Vec3.directionFromRotation, but
 -- with exact sin/cos instead of vanilla's lookup table).
@@ -632,6 +648,7 @@ syntax: quaternion( x, y, z, w ) → quaternion   quaternion.from_yaw_pitch( yaw
 lead: A rotation in 3D. Also takes a value of its own type (returned as is), a table { x, y, z, w } or { x = , y = , z = , w = }, text like "0 0 0 1", or vanilla's axis-angle form { axis = vec3, angle = degrees }.
 arg: x, y, z, w | number | The four parts.
 returns: quaternion
+field: string | text | The text form "0 0 0 1": quaternion(q.string) makes it again.
 field: x | number | The parts, as vanilla and JOML keep them.
 field: y | number |
 field: z | number |
@@ -670,6 +687,7 @@ lib.quaternion = setmetatable({}, {
 QUAT.__tostring = function(q)
 	return number_text(q[1]) .. " " .. number_text(q[2]) .. " " .. number_text(q[3]) .. " " .. number_text(q[4])
 end
+text_form(QUAT, QUAT.__tostring)
 -- Hamilton product: a * b rotates by b first, then by a (JOML's mul, which vanilla uses).
 QUAT.__mul = function(a, b)
 	need(QUAT, a, "quaternion *", "two quaternions"); need(QUAT, b, "quaternion *", "two quaternions")
@@ -878,10 +896,11 @@ kind: reading
 group: Values
 words: dimension position
 syntax: global_pos( dimension, pos ) → global_pos
-lead: A block position in a dimension (vanilla GlobalPos). Also takes { dimension = , pos = }.
+lead: A block position in a dimension (vanilla GlobalPos). Also takes { dimension = , pos = } or text like "1 64 -3 minecraft:overworld" (g.string).
 arg: dimension | text | An id like "overworld".
 arg: pos | block_pos | The position.
 returns: global_pos
+field: string | text | The text form "1 64 -3 minecraft:overworld": global_pos(g.string) makes it again.
 field: dimension | text | The full id, like "minecraft:overworld".
 field: pos | block_pos | The position.
 method: a == b | boolean | Same dimension and position.
@@ -897,6 +916,13 @@ function lib.global_pos(...)
 	local first, second = ...
 	local n = select("#", ...)
 	if is(GP, first) and n == 1 then return first end
+	if type(first) == "string" and n == 1 then -- g.string's form: "x y z minecraft:overworld"
+		local numbers, id = first:match("^%s*(.-)%s+(%S+)%s*$")
+		-- FORMAT: global_pos text without a dimension
+		if not numbers then error("global_pos: text needs \"x y z dimension\", got \"" .. first .. "\"", 0) end
+		first, second = id, new_block(parts("global_pos", { "x", "y", "z" }, whole, numbers))
+		n = 2
+	end
 	if I.type_name(first) == "table" and n == 1 then -- the table form: plain tables only
 		for key in pairs(first) do
 			if key ~= "dimension" and key ~= "pos" then error("global_pos: unknown field " .. tostring(key), 0) end
@@ -911,6 +937,8 @@ function lib.global_pos(...)
 	return setmetatable({ id, second }, GP)
 end
 GP.__tostring = function(g) return tostring(g[2]) .. " in " .. g[1] end -- FORMAT
+-- FORMAT: g.string, "x y z minecraft:overworld" (global_pos( ) reads it back)
+text_form(GP, function(g) return tostring(g[2]) .. " " .. g[1] end)
 
 local ZERO_ROT = new_yp(0, 0)
 function I.new_location(world, pos, rot) return setmetatable({ world, pos, rot or ZERO_ROT }, LOC) end
@@ -921,11 +949,12 @@ kind: reading
 group: Values
 words: where place spot
 syntax: location( world, pos, rot ) → location
-lead: A world, an exact position and a direction (yaw_pitch optional: 0, 0). Also takes { world = , pos = , rot = }.
+lead: A world, an exact position and a direction (yaw_pitch optional: 0, 0). Also takes { world = , pos = , rot = }, or text like "0.5 64 0.5 90 0 minecraft:overworld" (l.string; "0.5 64 0.5 overworld" without a direction).
 arg: world | world | The world.
 arg: pos | vec3 | The exact position.
 arg: rot? | yaw_pitch | The direction. Optional: 0, 0.
 returns: location
+field: string | text | The text form "x y z yaw pitch world": "0.5 64 0.5 90 0 minecraft:overworld" (exact numbers). location(l.string) makes it again (the world must be loaded).
 field: world | world | The world.
 field: pos | vec3 | The exact position.
 field: rot | yaw_pitch | The direction.
@@ -948,6 +977,25 @@ function lib.location(...)
 	local world, pos, rot = ...
 	local n = select("#", ...)
 	if is(LOC, world) and n == 1 then return world end
+	if type(world) == "string" and n == 1 then -- l.string's form: "x y z yaw pitch minecraft:world" (rot optional)
+		local numbers, id = world:match("^%s*(.-)%s+(%S+)%s*$")
+		local count = 0
+		for _ in (numbers or ""):gmatch("%S+") do count = count + 1 end
+		-- FORMAT: location text with the wrong number of parts
+		if count ~= 3 and count ~= 5 then
+			error("location: text needs \"x y z yaw pitch world\" or \"x y z world\", got \"" .. world .. "\"", 0)
+		end
+		local w = lib.world(id)
+		-- FORMAT: location text naming a world that isn't loaded
+		if not w then error("location: there is no loaded world \"" .. id .. "\"", 0) end
+		local x, y, z, yaw, pitch
+		if count == 5 then
+			x, y, z, yaw, pitch = parts("location", { "x", "y", "z", "yaw", "pitch" }, number, numbers)
+			return I.new_location(w, new_vec(x, y, z), new_yp(yaw, pitch))
+		end
+		x, y, z = parts("location", { "x", "y", "z" }, number, numbers)
+		return I.new_location(w, new_vec(x, y, z))
+	end
 	if I.type_name(world) == "table" and n == 1 then -- the table form: plain tables only
 		for key in pairs(world) do
 			if key ~= "world" and key ~= "pos" and key ~= "rot" then error("location: unknown field " .. tostring(key), 0) end
@@ -961,6 +1009,8 @@ function lib.location(...)
 	return I.new_location(world, pos, rot)
 end
 LOC.__tostring = function(l) return tostring(l[2]) .. " in " .. tostring(l[1]) end -- FORMAT
+-- FORMAT: l.string, "x y z yaw pitch minecraft:world" (location( ) reads it back)
+text_form(LOC, function(l) return tostring(l[2]) .. " " .. tostring(l[3]) .. " " .. tostring(l[1]) end)
 
 -- l.block: the block object the position is in; nil while its chunk (or its world) isn't loaded. Never loads one.
 function loc_computed.block(l)

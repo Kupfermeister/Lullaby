@@ -48,7 +48,7 @@ local NOTHING = {}
 -- what comes back from the file. Item stacks, text components and block states go through vanilla's codecs (Java).
 local BY_FIELDS = { block_pos = true, section_pos = true, chunk_pos = true, vec3 = true, yaw_pitch = true,
 	quaternion = true, aabb = true, bounding_box = true, global_pos = true, location = true }
-local BY_CODEC = { item_stack = true, component = true, block_state = true }
+local BY_CODEC = { item_stack = true, text_component = true, block_state = true }
 
 local data = {} -- server.data
 
@@ -246,7 +246,7 @@ local function revive_value(v)
 		if name == "player" then return I.player_by_uuid(inner) end
 		if name == "item_stack" then return I.new_item(inner) end
 		if name == "block_state" then return I.block_state_by_id(inner) end
-		if name == "component" then return I.as_component(inner) end
+		if name == "text_component" then return I.as_component(inner) end
 		if name == "world" then
 			if type(inner) ~= "string" then return load_problem("a world needs its id as text") end -- FORMAT
 			local w = lib.world(inner)
@@ -393,13 +393,13 @@ local WORLD_META = I.object_meta.world
 -- The world's fields (doc: world( ) in blocks.lua). id, name and loaded work for unloaded worlds too (worlds( )).
 WORLD_META.__index = function(w, key)
 	if key == "data" then return world_data(w, 2) end
-	if key == "id" then return tostring(w) end
+	if key == "id" or key == "string" then return tostring(w) end -- .string: world( ) reads it back
 	if key == "name" then
 		local id = tostring(w)
 		return id:sub(1, 10) == "minecraft:" and id:sub(11) or id
 	end
 	if key == "loaded" then return J.world_id(tostring(w)) ~= nil end
-	I.no_field("world", key, "id, name, loaded, data", 2)
+	I.no_field("world", key, "id, name, loaded, data, string", 2)
 end
 WORLD_META.__newindex = function(w, key, value)
 	-- FORMAT: changing a world field other than data
@@ -677,7 +677,7 @@ group: Scripts
 words: save saved data store persist keep flag variable reload restart
 syntax: server.data.coins = 10
 lead: The server itself. server.data is a table that stays: it is saved with the world (autosave, /save-all, server stop) and before /lullaby reload, and comes back after a reload or restart. Every script file sees the same server.data. Use it like any table: server.data.round = (server.data.round or 0) + 1. While the server runs it is a plain Lua table, so it costs nothing extra. Worlds, chunks, entities and players have their own: world.data (see world( )), context.data (see chunk( )), entity.data (see entity( )) and player.data (see player( )).
-field: data | table | Saved data. Can be text, numbers, true/false, tables (lists, or text keys), players, worlds, positions and the other small values, location, item_stack, block_state and component. Other things (functions, entities, tasks, events, tables with their own metatable, nan and inf, tables more than 98 deep) are left out when saving, with a red error naming the place. Keys can't be empty text, and keys starting with "lullaby:" are kept for Lullaby. server.data = { } starts over.
+field: data | table | Saved data. Can be text, numbers, true/false, tables (lists, or text keys), players, worlds, positions and the other small values, location, item_stack, block_state and text_component. Other things (functions, entities, tasks, events, tables with their own metatable, nan and inf, tables more than 98 deep) are left out when saving, with a red error naming the place. Keys can't be empty text, and keys starting with "lullaby:" are kept for Lullaby. server.data = { } starts over.
 set: data | server.data = { } (a new table)
 note: The file is plugins/lullaby/data/server.snbt, readable text in vanilla's SNBT (what /data get shows). You may edit it: a change by hand wins, so Lullaby doesn't save over it and loads it at the next /lullaby reload (changes scripts made since the last save are then dropped, the console says so). /lullaby data server [path] shows the data, with tab completion of the keys. A table used in two places is saved twice and loads as two tables.
 example:

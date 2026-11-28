@@ -248,26 +248,11 @@ function I.number_text(n)
 	return format("%.17g", n)
 end
 
--- Lullaby's tostring (scripts see this one): exact numbers, 64-bit numbers without "LL"; everything else as Lua's.
+-- Any value as text for print and error messages: exact numbers, 64-bit numbers without "LL", everything else as
+-- Lua's tostring (__tostring). Scripts have no tostring (jft 2026-11-28: objects have .string, the form their maker
+-- reads back; text from numbers comes from `..`).
 local lua_tostring = tostring
---[[doc
-name: tostring( )
-kind: reading
-group: Values
-words: text number string
-syntax: tostring( value ) → text
-lead: Like Lua's tostring, but numbers are exact (the shortest text that reads back as the same number): 1297632424.123456 stays 1297632424.123456, where Lua would make 1297632424.1235.
-arg: value | any | Anything.
-returns: text
-expert: Thread | main thread, like every script
-expert: Cost | numbers 0.3–2 µs (tries 15, 16, then 17 digits), other values 50–300 ns (guess, not measured)
-expert: Under the hood | plain Lua: string.format, then Lua's own tostring
-expert: Can fail | never
-expert: Reload | nothing to undo
-expert: Time limit | not checked: plain Lua, no call into the game
-status: unconfirmed
-]]
-function lib.tostring(value)
+function I.to_text(value)
 	local t = type(value)
 	if t == "number" then return I.number_text(value) end
 	if t == "cdata" and is_int64(value) then return (lua_tostring(value):gsub("U?LL$", "")) end
@@ -423,7 +408,7 @@ kind: reading
 group: Values
 words: log console debug output
 syntax: print( ... )
-lead: Writes the values to the server console, separated by tabs. Numbers are written exactly (see tostring( )).
+lead: Writes the values to the server console, separated by tabs. Numbers are written exactly: 1297632424.123456 stays 1297632424.123456 (.. and Lua would write 1297632424.1235).
 arg: ... | any | Anything.
 returns: nothing
 expert: Thread | main thread, like every script
@@ -457,7 +442,7 @@ status: unconfirmed
 	lib.load, lib.loadstring = script_load, script_load
 	lib.print = function(...)
 		local parts = {}
-		for i = 1, select("#", ...) do parts[i] = lib.tostring((select(i, ...))) end
+		for i = 1, select("#", ...) do parts[i] = I.to_text((select(i, ...))) end
 		J.log(concat(parts, "\t"))
 	end
 	if unlock.io then lib.io, lib.dofile, lib.loadfile = io, dofile, loadfile end

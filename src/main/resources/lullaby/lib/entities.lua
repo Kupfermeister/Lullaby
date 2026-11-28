@@ -79,7 +79,7 @@ local players = setmetatable({}, WEAK_VALUES)   -- uuid text -> player
 
 local PLAYER_META = {
 	__index = function(p, key)
-		if key == "uuid" then return player_uuid[p] end
+		if key == "uuid" or key == "string" then return player_uuid[p] end -- .string: player( ) reads it back
 		if key == "name" then return J.player_name(slot_of[p]) end
 		if key == "online" then return J.player_online(slot_of[p]) end
 		if key == "data" then return I.entity_data(p, true, 2) end
@@ -115,6 +115,7 @@ arg: name | text · player | Name or UUID (a player is returned as is).
 returns: player · nil
 is: entity
 field: uuid | text | The UUID, lowercase with dashes. Also while offline.
+field: string | text | The text form: the UUID. player(p.string) gives the player again (entity(p.string) too, while online).
 field: name | text · nil | The name; for an offline player the one the server last saw (nil if it never saw one).
 field: online | boolean | Whether the player is online now.
 field: data | table | Saved data of this player, a table that stays like server.data (it takes the same values, see server). It is entity.data, the same field, kept in the player's own file (playerdata/<uuid>.dat in the main world's folder), so it travels with that file. Works online and offline: an offline player's data is read from the file, and a change is written into the file at the next save. A player who never joined has no file yet: then player.data is an error. player.data = { } starts over.
@@ -152,7 +153,7 @@ local entities = setmetatable({}, WEAK_VALUES)  -- uuid text -> entity
 
 local ENTITY_META = {
 	__index = function(e, key)
-		if key == "uuid" then return entity_uuid[e] end
+		if key == "uuid" or key == "string" then return entity_uuid[e] end -- .string: entity( ) reads it back
 		if key == "data" then return I.entity_data(e, false, 2) end
 		if key == "blueprint" then return blueprint_of(e) end
 		return entity_field(e, key, "entity", ENTITY_HAS)
@@ -202,6 +203,7 @@ lead: An entity by its UUID, if it is in a loaded chunk right now: a mob, an ite
 arg: uuid | text · entity | A UUID like "069a79f4-44e9-4726-a5be-fca90e38aaf5" (an entity or player is returned as is).
 returns: entity · player · nil
 field: uuid | text | The UUID, lowercase with dashes. Also when the entity is gone.
+field: string | text | The text form: the UUID, the same as uuid. entity(e.string) gives it again (a player too, while online).
 field: data | table | Saved data of this entity, a table that stays like server.data (it takes the same values, see server). It is kept inside the entity, so it goes where the entity goes (into other worlds too) and is gone with it when it dies or is removed. Only while the entity is loaded: when its chunk unloads, the table is saved into it and locked (any use is a red error that says why); read entity.data again when the entity is back. entity.data = { } starts over. A player's is kept in the player file, offline too: see player( ).
 set: data | entity.data = { } (a new table; only while loaded)
 field: blueprint | blueprint · nil | A copy of this entity as a blueprint: its type and every field modify_entity{ } changes (health, custom_name, display_data, ...), to make more like it with summon{ } or clientside_summon{ }. Fields Lullaby doesn't read yet (equipment, effects, other NBT) aren't in it. nil for players and gone entities.
@@ -215,7 +217,7 @@ field: on_ground | boolean | Whether it stands on something.
 field: health | number · nil | Health points (2 per heart); nil for entities without health (items, arrows, minecarts, ...). modify_entity{ } changes it.
 field: max_health | number · nil | Its highest health; nil for entities without health. modify_entity{ } changes it.
 field: absorption | number · nil | Yellow extra hearts, in health points; nil for entities without health. modify_entity{ } changes it.
-field: custom_name | component · nil | The name given with a name tag or a command; nil if it has none. modify_entity{ } changes it.
+field: custom_name | text_component · nil | The name given with a name tag or a command; nil if it has none. modify_entity{ } changes it.
 field: custom_name_visible | boolean | Whether the name shows always, not only when someone looks at it up close. modify_entity{ } changes it.
 field: vehicle | entity · player · nil | What it rides (a boat, a horse, ...); nil if nothing.
 field: glowing | boolean | Whether it has the white outline seen through walls (vanilla's Glowing tag; the glowing effect is apart). modify_entity{ } changes it, and so do all the fields below.
@@ -294,7 +296,7 @@ arg: max_health? | number | Entities with health only. Its highest health (the m
 arg: health? | number | Entities with health only. Its health, kept between 0 and max_health as vanilla does; 0 kills it. It is no hit: no armor, no knockback, no red flash (hurt{ } will do that). To add some: health = entity.health + 4.
 arg: absorption? | number | Entities with health only. Yellow extra hearts in health points (4 is two hearts), 0 or more; 0 removes them. They stay until hits use them up, as with a golden apple.
 arg: velocity? | vec3 | Its motion in blocks per tick (1 block per tick is 20 blocks per second); it replaces the motion it had, then air and gravity slow it as usual.
-arg: custom_name? | text · component · false | The name above it: text is shown exactly as written, a component ({ text = "Boss", color = "red" }) can have colors; false removes it. A player's own name doesn't change (only what some plugins show).
+arg: custom_name? | text · text_component · false | The name above it: text is shown exactly as written, a text_component ({ text = "Boss", color = "red" }) can have colors; false removes it. A player's own name doesn't change (only what some plugins show).
 arg: custom_name_visible? | boolean | true: the name shows always, not only up close.
 arg: glowing? | boolean | The white outline seen through walls (its color follows the scoreboard team).
 arg: silent? | boolean | true: it makes no sounds.
@@ -435,7 +437,7 @@ local function copy(v)
 	local meta = meta_of(v)
 	local kind = meta and I.kind_by_meta[meta]
 	if kind == "item_stack" then return lib.item_stack(v) end
-	if meta ~= nil and kind ~= "component" then return v end
+	if meta ~= nil and kind ~= "text_component" then return v end
 	local t = {}
 	for key, value in raw_next, v do t[key] = copy(value) end
 	return setmetatable(t, meta)
@@ -446,7 +448,7 @@ local function same(a, b)
 	if a == b then return true end
 	if type(a) ~= "table" or type(b) ~= "table" then return false end
 	local meta = meta_of(a)
-	if meta ~= meta_of(b) or (meta ~= nil and I.kind_by_meta[meta] ~= "component") then return false end
+	if meta ~= meta_of(b) or (meta ~= nil and I.kind_by_meta[meta] ~= "text_component") then return false end
 	for key, value in raw_next, a do if not same(value, rawget(b, key)) then return false end end
 	for key in raw_next, b do if rawget(a, key) == nil then return false end end
 	return true
@@ -601,7 +603,7 @@ local client_uuid = setmetatable({}, WEAK_KEYS) -- client_entity -> uuid text
 
 local CLIENT_META = {
 	__index = function(c, key)
-		if key == "uuid" then return client_uuid[c] end
+		if key == "uuid" or key == "string" then return client_uuid[c] end
 		if key == "viewers" then
 			local list = {}
 			for uuid in gmatch(J.client_viewers(slot_of[c]), "[^\n]+") do list[#list + 1] = I.player_by_uuid(uuid) end
@@ -711,7 +713,7 @@ field: view_range | number | How far it is drawn, times the normal entity distan
 field: shadow | table | { radius = blocks, strength = 0 to 1 }. Default no shadow.
 field: size | table | { width = , height = } of its culling box: it isn't drawn when that box is off screen. 0 (default): never culled.
 field: glow_color | number · false | The color of its glowing outline (with glowing = true) as one RGB number: 0xFF0000 is red. false: the team color (default).
-field: text | table | Text displays: { text = text or component (what it shows, literal), line_width = pixels before a line breaks (default 200), background = ARGB number (0x40000000 is vanilla's see-through black; 0: none), opacity = 0 to 255 (255 default), shadow = boolean, see_through = boolean (seen through blocks), default_background = boolean (the chat's background), alignment = "center" | "left" | "right" }.
+field: text | table | Text displays: { text = text or text_component (what it shows, literal), line_width = pixels before a line breaks (default 200), background = ARGB number (0x40000000 is vanilla's see-through black; 0: none), opacity = 0 to 255 (255 default), shadow = boolean, see_through = boolean (seen through blocks), default_background = boolean (the chat's background), alignment = "center" | "left" | "right" }.
 field: item | table | Item displays: { item = item_stack or item text ("diamond_sword[damage=5]"), display = how it is held: "none" (default), "thirdperson_lefthand", "thirdperson_righthand", "firstperson_lefthand", "firstperson_righthand", "head", "gui", "ground", "fixed" }.
 field: block_state | block_state · text | Block displays: the block it shows ("oak_stairs[facing=east]").
 example:
@@ -838,7 +840,7 @@ local TREE_VALUES = {
 	quaternion = function(t) return I.new_quaternion(t[1], t[2], t[3], t[4]) end,
 	block_state = function(t) return I.block_state_by_id(t[1]) end,
 	item_stack = function(t) return I.new_item(t[1]) end,
-	component = function(t) return I.as_component(t[1]) end,
+	text_component = function(t) return I.as_component(t[1]) end,
 }
 local function tree(t)
 	for key, value in raw_next, t do

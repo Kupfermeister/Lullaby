@@ -57,7 +57,7 @@ public final class EventBridge implements Listener {
 
     /** What Lullaby makes of a field's Java type: the kind words of events.txt (a word not here is a Lullaby bug). */
     private enum Kind {
-        PLAYER, ENTITY, WORLD, BLOCK, CHUNK, LOCATION, VEC3, BLOCK_POS, AABB, BLOCK_STATE, DAMAGE, ITEM_STACK, COMPONENT,
+        PLAYER, ENTITY, WORLD, BLOCK, CHUNK, LOCATION, VEC3, BLOCK_POS, AABB, BLOCK_STATE, DAMAGE, ITEM_STACK, TEXT_COMPONENT,
         TEXT, ENUM, KEY, UUID, BOOLEAN, INTEGER, NUMBER, BLOCK_SNAPSHOT, PROFILE, ADDRESS, EFFECT, PLAYED_SOUND, SENDER,
         /** a List, Set or Collection: events.txt writes "list:<element kind>" */
         LIST
@@ -240,7 +240,7 @@ public final class EventBridge implements Listener {
                     yield LuaText.string(L, index);
                 }
                 // a plain string is literal text, as /tellraw "text"; component tables go through setComponent
-                case COMPONENT -> {
+                case TEXT_COMPONENT -> {
                     if (!isText(L, index)) throw wrong(field, L, index);
                     yield Component.text(LuaText.string(L, index));
                 }
@@ -257,7 +257,7 @@ public final class EventBridge implements Listener {
     /** Sets a text field from a component table (already turned into a component by Codecs). */
     public void setComponent(Object event, int number, Component text) {
         Field field = writable(number);
-        if (field.write() != Kind.COMPONENT) throw Fields.wrong("", "e." + field.name(), need(field), "a component");
+        if (field.write() != Kind.TEXT_COMPONENT) throw Fields.wrong("", "e." + field.name(), need(field), "a text_component");
         invokeSetter(field, event, text);
     }
 
@@ -310,7 +310,7 @@ public final class EventBridge implements Listener {
     /**
      * Puts a changed list back into the event. {@code wire}: the Lua list, each entry a plain value (text, number,
      * true/false) or { kind, parts... }: { "item_stack", slot }, { "entity", slot }, { "block", world slot, x, y, z },
-     * { "block_snapshot", world slot, x, y, z, state number }, { "component", table }. Every entry is checked
+     * { "block_snapshot", world slot, x, y, z, state number }, { "text_component", table }. Every entry is checked
      * before anything changes. Paper's setter if it has one, else Paper's own list is emptied and filled again.
      */
     @SuppressWarnings("unchecked")
@@ -363,7 +363,7 @@ public final class EventBridge implements Listener {
             case PLAYER -> "a player";
             case BLOCK -> "a block";
             case BLOCK_SNAPSHOT -> "a block_snapshot";
-            case COMPONENT -> "text or a component";
+            case TEXT_COMPONENT -> "text or a text_component";
             case TEXT -> "text";
             case INTEGER -> "a whole number";
             case NUMBER -> "a number";
@@ -376,9 +376,9 @@ public final class EventBridge implements Listener {
             case TEXT -> {
                 if (entry instanceof String text) return text;
             }
-            case COMPONENT -> {
+            case TEXT_COMPONENT -> {
                 if (entry instanceof String text) return Component.text(text);
-                if ("component".equals(got)) return io.github.kupfermeister.lullaby.nms.Codecs.adventure(
+                if ("text_component".equals(got)) return io.github.kupfermeister.lullaby.nms.Codecs.adventure(
                         io.github.kupfermeister.lullaby.nms.Codecs.componentFromTable(parts.get(1), slots));
             }
             case BOOLEAN -> {
@@ -512,7 +512,7 @@ public final class EventBridge implements Listener {
             case INTEGER -> "a whole number";
             case NUMBER -> "a number";
             case TEXT -> "text";
-            case COMPONENT -> "text or a component";
+            case TEXT_COMPONENT -> "text or a text_component";
             case ITEM_STACK -> "an item_stack";
             case LOCATION -> "a location";
             case VEC3 -> "a vec3";

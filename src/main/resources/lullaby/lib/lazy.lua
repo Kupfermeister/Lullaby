@@ -15,12 +15,13 @@
 --                    writes them ("minecraft:custom_name"); a removed default is "!minecraft:food" = {}. Short keys
 --                    work too (it.components.custom_name, it.components["!food"] = {}): a lookup only, nothing is
 --                    added. Strings are literal text, as vanilla (no markup anywhere in Lullaby).
---   tostring(it)     vanilla's item text with the changed components (as /give takes it; no count, like vanilla)
+--   it.string        vanilla's item text with the changed components, then the count unless 1 (as /give takes it)
 --   a == b           vanilla's ItemStack.matches (same item, count and components)
---   component(x)     text (literal), codec table or component -> a PLAIN changeable table in vanilla's codec shape
---                    (c.text, c.color, c.extra, ...; strings literal). tostring gives vanilla's JSON text; ==
---                    compares that. A show_item hover holds item = <item_stack>.
---   from_json(text, type)  datapack JSON with vanilla's own meaning; type "item_stack" or "component".
+--   text_component(x)  text (literal), codec table, list of parts, { raw = /tellraw text } or text_component -> a
+--                    PLAIN changeable table in vanilla's codec shape (c.text, c.color, c.extra, ...; strings
+--                    literal). c.string gives vanilla's JSON text (raw = reads it back); == compares that. A
+--                    show_item hover holds item = <item_stack>.
+--   from_json(text, "item_stack")  datapack JSON with vanilla's own meaning.
 --   pairs, next      Lullaby's own: on a lazy value they load every part first; on other tables plain Lua.
 local J, lib, I = ...
 
@@ -70,7 +71,7 @@ local function mark(t, level)
 				rawset(value, true, slot)
 				marked[#marked + 1] = value
 				if helper then helpers[#helpers + 1] = helper end
-			elseif meta == nil or kind_by_meta[meta] == "component" or kind_by_meta[meta] == "components" then
+			elseif meta == nil or kind_by_meta[meta] == "text_component" or kind_by_meta[meta] == "components" then
 				mark(value, level + 1)
 			end
 		end
@@ -176,7 +177,13 @@ I.new_item = new_item
 
 ITEM.__index = function(it, key)
 	local load = PARTS[key]
-	if not load then I.no_field("item_stack", key, "id, count, components", 2) end
+	if not load then
+		if key == "string" then -- /give's form: item text, then the count unless 1 (item_stack( ) reads both)
+			local count = it.count
+			return ITEM.__tostring(it) .. (count ~= 1 and " " .. I.number_text(count) or "")
+		end
+		I.no_field("item_stack", key, "id, count, components, string", 2)
+	end
 	local parts = loaded[it]
 	if parts[key] then return nil end -- set to nil by the script
 	local value = load(slot_of[it])
@@ -266,7 +273,7 @@ set: count | it.count = 5 (your copy)
 field: components | table | EXACTLY vanilla's patch: only the changes against the item type's defaults, keys as vanilla writes them ("minecraft:custom_name"); a removed default is ["!minecraft:food"] = { }. Short keys work too (it.components.custom_name). Can be changed, in place or as a whole table.
 set: components | it.components = { ... } or it.components.custom_name = ... (your copy)
 method: a == b | boolean | Vanilla's ItemStack.matches: same item, count and components.
-method: tostring(it) | text | Vanilla's item text with the changed components, as /give takes it (no count, like vanilla).
+field: string | text | The item as text, as /give takes it: vanilla's item text with the changed components, then the count if it isn't 1: "diamond_sword[damage=5]", "stone 12". item_stack(it.string) makes it again.
 expert: Thread | main thread, like every script
 expert: Cost | 10–100 µs to make one; it.id 1–5 µs; it.components first touch 10–100 µs (guess, not measured)
 expert: Under the hood | vanilla's item parser and ItemStack codec; a Java copy in a slot, parts load on first touch
@@ -277,7 +284,14 @@ status: unconfirmed
 ]]
 function lib.item_stack(x)
 	local t = type(x)
-	if t == "string" then return new_item(J.item_parse(x)) end
+	if t == "string" then
+		-- "diamond 5": a count after the item text, as /give takes it (it.string writes it so when not 1). Item text
+		-- never ends in a space and a number of its own: an id has no spaces and components end with "]".
+		local text, count = x:match("^(.-)%s+(%d+)$")
+		local it = new_item(J.item_parse(text or x))
+		if count and it then it.count = tonumber(count) end
+		return it
+	end
 	if t == "table" then
 		if meta_of(x) == ITEM then return with_slot(x, function(slot) return new_item(J.slot_copy(slot)) end) end
 		return new_item(J.item_from_table(I.wire(x)))
@@ -288,21 +302,25 @@ function lib.item_stack(x)
 end
 
 -- ---------------------------------------------------------------------------------------------------------------
--- component (text)
+-- text_component (text)
 -- ---------------------------------------------------------------------------------------------------------------
 
--- A component is a plain Lua table in vanilla's codec shape ({ text = "Hi", color = "red", extra = { ... } }), free
--- to change; only the top table carries COMPONENT (for type_of, tostring and ==). Strings in it are literal text, as
--- vanilla reads them. A show_item hover holds item = <item_stack> instead of vanilla's flat id/count/components.
+-- A text_component is a plain Lua table in vanilla's codec shape ({ text = "Hi", color = "red", extra = { ... } }),
+-- free to change; only the top table carries COMPONENT (for type_of, .string and ==). Strings in it are literal text,
+-- as vanilla reads them. A show_item hover holds item = <item_stack> instead of vanilla's flat id/count/components.
+local function component_text(c) return J.component_text(I.wire(c)) end
 local COMPONENT = {
-	__tostring = function(c) return J.component_text(I.wire(c)) end,
+	-- c.string: vanilla's JSON text, the form text_component{ raw = } takes back. Any other missing key is nil, as in
+	-- a plain table (c.color of a component without a color).
+	__index = function(c, key) if key == "string" then return component_text(c) end end,
+	__tostring = component_text,
 	__metatable = false,
 }
 COMPONENT.__eq = function(a, b)
 	if meta_of(a) ~= COMPONENT or meta_of(b) ~= COMPONENT then return false end
-	return J.component_text(I.wire(a)) == J.component_text(I.wire(b))
+	return component_text(a) == component_text(b)
 end
-kind_by_meta[COMPONENT] = "component"
+kind_by_meta[COMPONENT] = "text_component"
 
 -- Puts item_stacks where Java left a slot number ({ [true] = slot }) in show_item hovers.
 local function items_in(t)
@@ -332,33 +350,50 @@ end
 -- Wire bytes from Java as Lua values (the other direction of I.wire).
 I.decode = buffer.decode
 
--- component("Hi") is literal text ({ text = "Hi" }, no markup); component(table or component) is a checked fresh
--- copy, cleaned up by vanilla's codec.
+-- text_component("Hi") is literal text ({ text = "Hi" }, no markup, plain Lua). A table goes through vanilla's codec,
+-- which also reads a list ({ "Hi ", { text = "you", color = "red" } }: the first part, the rest as its extra).
+-- { raw = text } alone is /tellraw's own reader (Java). A text_component gives a checked fresh copy.
 --[[doc
-name: component( )
+name: text_component( )
 kind: reading
 group: Text
-words: text format color bold json chat
-syntax: component( "Hi" | { text = "Hi", color = "red", ... } | component )
-lead: Text as a component, in vanilla's own shape (the same as datapack JSON): { text = "Hi", color = "red", bold = true, extra = { ... } }. Text is literal, exactly as it is written ("<red>" shows as those letters); colors and styles go in the table. A table or component gives a checked fresh copy. tostring(c) gives vanilla's JSON text, which from_json(text, "component") reads back; == compares that.
-arg: text | text · table · component | The text.
-returns: component
+words: text format color bold json chat tellraw raw string component
+syntax: text_component( "Hi" )   text_component{ text = "Hi", color = "red", ... }   text_component{ { ... }, { ... } }   text_component{ raw = '{"text":"Hi"}' }
+lead: Colored text, in vanilla's own shape (the same as datapack JSON): { text = "Hi", color = "red", bold = true, extra = { ... } }. Text is literal, exactly as written ("<red>" shows as those letters), like /tellraw "Hi". Several parts go in a list: text_component{ { text = "Hi ", color = "gold" }, { text = "there" } } (plain text works as a part too: text_component{ "Hi ", { text = "there", color = "red" } }). raw = takes text exactly as /tellraw does, so you can paste from a text generator: raw = '{"text":"Hi","color":"red"}' (single quotes outside, because the JSON has double quotes inside; a Lua long string works too). c.string gives that raw text back, so text_component{ raw = c.string } makes it again. == compares the text.
+arg: text | text · table · text_component | The text: a text (literal), one part { text = , color = , ... }, a list of parts, { raw = text } (/tellraw's form, alone), or a text_component (a fresh copy).
+returns: text_component
+field: string | text | Vanilla's JSON text, like {"text":"Boss","color":"red"}: what raw = takes, and /tellraw too. Paste it into a command or a text generator, keep it as text, or make the component again with text_component{ raw = c.string }.
 example:
-  local title = component{ text = "Boss", color = "red", bold = true, extra = { { text = " (angry)", color = "gray" } } }
+  local title = text_component{ text = "Boss", color = "red", bold = true, extra = { { text = " (angry)", color = "gray" } } }
+  local line = text_component{ { text = "Hi ", color = "gold" }, "there" }
+  local pasted = text_component{ raw = '["",{"text":"Shop","color":"green","bold":true}]' }
+  print(title.string)
+try: /lullaby run message{ player = me, text = text_component{ raw = '{"text":"Hello from Lullaby!","color":"gold"}' } }
 expert: Thread | main thread, like every script
-expert: Cost | text 1–3 µs (plain Lua), a table 10–100 µs (guess, not measured)
-expert: Under the hood | text: plain Lua, no Java; a table: vanilla's component codec; the result is a plain Lua table
-expert: Can fail | fields vanilla's codec refuses
+expert: Cost | text 1–3 µs (plain Lua), a table or raw 10–100 µs, c.string 10–100 µs (guess, not measured)
+expert: Under the hood | text: plain Lua, no Java; a table: vanilla's component codec; raw: vanilla's /tellraw reader (ComponentArgument: SNBT, which also reads JSON); the result is a plain Lua table
+expert: Can fail | fields vanilla's codec refuses; raw text /tellraw refuses
 expert: Reload | plain tables: they go with the Lua state
-expert: Time limit | checked for a table: it calls into the game, so a script over script_time_limit stops here with the normal red error
+expert: Time limit | checked for a table and raw: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
 ]]
-function lib.component(x)
+function lib.text_component(x)
 	local t = type(x)
 	if t == "string" then return setmetatable({ text = x }, COMPONENT) end
-	if t == "table" then return new_component(J.component_from_table(I.wire(x))) end
-	-- FORMAT: wrong argument for component()
-	error("component needs text, a table or a component, got " .. I.type_name(x), 2)
+	if t == "table" then
+		local raw = meta_of(x) == nil and rawget(x, "raw")
+		if raw ~= nil and raw ~= false then
+			-- FORMAT: text_component{ raw = } wrong
+			if type(raw) ~= "string" then error("text_component: raw must be text, got " .. I.type_name(raw), 2) end
+			local other = raw_next(x)
+			if other == "raw" then other = raw_next(x, "raw") end
+			if other ~= nil then error("text_component: raw = goes alone (found " .. tostring(other) .. " too)", 2) end
+			return new_component(J.component_parse(raw))
+		end
+		return new_component(J.component_from_table(I.wire(x)))
+	end
+	-- FORMAT: wrong argument for text_component()
+	error("text_component needs text, a table or a text_component, got " .. I.type_name(x), 2)
 end
 
 --[[doc
@@ -366,15 +401,15 @@ name: from_json( )
 kind: reading
 group: Items
 words: json parse
-syntax: from_json( text, "item_stack" | "component" )
-lead: Reads vanilla's JSON as an item stack or a component.
+syntax: from_json( text, "item_stack" )
+lead: Reads vanilla's JSON as an item stack (for text: text_component{ raw = json }).
 arg: text | text | The JSON.
-arg: type_name | text | "item_stack" or "component".
-returns: item_stack · component
+arg: type_name | text | "item_stack".
+returns: item_stack
 expert: Thread | main thread, like every script
 expert: Cost | 20–300 µs, more for big JSON (guess, not measured)
 expert: Under the hood | vanilla's JSON reader and codec, as datapacks use them
-expert: Can fail | bad JSON, a type other than item_stack or component, values vanilla refuses
+expert: Can fail | bad JSON, a type other than item_stack, values vanilla refuses
 expert: Reload | results go with the Lua state
 expert: Time limit | checked: it calls into the game, so a script over script_time_limit stops here with the normal red error
 status: unconfirmed
@@ -382,11 +417,10 @@ status: unconfirmed
 function lib.from_json(text, type_name)
 	-- FORMAT: wrong arguments for from_json()
 	if type(text) ~= "string" then error("from_json needs JSON text, got " .. I.type_name(text), 2) end
-	if type_name ~= "item_stack" and type_name ~= "component" then
-		error("from_json: type must be \"item_stack\" or \"component\", got " .. tostring(type_name), 2)
+	if type_name ~= "item_stack" then
+		error("from_json: type must be \"item_stack\" (text: text_component{ raw = json }), got " .. tostring(type_name), 2)
 	end
-	if type_name == "item_stack" then return new_item(J.from_json(text, type_name)) end
-	return new_component(J.from_json(text, type_name))
+	return new_item(J.from_json(text, type_name))
 end
 
 -- ---------------------------------------------------------------------------------------------------------------

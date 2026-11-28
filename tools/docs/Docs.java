@@ -595,7 +595,7 @@ public final class Docs {
             };
             String change = write.equals("-") ? "read only"
                     : write.startsWith("?") ? "read only for now: Lullaby can't make a " + write.substring(1) + " yet"
-                    : "can be changed in on{ }" + (write.equals("component") ? " (to text or a component)"
+                    : "can be changed in on{ }" + (write.equals("text_component") ? " (to text or a text_component)"
                     : write.startsWith("list:") ? " (change the list or its entries; it goes back when the handler ends)"
                     : write.equals("block_snapshot") ? " (change its state)" : "");
             text = text.isEmpty() ? change : text + "; " + change;

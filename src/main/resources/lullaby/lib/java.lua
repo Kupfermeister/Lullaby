@@ -255,9 +255,9 @@ kind: reading
 group: Java door
 words: raw java bukkit player entity world block chunk location vector item wrap
 syntax: java.wrap( object ) → a Lullaby value · nil
-lead: The Lullaby value for a raw Java object, where Lullaby has one: a Bukkit Player or OfflinePlayer gives a player, any other Bukkit entity an entity, a World a world, a Block a block, a Chunk a chunk, a Location a location, a Vector a vec3, a BoundingBox an aabb, a BlockData a block_state, a DamageSource a damage, an adventure Component a component, a Bukkit or Minecraft ItemStack an item_stack copy. nil for anything else. Only with unlock.java in the config.
+lead: The Lullaby value for a raw Java object, where Lullaby has one: a Bukkit Player or OfflinePlayer gives a player, any other Bukkit entity an entity, a World a world, a Block a block, a Chunk a chunk, a Location a location, a Vector a vec3, a BoundingBox an aabb, a BlockData a block_state, a DamageSource a damage, an adventure Component a text_component, a Bukkit or Minecraft ItemStack an item_stack copy. nil for anything else. Only with unlock.java in the config.
 arg: object | java | A raw Java object.
-returns: player · entity · world · block · chunk · location · vec3 · aabb · block_state · damage · component · item_stack · nil
+returns: player · entity · world · block · chunk · location · vec3 · aabb · block_state · damage · text_component · item_stack · nil
 example:
   local Bukkit = java.class("org.bukkit.Bukkit")
   local player = java.wrap(Bukkit:getPlayer("Notch")) -- nil if Notch is offline

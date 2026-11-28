@@ -31,7 +31,7 @@ local function id_objects(kind, find, make_slot)
 	local id_of = setmetatable({}, WEAK_KEYS)
 	local by_id = {} -- strong: there are only a few hundred, and the same id must always give the same object
 	local meta = {
-		__index = function(_, key) I.no_field(kind, key, "no fields yet; tostring gives its id", 2) end,
+		__index = function(_, key) I.no_field(kind, key, "no fields yet", 2) end,
 		__newindex = read_only(kind),
 		__tostring = function(o) return id_of[o] end,
 		__metatable = false,
@@ -65,10 +65,11 @@ kind: reading
 group: Worlds
 words: dimension level overworld nether end save saved data store persist
 syntax: world( "overworld" ) → world | nil
-lead: A loaded world by its id: "overworld" means "minecraft:overworld". nil if there is none (worlds( ) gives every world, also unloaded ones). Each world exists once, so == works. tostring(world) gives its id.
+lead: A loaded world by its id: "overworld" means "minecraft:overworld". nil if there is none (worlds( ) gives every world, also unloaded ones). Each world exists once, so == works.
 arg: id | text · world | The world's id (a world is returned as is).
 returns: world · nil
-field: id | text | The full id: "minecraft:arena_7". The same as tostring(world).
+field: id | text | The full id: "minecraft:arena_7".
+field: string | text | The text form: the full id, the same as id. world(w.string) gives it again (while loaded).
 field: name | text | The name create_world{ } and load_world{ } take: "arena_7" (the id without "minecraft:"; another namespace stays: "myserver:arena_7").
 field: loaded | boolean | Whether the world is loaded right now. Worlds from worlds( ) can be unloaded; id, name and loaded work then too.
 field: data | table | Saved data of this world, a table that stays like server.data (it takes the same values, see server). It is saved when this world saves (autosave, /save-all, server stop) and before /lullaby reload, into the world's own folder, so it travels with the world: copy_world{ } copies it, delete_world{ } deletes it. Only while the world is loaded. world.data = { } starts over.
@@ -143,6 +144,7 @@ local STATE = {
 	__index = function(s, key)
 		local info = info_of(s)
 		if key == "type" then return info.type end
+		if key == "string" then return tostring(s) end -- vanilla's text: block_state( ) reads it back
 		local value = info.props[key]
 		if value ~= nil then return value end
 		return state_methods[key]
@@ -187,7 +189,7 @@ field: type | text | The block's id, like "minecraft:oak_stairs".
 field: <property> | boolean · number · text | Each property by its name: s.facing == "north", s.waterlogged == false, s.age == 3. Can't be changed: use s:with{ }.
 method: :with{ property = value, ... } | block_state | The state with these properties changed (vanilla's setValue): s:with{ facing = "south" }. s itself stays as it was.
 method: a == b | boolean | The same state (each state exists once).
-method: tostring(s) | text | Vanilla's text, like "minecraft:oak_stairs[facing=north,...]".
+field: string | text | Vanilla's text, like "minecraft:oak_stairs[facing=north,half=bottom,...]": block_state(s.string) makes it again, and /setblock takes it.
 expert: Thread | main thread, like every script
 expert: Cost | from text 5–50 µs, the same state again reuses its object; a property: first time 3–20 µs, then 50–200 ns (guess, not measured)
 expert: Under the hood | vanilla's state number (Block.getId) with vanilla's own parser and codec

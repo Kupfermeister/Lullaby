@@ -57,11 +57,11 @@ public final class Entities {
     /**
      * The fields scripts read (e.pos, ...), owned here: the library reads the names once at startup
      * ({@link #fieldList}) and asks for a field by its number, never by name. The entity's doc block in entities.lua
-     * describes each one; the docs build checks that both name the same fields. DATA (saved data) and BLUEPRINT (a
-     * copy of the changeable fields, made from the other fields) are answered by the library and never read here;
-     * they are listed so the field list stays in one place.
+     * describes each one; the docs build checks that both name the same fields. STRING (the text form: the UUID), DATA
+     * (saved data) and BLUEPRINT (a copy of the changeable fields, made from the other fields) are answered by the
+     * library and never read here; they are listed so the field list stays in one place.
      */
-    enum Field { UUID, DATA, BLUEPRINT, TYPE, ALIVE, WORLD, POS, LOCATION, VELOCITY, ON_GROUND, HEALTH, MAX_HEALTH, ABSORPTION,
+    enum Field { UUID, STRING, DATA, BLUEPRINT, TYPE, ALIVE, WORLD, POS, LOCATION, VELOCITY, ON_GROUND, HEALTH, MAX_HEALTH, ABSORPTION,
         CUSTOM_NAME, CUSTOM_NAME_VISIBLE, VEHICLE, GLOWING, SILENT, GRAVITY, INVULNERABLE, PERSISTENT, VISIBLE, COLLIDABLE,
         FIRE_TIME, FREEZE_TIME, FALL_DISTANCE, NO_DAMAGE_TIME, AIR, AI, AWARE, TARGET, CAN_PICKUP_ITEMS, ANGRY, LEFT_HANDED,
         FOOD, SATURATION, EXHAUSTION, XP, XP_LEVEL, DISPLAY_DATA }
@@ -360,7 +360,7 @@ public final class Entities {
         if (e == null) return field == Field.ALIVE ? Boolean.FALSE : null;
         return switch (field) {
             case UUID -> e.getUUID().toString();
-            case DATA, BLUEPRINT -> throw new IllegalStateException("Lullaby bug: entity." + field.name().toLowerCase(Locale.ROOT)
+            case STRING, DATA, BLUEPRINT -> throw new IllegalStateException("Lullaby bug: entity." + field.name().toLowerCase(Locale.ROOT)
                     + " is answered by the library");
             case TYPE -> EntityType.getKey(e.getType()).toString();
             case ALIVE -> slotValue instanceof ClientEntities.Fake || e.isAlive();

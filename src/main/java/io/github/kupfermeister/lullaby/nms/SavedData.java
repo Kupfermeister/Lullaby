@@ -350,7 +350,7 @@ public final class SavedData {
             inner = switch (kind) {
                 case "item_stack" -> get(ItemStack.CODEC.encodeStart(Codecs.nbt(),
                         (ItemStack) slots.apply(((Number) t.hash.get(Boolean.TRUE)).intValue())));
-                case "component" -> get(ComponentSerialization.CODEC.encodeStart(Codecs.nbt(),
+                case "text_component" -> get(ComponentSerialization.CODEC.encodeStart(Codecs.nbt(),
                         Codecs.componentFromTable(t, slots)));
                 case "block_state" -> get(BlockState.CODEC.encodeStart(Codecs.nbt(),
                         Nms.state(((Number) t.array.get(0)).intValue())));
@@ -538,7 +538,7 @@ public final class SavedData {
                     if (stack.isEmpty()) throw new IllegalArgumentException("the item is empty");
                     yield (double) addSlot.applyAsInt(stack);
                 }
-                case "component" -> Codecs.componentTree(get(ComponentSerialization.CODEC.parse(Codecs.nbt(),
+                case "text_component", "component" -> Codecs.componentTree(get(ComponentSerialization.CODEC.parse(Codecs.nbt(),
                         fix(References.TEXT_COMPONENT, value, version))), addSlot, new int[1]);
                 case "block_state" -> (double) Block.getId(get(BlockState.CODEC.parse(Codecs.nbt(),
                         fix(References.BLOCK_STATE, value, version))));
@@ -555,6 +555,8 @@ public final class SavedData {
                     + e.getMessage() + ")");
             throw new Skip();
         }
+        // "component" is the name files saved before 0.1.12 used (renamed to text_component): read as the new one
+        if (kind.equals("component")) kind = "text_component";
         Map<Object, Object> wrapped = new LinkedHashMap<>();
         wrapped.put(PREFIX + kind, result);
         return wrapped;

@@ -6,7 +6,7 @@
 # Field line: <TAB> name <TAB> getter <TAB> read kind <TAB> setter <TAB> setter's parameter class <TAB> write kind
 #   <TAB> enum: its class's simple name, ":" and its words when 16 or fewer (Result:deny,default,allow);
 #   - where there is none
-# KINDS: player entity world block chunk location vec3 block_pos aabb block_state damage item_stack component
+# KINDS: player entity world block chunk location vec3 block_pos aabb block_state damage item_stack text_component
 #   text enum key uuid boolean integer number block_snapshot profile address effect played_sound sender, and
 #   list:<kind> (a List, Set or
 #   Collection); a list field without a setter can still have a write kind: Paper's list is meant to be changed
@@ -33,18 +33,18 @@ ArrowBodyCountChangeEvent	org.bukkit.event.entity.ArrowBodyCountChangeEvent	Enti
 	reset	isReset	boolean	-	-	-	-
 AsyncChatCommandDecorateEvent	io.papermc.paper.event.player.AsyncChatCommandDecorateEvent	Player	cancellable,async
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	original_message	originalMessage	component	-	-	-	-
+	original_message	originalMessage	text_component	-	-	-	-
 	player	player	player	-	-	-	-
-	result	result	component	result	net.kyori.adventure.text.Component	component	-
+	result	result	text_component	result	net.kyori.adventure.text.Component	text_component	-
 AsyncChatDecorateEvent	io.papermc.paper.event.player.AsyncChatDecorateEvent	Player	cancellable,async
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	original_message	originalMessage	component	-	-	-	-
+	original_message	originalMessage	text_component	-	-	-	-
 	player	player	player	-	-	-	-
-	result	result	component	result	net.kyori.adventure.text.Component	component	-
+	result	result	text_component	result	net.kyori.adventure.text.Component	text_component	-
 AsyncChatEvent	io.papermc.paper.event.player.AsyncChatEvent	Player	cancellable,async
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	message	message	component	message	net.kyori.adventure.text.Component	component	-
-	original_message	originalMessage	component	-	-	-	-
+	message	message	text_component	message	net.kyori.adventure.text.Component	text_component	-
+	original_message	originalMessage	text_component	-	-	-	-
 	player	getPlayer	player	-	-	-	-
 	renderer	renderer	?ChatRenderer	renderer	io.papermc.paper.chat.ChatRenderer	?ChatRenderer	-
 	signed_message	signedMessage	?SignedMessage	-	-	-	-
@@ -55,7 +55,7 @@ AsyncPlayerPreLoginEvent	org.bukkit.event.player.AsyncPlayerPreLoginEvent	Player
 	address	getAddress	address	-	-	-	-
 	connection	getConnection	?PlayerLoginConnection	-	-	-	-
 	hostname	getHostname	text	-	-	-	-
-	kick_message	kickMessage	component	kickMessage	net.kyori.adventure.text.Component	component	-
+	kick_message	kickMessage	text_component	kickMessage	net.kyori.adventure.text.Component	text_component	-
 	login_result	getLoginResult	enum	setLoginResult	org.bukkit.event.player.AsyncPlayerPreLoginEvent$Result	enum	Result:allowed,kick_full,kick_banned,kick_whitelist,kick_other
 	name	getName	text	-	-	-	-
 	player_profile	getPlayerProfile	profile	setPlayerProfile	com.destroystokyo.paper.profile.PlayerProfile	?PlayerProfile	-
@@ -250,7 +250,7 @@ BlockLockCheckEvent	io.papermc.paper.event.block.BlockLockCheckEvent	Block	-
 	block	getBlock	block	-	-	-	-
 	block_state	getBlockState	?LockableTileState	-	-	-	-
 	key_item	getKeyItem	item_stack	setKeyItem	org.bukkit.inventory.ItemStack	item_stack	-
-	locked_message	getLockedMessage	component	setLockedMessage	net.kyori.adventure.text.Component	component	-
+	locked_message	getLockedMessage	text_component	setLockedMessage	net.kyori.adventure.text.Component	text_component	-
 	locked_sound	getLockedSound	played_sound	setLockedSound	net.kyori.adventure.sound.Sound	?Sound	-
 	player	getPlayer	player	-	-	-	-
 	result	getResult	enum	setResult	org.bukkit.event.Event$Result	enum	Result:deny,default,allow
@@ -338,7 +338,7 @@ BrewingStartEvent	org.bukkit.event.block.BrewingStartEvent	Block	-
 	source	getSource	item_stack	-	-	-	-
 BroadcastMessageEvent	org.bukkit.event.server.BroadcastMessageEvent	Server	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	message	message	component	message	net.kyori.adventure.text.Component	component	-
+	message	message	text_component	message	net.kyori.adventure.text.Component	text_component	-
 	recipients	getRecipients	list:sender	-	-	-	-
 CampfireStartEvent	org.bukkit.event.block.CampfireStartEvent	Block	-
 	block	getBlock	block	-	-	-	-
@@ -1132,7 +1132,7 @@ InventoryOpenEvent	org.bukkit.event.inventory.InventoryOpenEvent	Inventory	cance
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	inventory	getInventory	?Inventory	-	-	-	-
 	player	getPlayer	player	-	-	-	-
-	title_override	titleOverride	component	titleOverride	net.kyori.adventure.text.Component	component	-
+	title_override	titleOverride	text_component	titleOverride	net.kyori.adventure.text.Component	text_component	-
 	view	getView	?InventoryView	-	-	-	-
 	viewers	getViewers	list:player	-	-	-	-
 InventoryPickupItemEvent	org.bukkit.event.inventory.InventoryPickupItemEvent	Inventory	cancellable
@@ -1219,7 +1219,7 @@ PaperServerListPingEvent	com.destroystokyo.paper.event.server.PaperServerListPin
 	hostname	getHostname	text	-	-	-	-
 	listed_players	getListedPlayers	?list of ListedPlayerInfo	-	-	-	-
 	max_players	getMaxPlayers	integer	setMaxPlayers	int	integer	-
-	motd	motd	component	motd	net.kyori.adventure.text.Component	component	-
+	motd	motd	text_component	motd	net.kyori.adventure.text.Component	text_component	-
 	num_players	getNumPlayers	integer	setNumPlayers	int	integer	-
 	protocol_version	getProtocolVersion	integer	setProtocolVersion	int	integer	-
 	server_icon	getServerIcon	?CachedServerIcon	setServerIcon	org.bukkit.util.CachedServerIcon	?CachedServerIcon	-
@@ -1253,7 +1253,7 @@ PlayerAdvancementCriterionGrantEvent	com.destroystokyo.paper.event.player.Player
 	player	getPlayer	player	-	-	-	-
 PlayerAdvancementDoneEvent	org.bukkit.event.player.PlayerAdvancementDoneEvent	Player	-
 	advancement	getAdvancement	key	-	-	-	-
-	message	message	component	message	net.kyori.adventure.text.Component	component	-
+	message	message	text_component	message	net.kyori.adventure.text.Component	text_component	-
 	player	getPlayer	player	-	-	-	-
 PlayerArmSwingEvent	io.papermc.paper.event.player.PlayerArmSwingEvent	Player	cancellable
 	animation_type	getAnimationType	enum	-	-	-	PlayerAnimationType:arm_swing,off_arm_swing
@@ -1291,7 +1291,7 @@ PlayerBedFailEnterEvent	io.papermc.paper.event.player.PlayerBedFailEnterEvent	Pl
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	enter_action	enterAction	?BedEnterAction	-	-	-	-
 	fail_reason	getFailReason	enum	-	-	-	FailReason:not_possible_here,not_possible_now,too_far_away,obstructed,other_problem,not_safe,explosion
-	message	getMessage	component	setMessage	net.kyori.adventure.text.Component	component	-
+	message	getMessage	text_component	setMessage	net.kyori.adventure.text.Component	text_component	-
 	player	getPlayer	player	-	-	-	-
 	will_explode	getWillExplode	boolean	setWillExplode	boolean	boolean	-
 PlayerBedLeaveEvent	org.bukkit.event.player.PlayerBedLeaveEvent	Player	cancellable
@@ -1402,12 +1402,12 @@ PlayerConnectionReconfigureEvent	io.papermc.paper.event.connection.configuration
 PlayerConnectionValidateLoginEvent	io.papermc.paper.event.connection.PlayerConnectionValidateLoginEvent	Connection	-
 	allowed	isAllowed	boolean	-	-	-	-
 	connection	getConnection	?PlayerConnection	-	-	-	-
-	kick_message	getKickMessage	component	kickMessage	net.kyori.adventure.text.Component	component	-
+	kick_message	getKickMessage	text_component	kickMessage	net.kyori.adventure.text.Component	text_component	-
 PlayerDeathEvent	org.bukkit.event.entity.PlayerDeathEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	damage_source	getDamageSource	damage	-	-	-	-
-	death_message	deathMessage	component	deathMessage	net.kyori.adventure.text.Component	component	-
-	death_screen_message_override	deathScreenMessageOverride	component	deathScreenMessageOverride	net.kyori.adventure.text.Component	component	-
+	death_message	deathMessage	text_component	deathMessage	net.kyori.adventure.text.Component	text_component	-
+	death_screen_message_override	deathScreenMessageOverride	text_component	deathScreenMessageOverride	net.kyori.adventure.text.Component	text_component	-
 	death_sound	getDeathSound	key	setDeathSound	org.bukkit.Sound	?Sound	-
 	death_sound_category	getDeathSoundCategory	enum	setDeathSoundCategory	org.bukkit.SoundCategory	enum	SoundCategory:master,music,records,weather,blocks,hostile,neutral,players,ambient,voice,ui
 	death_sound_pitch	getDeathSoundPitch	number	setDeathSoundPitch	float	number	-
@@ -1483,14 +1483,14 @@ PlayerFlowerPotManipulateEvent	io.papermc.paper.event.player.PlayerFlowerPotMani
 	placing	isPlacing	boolean	-	-	-	-
 	player	getPlayer	player	-	-	-	-
 PlayerGameModeChangeEvent	org.bukkit.event.player.PlayerGameModeChangeEvent	Player	cancellable
-	cancel_message	cancelMessage	component	cancelMessage	net.kyori.adventure.text.Component	component	-
+	cancel_message	cancelMessage	text_component	cancelMessage	net.kyori.adventure.text.Component	text_component	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	cause	getCause	enum	-	-	-	Cause:plugin,command,default_gamemode,hardcore_death,gamemode_switcher,unknown
 	new_game_mode	getNewGameMode	enum	-	-	-	GameMode:creative,survival,adventure,spectator
 	player	getPlayer	player	-	-	-	-
 PlayerHandshakeEvent	com.destroystokyo.paper.event.player.PlayerHandshakeEvent	Player	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	fail_message	failMessage	component	failMessage	net.kyori.adventure.text.Component	component	-
+	fail_message	failMessage	text_component	failMessage	net.kyori.adventure.text.Component	text_component	-
 	failed	isFailed	boolean	setFailed	boolean	boolean	-
 	original_handshake	getOriginalHandshake	text	-	-	-	-
 	original_socket_address_hostname	getOriginalSocketAddressHostname	text	-	-	-	-
@@ -1594,7 +1594,7 @@ PlayerItemMendEvent	org.bukkit.event.player.PlayerItemMendEvent	Player	cancellab
 	repair_amount	getRepairAmount	integer	setRepairAmount	int	integer	-
 	slot	getSlot	enum	-	-	-	EquipmentSlot:hand,off_hand,feet,legs,chest,head,body,saddle
 PlayerJoinEvent	org.bukkit.event.player.PlayerJoinEvent	Player	-
-	join_message	joinMessage	component	joinMessage	net.kyori.adventure.text.Component	component	-
+	join_message	joinMessage	text_component	joinMessage	net.kyori.adventure.text.Component	text_component	-
 	player	getPlayer	player	-	-	-	-
 PlayerJumpEvent	com.destroystokyo.paper.event.player.PlayerJumpEvent	Player	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
@@ -1604,9 +1604,9 @@ PlayerJumpEvent	com.destroystokyo.paper.event.player.PlayerJumpEvent	Player	canc
 PlayerKickEvent	org.bukkit.event.player.PlayerKickEvent	Player	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	cause	getCause	enum	-	-	-	Cause:
-	leave_message	leaveMessage	component	leaveMessage	net.kyori.adventure.text.Component	component	-
+	leave_message	leaveMessage	text_component	leaveMessage	net.kyori.adventure.text.Component	text_component	-
 	player	getPlayer	player	-	-	-	-
-	reason	reason	component	reason	net.kyori.adventure.text.Component	component	-
+	reason	reason	text_component	reason	net.kyori.adventure.text.Component	text_component	-
 PlayerLaunchProjectileEvent	com.destroystokyo.paper.event.player.PlayerLaunchProjectileEvent	Player	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	item_stack	getItemStack	item_stack	-	-	-	-
@@ -1660,7 +1660,7 @@ PlayerMoveEvent	org.bukkit.event.player.PlayerMoveEvent	Player	cancellable
 PlayerNameEntityEvent	io.papermc.paper.event.player.PlayerNameEntityEvent	Player	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	entity	getEntity	entity	setEntity	org.bukkit.entity.LivingEntity	entity	-
-	name	getName	component	setName	net.kyori.adventure.text.Component	component	-
+	name	getName	text_component	setName	net.kyori.adventure.text.Component	text_component	-
 	persistent	isPersistent	boolean	setPersistent	boolean	boolean	-
 	player	getPlayer	player	-	-	-	-
 PlayerNaturallySpawnCreaturesEvent	com.destroystokyo.paper.event.entity.PlayerNaturallySpawnCreaturesEvent	Entity	cancellable
@@ -1731,7 +1731,7 @@ PlayerPurchaseEvent	io.papermc.paper.event.player.PlayerPurchaseEvent	Player	can
 	will_increase_trade_uses	willIncreaseTradeUses	boolean	-	-	-	-
 PlayerQuitEvent	org.bukkit.event.player.PlayerQuitEvent	Player	-
 	player	getPlayer	player	-	-	-	-
-	quit_message	quitMessage	component	quitMessage	net.kyori.adventure.text.Component	component	-
+	quit_message	quitMessage	text_component	quitMessage	net.kyori.adventure.text.Component	text_component	-
 	reason	getReason	enum	-	-	-	QuitReason:disconnected,kicked,timed_out,erroneous_state
 PlayerReadyArrowEvent	com.destroystokyo.paper.event.player.PlayerReadyArrowEvent	Player	cancellable
 	arrow	getArrow	item_stack	-	-	-	-
@@ -1774,14 +1774,14 @@ PlayerRiptideEvent	org.bukkit.event.player.PlayerRiptideEvent	Player	cancellable
 	velocity	getVelocity	vec3	-	-	-	-
 PlayerServerFullCheckEvent	io.papermc.paper.event.player.PlayerServerFullCheckEvent	Player	-
 	allowed	isAllowed	boolean	-	-	-	-
-	kick_message	kickMessage	component	-	-	-	-
+	kick_message	kickMessage	text_component	-	-	-	-
 	player_profile	getPlayerProfile	profile	-	-	-	-
 PlayerSetSpawnEvent	com.destroystokyo.paper.event.player.PlayerSetSpawnEvent	Player	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	cause	getCause	enum	-	-	-	Cause:bed,respawn_anchor,player_respawn,command,plugin,unknown
 	forced	isForced	boolean	setForced	boolean	boolean	-
 	location	getLocation	location	setLocation	org.bukkit.Location	location	-
-	notification	getNotification	component	setNotification	net.kyori.adventure.text.Component	component	-
+	notification	getNotification	text_component	setNotification	net.kyori.adventure.text.Component	text_component	-
 	player	getPlayer	player	-	-	-	-
 	will_notify_player	willNotifyPlayer	boolean	-	-	-	-
 PlayerShearBlockEvent	io.papermc.paper.event.block.PlayerShearBlockEvent	Block	cancellable
@@ -2018,7 +2018,7 @@ PrepareSmithingEvent	org.bukkit.event.inventory.PrepareSmithingEvent	Inventory	-
 	view	getView	?InventoryView	-	-	-	-
 	viewers	getViewers	list:player	-	-	-	-
 ProfileWhitelistVerifyEvent	com.destroystokyo.paper.event.profile.ProfileWhitelistVerifyEvent	Profile	-
-	kick_message	kickMessage	component	kickMessage	net.kyori.adventure.text.Component	component	-
+	kick_message	kickMessage	text_component	kickMessage	net.kyori.adventure.text.Component	text_component	-
 	op	isOp	boolean	-	-	-	-
 	player_profile	getPlayerProfile	profile	-	-	-	-
 	whitelist_enabled	isWhitelistEnabled	boolean	-	-	-	-
@@ -2079,7 +2079,7 @@ ServerListPingEvent	org.bukkit.event.server.ServerListPingEvent	Server	-
 	address	getAddress	address	-	-	-	-
 	hostname	getHostname	text	-	-	-	-
 	max_players	getMaxPlayers	integer	setMaxPlayers	int	integer	-
-	motd	motd	component	motd	net.kyori.adventure.text.Component	component	-
+	motd	motd	text_component	motd	net.kyori.adventure.text.Component	text_component	-
 	num_players	getNumPlayers	integer	-	-	-	-
 	socket_address	getSocketAddress	address	-	-	-	-
 ServerLoadEvent	org.bukkit.event.server.ServerLoadEvent	Server	-
@@ -2114,7 +2114,7 @@ ShulkerDuplicateEvent	io.papermc.paper.event.entity.ShulkerDuplicateEvent	Entity
 SignChangeEvent	org.bukkit.event.block.SignChangeEvent	Block	cancellable
 	block	getBlock	block	-	-	-	-
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	lines	lines	list:component	-	-	list:component	-
+	lines	lines	list:text_component	-	-	list:text_component	-
 	player	getPlayer	player	-	-	-	-
 	side	getSide	enum	-	-	-	Side:front,back
 SkeletonHorseTrapEvent	com.destroystokyo.paper.event.entity.SkeletonHorseTrapEvent	Entity	cancellable
@@ -2224,7 +2224,7 @@ TabCompleteEvent	org.bukkit.event.server.TabCompleteEvent	Server	cancellable
 	sender	getSender	sender	-	-	-	-
 TameableDeathMessageEvent	io.papermc.paper.event.entity.TameableDeathMessageEvent	Entity	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
-	death_message	deathMessage	component	deathMessage	net.kyori.adventure.text.Component	component	-
+	death_message	deathMessage	text_component	deathMessage	net.kyori.adventure.text.Component	text_component	-
 	entity	getEntity	entity	-	-	-	-
 	entity_type	getEntityType	enum	-	-	-	EntityType:
 TargetHitEvent	io.papermc.paper.event.block.TargetHitEvent	Block	cancellable
@@ -2283,13 +2283,13 @@ TurtleStartDiggingEvent	com.destroystokyo.paper.event.entity.TurtleStartDiggingE
 UncheckedSignChangeEvent	io.papermc.paper.event.packet.UncheckedSignChangeEvent	Packet	cancellable
 	cancelled	isCancelled	boolean	setCancelled	boolean	boolean	-
 	edited_block_position	getEditedBlockPosition	block_pos	-	-	-	-
-	lines	lines	list:component	-	-	-	-
+	lines	lines	list:text_component	-	-	-	-
 	player	getPlayer	player	-	-	-	-
 	side	getSide	enum	-	-	-	Side:front,back
 UnknownCommandEvent	org.bukkit.event.command.UnknownCommandEvent	Command	-
 	command_line	getCommandLine	text	-	-	-	-
 	command_source	getCommandSource	?CommandSourceStack	-	-	-	-
-	message	message	component	message	net.kyori.adventure.text.Component	component	-
+	message	message	text_component	message	net.kyori.adventure.text.Component	text_component	-
 	sender	getSender	sender	-	-	-	-
 VaultChangeStateEvent	io.papermc.paper.event.block.VaultChangeStateEvent	Block	cancellable
 	block	getBlock	block	-	-	-	-

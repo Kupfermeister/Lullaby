@@ -19,6 +19,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.IntFunction;
 import java.util.function.ToIntFunction;
+import net.minecraft.commands.CommandBuildContext;
+import net.minecraft.commands.arguments.ComponentArgument;
 import net.minecraft.commands.arguments.ParticleArgument;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
@@ -51,7 +53,7 @@ import net.minecraft.world.level.block.state.BlockState;
  * (only the changes against the item type's defaults, removals as "!minecraft:food"). Main thread only.
  *
  * <p>Text: strings are literal text everywhere, exactly as vanilla's codecs read them (no MiniMessage or other markup).
- * tostring(component) gives vanilla's JSON text, which from_json(text, "component") reads back.
+ * text_component.string gives vanilla's JSON text, which text_component{ raw = text } reads back (as /tellraw).
  */
 public final class Codecs {
 
@@ -62,7 +64,7 @@ public final class Codecs {
      */
     private static final String[] KINDS = {"block_pos", "section_pos", "chunk_pos", "vec3", "yaw_pitch", "quaternion",
             "aabb", "bounding_box", "global_pos", "location", "block_state", "player", "world", "block", "item_stack",
-            "component", "components", "entity", "chunk", "damage"};
+            "text_component", "components", "entity", "chunk", "damage"};
 
     private static RegistryOps<Object> luaOps;
     private static RegistryOps<Tag> nbtOps;
@@ -230,8 +232,8 @@ public final class Codecs {
                 // lazy.lua puts the item's current slot at [true] while the table is on the wire
                 return new ItemRef((ItemStack) slots.apply(((Number) t.hash.get(Boolean.TRUE)).intValue()));
             }
-            case "component" -> {
-                t.kind = -1; // a component is a plain table in codec shape
+            case "text_component" -> {
+                t.kind = -1; // a text_component is a plain table in codec shape
                 return plain(t, slots);
             }
             case "components" -> {
@@ -463,7 +465,35 @@ public final class Codecs {
         return get(ComponentSerialization.CODEC.parse(ops(), unwrap(plain(wire, slots))));
     }
 
-    /** A component as vanilla's JSON text (tostring of a component); from_json(text, "component") reads it back. */
+    private static ComponentArgument componentArgument;
+    private static HolderLookup.Provider componentArgumentFor;
+
+    /**
+     * text_component{ raw = text }: the text exactly as /tellraw reads its message (vanilla's ComponentArgument: SNBT,
+     * which also reads JSON as text generators write it: {"text":"hi"}, "hi", ["a","b"]). The whole text must be used.
+     */
+    public static Component componentParse(String raw) {
+        HolderLookup.Provider registries = registries();
+        if (componentArgumentFor != registries) {
+            componentArgument = ComponentArgument.textComponent(CommandBuildContext.simple(registries,
+                    MinecraftServer.getServer().getWorldData().enabledFeatures()));
+            componentArgumentFor = registries;
+        }
+        StringReader reader = new StringReader(raw);
+        Component text;
+        try {
+            text = componentArgument.parse(reader);
+        } catch (CommandSyntaxException e) {
+            // FORMAT: raw text /tellraw would refuse
+            throw new IllegalArgumentException("text_component: raw is not valid /tellraw text (" + e.getMessage() + ")");
+        }
+        reader.skipWhitespace();
+        // FORMAT: text left after the raw text
+        if (reader.canRead()) throw new IllegalArgumentException("text_component: unexpected text after raw: " + reader.getRemaining());
+        return text;
+    }
+
+    /** A component as vanilla's JSON text (text_component.string); {@link #componentParse} reads it back. */
     public static String componentText(Component text) {
         ops();
         return get(ComponentSerialization.CODEC.encodeStart(RegistryOps.create(JsonOps.INSTANCE, registries()), text))
@@ -492,10 +522,6 @@ public final class Codecs {
         return itemsOut(tree, addSlot, items);
     }
 
-    /** from_json's result: a component as {@link #componentOut} gives it, or null if it is not a component. */
-    public static Object[] componentOutIfText(Object value, ToIntFunction<Object> addSlot) {
-        return value instanceof Component text ? componentOut(text, addSlot) : null;
-    }
 
     private static Object itemsOut(Object tree, ToIntFunction<Object> addSlot, int[] items) {
         if (tree instanceof List<?> list) {
@@ -549,7 +575,7 @@ public final class Codecs {
         if (v instanceof org.joml.Quaternionfc) return marker("quaternion", DisplayData.parts(v));
         if (v instanceof BlockState s) return marker("block_state", Block.getId(s));
         if (v instanceof ItemStack s) return marker("item_stack", addSlot.applyAsInt(s.copy()));
-        if (v instanceof Component c) return marker("component", componentTree(c, addSlot, new int[1]));
+        if (v instanceof Component c) return marker("text_component", componentTree(c, addSlot, new int[1]));
         return v;
     }
 
@@ -603,9 +629,8 @@ public final class Codecs {
         DynamicOps<JsonElement> jsonOps = RegistryOps.create(JsonOps.INSTANCE, registries());
         Codec<?> codec = switch (type) {
             case "item_stack" -> ItemStack.CODEC;
-            case "component" -> ComponentSerialization.CODEC;
             // FORMAT: from_json type not supported
-            default -> throw new IllegalArgumentException("from_json: unknown type " + type + " (item_stack, component)");
+            default -> throw new IllegalArgumentException("from_json: unknown type " + type + " (item_stack; text: text_component{ raw = })");
         };
         JsonElement element;
         try {

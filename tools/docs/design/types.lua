@@ -21,7 +21,7 @@
 --   Memory hook: places and beings are objects, what is in them is a value.
 --
 -- HOW VALUES LOOK (field `impl` below)
---   small     a real Lua table with a shared metatable (methods, ==, tostring). Java sends plain numbers.
+--   small     a real Lua table with a shared metatable (methods, ==, .string). Java sends plain numbers.
 --   interned  vanilla keeps each one exactly once; Lua keeps one table per vanilla id, so == is free. Unchangeable,
 --             swapped with :with{ }.
 --   lazy      a small Lua table pointing at an unchangeable Java copy. Only the top level is lazy: a part (e.g.
@@ -36,9 +36,10 @@
 --   (a) a value of that type
 --   (b) a table in codec shape: the same shape as datapack JSON, so the wiki's datapack pages apply directly
 --   (c) vanilla command text ("diamond_sword[enchantments={sharpness:5}]", "oak_stairs[facing=north]")
---   tostring(v) gives form (c), so printed text can be pasted back. Exception: component (component("Hi") is
---   literal text, tostring gives vanilla's JSON text for from_json). Strings are ALWAYS literal, exactly as vanilla's
---   codecs read them (no MiniMessage or other markup anywhere); from_json(text, type) is vanilla's meaning.
+--   v.string gives form (c), so the text can be pasted back (jft 2026-11-28; scripts have no tostring). Objects: the
+--   UUID (player, entity) or id (world). Exception: text_component ("Hi" is literal text; .string gives vanilla's JSON,
+--   which text_component{ raw = } reads as /tellraw does). Strings are ALWAYS literal, exactly as vanilla's
+--   codecs read them (no MiniMessage or other markup anywhere); from_json(text, "item_stack") is vanilla's meaning.
 --   Everything is strict: "5" is not a number, 2.5 where a whole number is needed is an error, not 2.
 --
 -- SAVING (field `save`): NBT { type = <name>, data_version = <Minecraft's>, value = ... }. On load an older
@@ -72,7 +73,7 @@ local RULES = {
 	                 .. "double is exact, so precise coordinates never break because of Lullaby",
 	             check = "whole and in range where the field needs it (2.5 or 3000000000 into an int field is an "
 	                 .. "error, never cut or wrapped); NaN and infinity are errors where vanilla can't take them",
-	             text = "number -> text (tostring, print, messages, JSON, text forms) uses the SHORTEST text that reads "
+	             text = "number -> text (print, messages, JSON, text forms) uses the SHORTEST text that reads "
 	                 .. "back as exactly the same number (Lua's own uses 14 digits and would lose precision)" },
 	long64   = { vanilla = "Long / VarLong values above 2^53 (9007199254740992): only ids and bit patterns",
 	             lua = "LuaJIT's built-in 64-bit whole number, ONLY when the value does not fit a normal number; "
@@ -80,9 +81,9 @@ local RULES = {
 	                 .. "numbers, the bit library on all 64 bits. Exact for all 64 bits.",
 	             fields = "world seed (spawn info), sound seeds, structure block seed, keep_alive id, chat salts, "
 	                 .. "ping request / pong response time",
-	             lullaby = "tostring, print, messages, JSON and saving show plain digits (no \"LL\"); type_of says "
+	             lullaby = "print, messages, JSON and saving show plain digits (no \"LL\"); type_of says "
 	                 .. "\"number\"; the wire and NBT carry all 64 bits exactly",
-	             limits = "as table keys two equal 64-bit numbers are different keys (use tostring(seed)); fractions "
+	             limits = "as table keys two equal 64-bit numbers are different keys (turn them into text first: \"\" .. seed); fractions "
 	                 .. "are dropped (seed + 0.5 == seed); math.floor and the like refuse them with a clear error "
 	                 .. "(\"math.floor: 64-bit numbers (ids like seeds) can't be rounded\"), so math stays full speed",
 	             note = "game time, milliseconds and timestamps never get near 2^53 (2^53 ticks = 14 million years). "
@@ -233,8 +234,8 @@ T.item_stack = {
 	codec = "ItemStack.CODEC (OPTIONAL_CODEC where empty is allowed)", stream = "ItemStack.OPTIONAL_STREAM_CODEC",
 	text = "ItemParser.parse", arg = "ItemArgument", fix = "ITEM_STACK", save = "codec",
 	note = "the empty stack (air, count 0) is nil. Replaces material for items. As vanilla as possible: no "
-		.. "checks of Lullaby's own; a new id keeps the patch (vanilla's transmuteCopy); tostring "
-		.. "has no count, like vanilla's item text; == is vanilla's ItemStack.matches. Live item stacks are "
+		.. "checks of Lullaby's own; a new id keeps the patch (vanilla's transmuteCopy); .string "
+		.. "is /give's form: the item text, then the count unless 1; == is vanilla's ItemStack.matches. Live item stacks are "
 		.. "rejected: vanilla swaps stack objects, so a live one would silently stop tracking.",
 }
 T.components = {
@@ -248,12 +249,12 @@ T.components = {
 		.. "removed default is vanilla's \"!minecraft:food\" = {}; setting an entry to nil takes it out of the patch "
 		.. "(back to the default). Reading defaults would be its own function (later). Loads whole on first touch.",
 }
-T.component = {
+T.text_component = {
 	kind = "value", impl = "plain table (vanilla codec shape, changeable; only the top table has the component mark)", vanilla = "net.minecraft.network.chat.Component (text)",
-	accepts = "component, literal text (becomes { text = }), JSON text (from_json), table in codec shape",
+	accepts = "text_component, literal text (becomes { text = }), table in codec shape or a list of parts, { raw = /tellraw text }",
 	codec = "ComponentSerialization.CODEC", stream = "ComponentSerialization.STREAM_CODEC (TRUSTED_ where vanilla uses it)",
 	arg = "ComponentArgument", fix = "TEXT_COMPONENT", save = "codec",
-	note = "no markup (MiniMessage was removed 2026-11-23): colors go in the table. tostring gives vanilla's JSON "
+	note = "no markup (MiniMessage was removed 2026-11-23): colors go in the table. .string gives vanilla's JSON "
 		.. "text; == compares that text. A show_item hover holds item = <item_stack> instead "
 		.. "of vanilla's flat id/count/components. Messages go out as System Chat Message packets.",
 }

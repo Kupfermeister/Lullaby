@@ -225,7 +225,7 @@ local function entry(v, helpers)
 		local pos = b.pos
 		return { "block_snapshot", slot_of[b.world], pos[1], pos[2], pos[3], rawget(v, 2)[1] }
 	end
-	if kind == "component" or (kind == "table" and I.debug_getmetatable(v) == nil) then return { "component", v } end
+	if kind == "text_component" or (kind == "table" and I.debug_getmetatable(v) == nil) then return { "text_component", v } end
 	if kind == "string" or kind == "number" or kind == "boolean" then return v end
 	return { "?", kind }
 end
@@ -322,7 +322,7 @@ local EVENT_META = {
 			h[field] = { value = value, number = number, snap = snap_of(value), line = script_line() }
 			return
 		end
-		if t == "table" and (kind == "component" or I.debug_getmetatable(value) == nil) then
+		if t == "table" and (kind == "text_component" or I.debug_getmetatable(value) == nil) then
 			J.event_set_component(slot, number, I.wire(value)) -- a text field set to a component table
 			return
 		end

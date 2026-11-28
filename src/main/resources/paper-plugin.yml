@@ -4,6 +4,9 @@
 name: lullaby
 version: '${version}'
 main: io.github.kupfermeister.lullaby.Lullaby
+# STARTUP: on before the worlds load, so each world reads chunks with Lullaby's codec (custom blocks); the scripts
+# still start after all worlds are loaded (Lullaby.java).
+load: STARTUP
 api-version: '${minecraftVersion}'
 description: Lua scripting for Paper servers.
 authors: [Kupfermeister]

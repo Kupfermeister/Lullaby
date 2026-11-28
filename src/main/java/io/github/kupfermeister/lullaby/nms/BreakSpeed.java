@@ -13,6 +13,7 @@ import net.minecraft.network.HandlerNames;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientboundBundlePacket;
+import net.minecraft.network.protocol.game.ClientboundLevelEventPacket;
 import net.minecraft.network.protocol.game.ClientboundRespawnPacket;
 import net.minecraft.network.protocol.game.ClientboundSystemChatPacket;
 import net.minecraft.network.protocol.game.ClientboundUpdateAttributesPacket;
@@ -28,6 +29,7 @@ import net.minecraft.world.level.chunk.LevelChunk;
 import org.bukkit.Bukkit;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.HandlerList;
+import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.plugin.Plugin;
@@ -54,6 +56,7 @@ import org.bukkit.plugin.Plugin;
 public final class BreakSpeed {
 
     private static final String NAME = "lullaby_break_speed"; // the hook's name in a player's network pipeline
+    private static final long NONE = Long.MIN_VALUE; // no block (BlockPos.asLong never gives it for a real position)
     private static final Listener JOINS = new Listener() { };
     private static boolean on;
 
@@ -71,6 +74,19 @@ public final class BreakSpeed {
         Bukkit.getPluginManager().registerEvent(PlayerJoinEvent.class, JOINS, EventPriority.LOWEST, (listener, e) -> {
             if (e instanceof PlayerJoinEvent join) hook(((org.bukkit.craftbukkit.entity.CraftPlayer) join.getPlayer()).getHandle());
         }, plugin);
+        // An instant break the game didn't do itself (see Hook.started): vanilla sends the break effects to everyone
+        // but the breaker (whose game normally plays them itself), so the breaker gets them here.
+        Bukkit.getPluginManager().registerEvent(BlockBreakEvent.class, JOINS, EventPriority.MONITOR, (listener, e) -> {
+            if (!(e instanceof BlockBreakEvent b)) return;
+            ServerPlayer player = ((org.bukkit.craftbukkit.entity.CraftPlayer) b.getPlayer()).getHandle();
+            Channel channel = player.connection.connection.channel;
+            if (channel == null) return;
+            ChannelHandlerContext ctx = channel.pipeline().context(NAME);
+            if (ctx == null) return;
+            BlockPos pos = new BlockPos(b.getBlock().getX(), b.getBlock().getY(), b.getBlock().getZ());
+            int state = net.minecraft.world.level.block.Block.getId(player.level().getBlockState(pos));
+            channel.eventLoop().execute(() -> ((Hook) ctx.handler()).broken(ctx, pos, state));
+        }, plugin, true);
         for (ServerPlayer player : MinecraftServer.getServer().getPlayerList().getPlayers()) hook(player);
     }
 
@@ -131,6 +147,15 @@ public final class BreakSpeed {
         private final int id; // the player's entity number (stays the same on respawn)
         private AttributeInstance real; // the player's real value, as the server last sent it
         private boolean held = true; // the game has 0 right now
+        /**
+         * The block the player is hitting (packed position), or NONE after a stop or abort; and whether their game
+         * had 0 when they started. An instant break comes with no "stop", so {@link #broken} ends it: if the game had
+         * 0, it can't have broken the block itself and played no break effects, so it gets them; if it already had
+         * the real value (breaking fast in a row), it broke the block itself, with its effects, so they are not sent
+         * twice. Either way the game is back at 0 after.
+         */
+        private long started = NONE;
+        private boolean startedHeld;
 
         Hook(ServerPlayer player, AttributeInstance real) {
             this.player = player;
@@ -142,6 +167,20 @@ public final class BreakSpeed {
         void hold(ChannelHandlerContext ctx) {
             held = true;
             send(ctx, copy(0, List.of()));
+        }
+
+        /**
+         * The server broke a block for this player (Netty's thread, sent from the main thread's break event). If it
+         * is the one being hit and no "stop" came, the break was instant (see {@link #started}): vanilla's break
+         * effects (event 2001: particles and sound of that state) go to this player if their game had 0, and the
+         * game is back at 0.
+         */
+        void broken(ChannelHandlerContext ctx, BlockPos pos, int state) {
+            if (started != pos.asLong()) return;
+            started = NONE;
+            if (startedHeld) ctx.write(new ClientboundLevelEventPacket(2001, pos, state, false));
+            if (!held) hold(ctx);
+            else ctx.flush();
         }
 
         void release(ChannelHandlerContext ctx) {
@@ -163,10 +202,16 @@ public final class BreakSpeed {
             if (msg instanceof ServerboundPlayerActionPacket a) {
                 switch (a.getAction()) {
                     case START_DESTROY_BLOCK -> {
-                        if (!isGrass(a.getPos())) release(ctx);
-                        else if (!held) hold(ctx);
+                        started = a.getPos().asLong();
+                        startedHeld = held;
+                        if (!isGrass(a.getPos())) {
+                            if (held) release(ctx);
+                        } else if (!held) {
+                            hold(ctx);
+                        }
                     }
                     case ABORT_DESTROY_BLOCK, STOP_DESTROY_BLOCK -> {
+                        started = NONE;
                         if (!held) hold(ctx);
                     }
                     default -> { }
